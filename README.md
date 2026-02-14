@@ -24,8 +24,8 @@
 
 ## 🚀 마일스톤
 - [x] [2026-02-14] Bun & SvelteKit 프로젝트 초기화 성공
-- [ ] Tailwind CSS 디자인 시스템 적용
-- [ ] Go 기반 데이터 수집 모듈 구축
+- [x] Tailwind CSS v4 디자인 시스템 적용 완료 ✨
+- [ ] Go 기반 데이터 수집 모듈 구축 (Next Step!)
 - [ ] PostgreSQL 데이터 스키마 설계
 
 ---

@@ -1,32 +1,60 @@
-# 🌈 Polyglot 5: Infinity Project
-> **5대 핵심 언어(Svelte, Go, Python, Rust, C++) 정복을 위한 통합 포털**
+# 🚀 Polyglot Infinity Portal
 
-본 프로젝트는 단순한 학습을 넘어, 각 언어의 성능을 극대화하여 실시간 데이터 수집부터 AI 분석까지 구현하는 개발자의 성장 기록입니다.
+다양한 프로그래밍 언어와 기술 스택을 통합하여 구축하는 하이 퍼포먼스 포털 프로젝트입니다.
 
-## 🛠 현재 기술 스택
-
-### 🎨 Frontend
-- **Framework**: SvelteKit (Minimal Template)
-- **Runtime**: **Bun**
-- **Language**: TypeScript
-- **Tooling**: ESLint, Prettier, Vitest
-
-### ⚙️ Backend (구현 예정)
-- **Go**: 트래픽 수집기
-- **Python**: 데이터 분석 및 AI 엔진
-- **Rust**: 고성능 데이터 처리 및 보안
-- **C++**: 저수준 최적화 모듈
-
-### 🗄️ Database & Infra
-- **Primary**: PostgreSQL
-- **Cache**: Redis
-- **Container**: OrbStack
-
-## 🚀 마일스톤
-- [x] [2026-02-14] Bun & SvelteKit 프로젝트 초기화 성공
-- [x] Tailwind CSS v4 디자인 시스템 적용 완료 ✨
-- [ ] Go 기반 데이터 수집 모듈 구축 (Next Step!)
-- [ ] PostgreSQL 데이터 스키마 설계
+## 🛠 Tech Stack
+- **Frontend**: Svelte 5, Tailwind CSS v4
+- **Runtime**: Bun
+- **Backend**: Go (The Hunter)
+- **Target**: Python (The Brain), PostgreSQL (The Memory)
 
 ---
-*“1류는 도구에 매몰되지 않고, 도구를 지배하여 가치를 창출한다.”*
+
+## 📝 Development History & Issue Log
+
+### 📅 2026-02-14: 프로젝트 기초 및 디자인 시스템 구축
+- **구현 기능**
+    - Bun 기반 SvelteKit 프로젝트 초기화.
+    - Tailwind CSS v4 디자인 시스템 도입 및 다크 모드 UI 구현.
+- **이슈 (걸림돌)**
+    - `bunx tailwindcss init -p` 실행 시 실행 파일을 찾지 못하는 에러 발생.
+    - Tailwind 클래스가 화면에 적용되지 않고 기본 텍스트만 출력됨.
+- **원인 분석**
+    - Tailwind v4는 기존 v3와 달리 별도의 CLI 초기화(`init`) 방식보다 Vite 플러그인 기반 설정을 지향함.
+    - Svelte v5와 Tailwind v4 조합에서 Vite 플러그인(`@tailwindcss/vite`) 연결이 누락됨.
+- **해결 방법**
+    - `vite.config.ts`에 `@tailwindcss/vite` 플러그인을 수동으로 추가.
+    - `app.css`에서 `@import "tailwindcss";` 한 줄로 설정을 간소화하여 최신 방식 적용.
+
+### 📅 2026-02-15: Go 백엔드 구축 및 첫 이종 언어 연동
+- **구현 기능**
+    - Go(The Hunter)를 이용한 기초 HTTP API 서버 구축 (`/api/status`).
+    - Svelte 프론트엔드에서 버튼 클릭 시 Go 서버의 데이터를 가져오는 `fetch` 로직 구현.
+- **이슈 (걸림돌)**
+    - Svelte에서 버튼 클릭 시 `404 Not Found` 에러 발생.
+    - 터미널 로그에 `GET /http://localhost:8080/...`와 같이 비정상적인 경로 출력.
+- **원인 분석**
+    - `fetch` 함수 내부의 URL 작성 시 주소 앞에 실수로 슬래시(`/`)가 포함됨.
+    - 브라우저가 이를 절대 경로 URL이 아닌 현재 도메인의 하위 리소스 경로로 인식하여 발생한 오타 문제.
+- **해결 방법**
+    - `fetch` 주소에서 불필요한 슬래시를 제거하고 `http://localhost:8080/api/status`로 정확히 수정.
+    - Go 서버에 CORS 헤더(`Access-Control-Allow-Origin: *`) 설정을 추가하여 브라우저 보안 정책 문제 해결.
+
+### 📅 2026-02-15: Python 환경 구축 및 가상환경 이슈 해결
+- **구현 기능**
+    - Python 가상환경(venv) 설정 및 FastAPI 기반 'The Brain' 엔진 기초 구축.
+- **이슈 (걸림돌)**
+    - `python3 -m venv venv` 실행 시 `ensurepip` 부재로 인해 가상환경 생성 실패.
+- **원인 분석**
+    - Ubuntu/WSL 환경에서는 `python3-venv` 패키지가 기본 파이썬 설치와 분리되어 있어 발생한 문제.
+- **해결 방법**
+    - `sudo apt update && sudo apt install python3-venv` 명령어로 시스템 패키지 설치 후 가상환경 재생성 성공.
+
+---
+
+## 🚀 마일스톤
+- [x] Bun & SvelteKit 프로젝트 초기화
+- [x] Tailwind CSS v4 디자인 시스템 적용 완료 ✨
+- [x] Go API 서버 구축 및 프론트엔드 연동 성공 🏹
+- [x] Python 환경 구축 및 가상환경 설정 완료 🐍
+- [ ] PostgreSQL(The Memory) 데이터베이스 설계 및 연결

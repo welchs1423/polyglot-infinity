@@ -50,6 +50,22 @@
 - **해결 방법**
     - `sudo apt update && sudo apt install python3-venv` 명령어로 시스템 패키지 설치 후 가상환경 재생성 성공.
 
+### 📅 2026-02-15: Svelte-Go-Python 3단 대통합 및 이슈 해결
+- **구현 기능**
+    - Python(FastAPI) 엔진 구축 및 Go 서버와의 REST API 연동.
+    - Svelte 프론트엔드에서 Go를 거쳐 Python의 분석 데이터까지 수신하는 Full-Stack 체인 완성.
+- **이슈 및 해결 (Troubleshooting)**
+    - **Issue 1**: Python 가상환경(`venv`) 패키지 미설치로 인한 `uvicorn` 실행 불가.
+        - *해결*: `sudo apt install python3-pip` 및 `venv` 내 `pip install` 재수행.
+    - **Issue 2**: `uvicorn` 실행 시 `Attribute "app" not found` 및 `ImportError`.
+        - *원인*: `main.py` 내 객체명 불일치 및 `fastapi` 대소문자 오타.
+        - *해결*: `from fastapi import FastAPI`로 대소문자 교정 및 `app` 변수 선언 확인.
+    - **Issue 3**: Go 서버 컴파일 에러 (`syntax error: unexpected newline`).
+        - *원인*: 응답 구조체 마지막 필드 뒤 콤마(`,`) 누락.
+        - *해결*: Go 문법 규격에 맞게 콤마 추가.
+    - **Issue 4**: GitHub에 수천 개의 `venv` 파일 노출.
+        - *해결*: `.gitignore` 설정 및 `git rm --cached`를 통한 원격 저장소 정리.
+
 ---
 
 ## 🚀 마일스톤

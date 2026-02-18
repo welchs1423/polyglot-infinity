@@ -6,32 +6,38 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
-	_ "github.com/lib/pq" // Postgres 드라이버
+	_ "github.com/lib/pq"
 )
 
 var db *sql.DB
 
+type SystemLog struct {
+	ID        int       `json:"id"`
+	Source    string    `json:"source"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 func main() {
 	var err error
-	// 1. DB 접속 정보 (Connection String)
-	// sslmode=disable : 로컬 개발환경이라 보안 인증서 무시
 	connStr := "postgres://dev:polyglot@localhost/polyglot_db?sslmode=disable"
 
-	// 2. DB 연결 시도
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close() // 메인 함수 끝나면 DB 연결 끊기
+	defer db.Close()
 
 	if err = db.Ping(); err != nil {
 		log.Fatal("DB 접속 실패:", err)
 	}
-	fmt.Println("🐘 PostgreSQL(The Memory) 연결 성공!")
+	fmt.Println("🐘 PostgreSQL 연결 성공!")
 
 	// 4. 핸들러 등록
 	http.HandleFunc("/api/status", statusHandler)
+	http.HandleFunc("/api/history", historyHandler)
 
 	fmt.Println("🏹 Go Hunter Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -44,7 +50,6 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
-	// SQL Injection 방지를 위해 $1, $2 파라미터 사용
 	query := `INSERT INTO system_logs (source, message) VALUES ($1, $2)`
 	_, dbErr := db.Exec(query, "Go-Hunter", "Client requested status check")
 
@@ -52,13 +57,10 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	if dbErr != nil {
 		log.Println("DB 기록 실패:", dbErr)
 		dbStatus = "error_writing_log"
-	} else {
-		fmt.Println("📝 DB에 로그 기록 완료!")
 	}
 
 	resp, err := http.Get("http://localhost:8000/api/analyze")
 	var brainData map[string]interface{}
-
 	if err == nil {
 		defer resp.Body.Close()
 		json.NewDecoder(resp.Body).Decode(&brainData)
@@ -66,7 +68,6 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 		brainData = map[string]interface{}{"message": "Brain is offline"}
 	}
 
-	// 최종 응답
 	response := map[string]interface{}{
 		"engine":         "Go-Hunter-v1",
 		"status":         "online",
@@ -75,4 +76,27 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func historyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	rows, err := db.Query("SELECT id, source, message, created_at FROM system_logs ORDER BY id DESC LIMIT 10")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var logs []SystemLog
+	for rows.Next() {
+		var l SystemLog
+		if err := rows.Scan(&l.ID, &l.Source, &l.Message, &l.CreatedAt); err != nil {
+			log.Println("데이터 스캔 오류:", err)
+			continue
+		}
+		logs = append(logs, l)
+	}
+	json.NewEncoder(w).Encode(logs)
 }

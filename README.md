@@ -43,10 +43,19 @@
 
 <br>
 
-### 🏹 Go (Backend)
+### Go (Backend)
 > **역할:** 프론트엔드와 엔진 사이의 중계(Proxy), 메인 비즈니스 로직
 
+
 <details open>
+<summary><strong>📅 2026-02-18 (최신): 로그 조회 API 개발</strong></summary>
+
+#### ✅ 구축 내역
+- **History API (`/api/history`)**: PostgreSQL에 저장된 로그를 최신순(DESC)으로 조회하여 반환.
+- **DB 조회 로직**: `Query` 및 `Scan`을 활용한 데이터 매핑 구현.
+</details>
+
+<details>
 <summary><strong>📅 2026-02-16 (최신): DB 연동 및 버전 업그레이드</strong></summary>
 
 #### ✅ 구축 내역
@@ -108,6 +117,14 @@
 
 ### 🎨 Frontend (Svelte 5)
 > **역할:** 사용자 인터페이스, 실시간 데이터 시각화
+
+<details open>
+<summary><strong>📅 2026-02-18 (최신): 시스템 로그 대시보드 구현</strong></summary>
+
+#### ✅ 구축 내역
+- **로그 시각화 UI**: 백엔드에서 받은 시스템 로그를 테이블 형태로 출력하는 컴포넌트 구현.
+- **상태 동기화 로직**: `Status Check` → `Log Fetch`로 이어지는 비동기 연쇄 호출(Chaining) 처리.
+</details>
 
 <details>
 <summary><strong>📅 2026-02-14: 프로젝트 스캐폴딩</strong></summary>

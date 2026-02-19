@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -9,9 +10,14 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 )
 
-var db *sql.DB
+var (
+	db  *sql.DB
+	rdb *redis.Client
+	ctx = context.Background()
+)
 
 type SystemLog struct {
 	ID        int       `json:"id"`
@@ -23,7 +29,6 @@ type SystemLog struct {
 func main() {
 	var err error
 	connStr := "postgres://dev:polyglot@localhost/polyglot_db?sslmode=disable"
-
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatal(err)
@@ -35,44 +40,65 @@ func main() {
 	}
 	fmt.Println("🐘 PostgreSQL 연결 성공!")
 
-	// 4. 핸들러 등록
+	rdb = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatal("Redis 접속 실패:", err)
+	}
+	fmt.Println("⚡ Redis 연결 성공!")
+
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/history", historyHandler)
 
-	fmt.Println("🏹 Go Hunter Server running on port 8080...")
+	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {
-	// CORS 설정
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
-	query := `INSERT INTO system_logs (source, message) VALUES ($1, $2)`
-	_, dbErr := db.Exec(query, "Go-Hunter", "Client requested status check")
-
+	_, dbErr := db.Exec("INSERT INTO system_logs (source, message) VALUES ($1, $2)", "Go-Backend", "Status requested")
 	dbStatus := "connected"
 	if dbErr != nil {
 		log.Println("DB 기록 실패:", dbErr)
-		dbStatus = "error_writing_log"
+		dbStatus = "error"
 	}
 
-	resp, err := http.Get("http://localhost:8000/api/analyze")
-	var brainData map[string]interface{}
+	var engineData map[string]interface{}
+	cacheKey := "engine_analysis_cache"
+
+	val, err := rdb.Get(ctx, cacheKey).Result()
+
 	if err == nil {
-		defer resp.Body.Close()
-		json.NewDecoder(resp.Body).Decode(&brainData)
+		json.Unmarshal([]byte(val), &engineData)
+		fmt.Println("Cache Hit! (Redis에서 즉시 반환)")
+		engineData["source"] = "Redis Cache"
 	} else {
-		brainData = map[string]interface{}{"message": "Brain is offline"}
+		fmt.Println("Cache MISS! (Python 엔진 호출)")
+		resp, err := http.Get("http://localhost:8000/api/analyze")
+
+		if err == nil {
+			defer resp.Body.Close()
+			json.NewDecoder(resp.Body).Decode(&engineData)
+			engineData["source"] = "Python Engine"
+
+			jsonData, _ := json.Marshal(engineData)
+			rdb.Set(ctx, cacheKey, jsonData, 10*time.Second)
+		} else {
+			engineData = map[string]interface{}{"message": "Engine is offline"}
+		}
 	}
 
 	response := map[string]interface{}{
-		"engine":         "Go-Hunter-v1",
-		"status":         "online",
-		"database":       dbStatus, // DB 상태 추가
-		"brain_analysis": brainData,
+		"system":          "Go-Backend-v1",
+		"status":          "online",
+		"database":        dbStatus,
+		"engine_anlaysis": engineData,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -93,7 +119,6 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var l SystemLog
 		if err := rows.Scan(&l.ID, &l.Source, &l.Message, &l.CreatedAt); err != nil {
-			log.Println("데이터 스캔 오류:", err)
 			continue
 		}
 		logs = append(logs, l)

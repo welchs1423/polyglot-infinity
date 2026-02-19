@@ -22,7 +22,7 @@
 
 ### 🗄️ Database & Infra
 - **Primary**: **PostgreSQL**
-- **Driver**: Go `lib/pq`
+- **Driver**: Go `lib/pq`, `go-redis/v9`
 - **Environment**: WSL2 (Ubuntu), OrbStack
 
 ---
@@ -135,16 +135,34 @@
 - 백엔드(Go) 통신을 위한 Fetch 로직 구현.
 </details>
 
+### ⚡ Redis (Cache)
+> **역할:** 데이터 캐싱을 통한 엔진 부하 감소 및 응답 속도 최적화
+
+<details open>
+<summary><strong>📅 2026-02-20 (최신): Redis 캐싱 레이어 도입</strong></summary>
+
+#### ✅ 구축 내역
+- **Cache-Aside 패턴**: 요청 시 Redis를 우선 조회(Cache Hit)하고, 데이터가 없을 경우에만 Python 엔진을 호출(Cache Miss)하는 로직 구현.
+- **TTL(Time To Live) 설정**: 캐시 데이터의 유효 시간을 10초로 설정하여 데이터 정합성 유지.
+- **성능 개선**: 캐시 적중 시 엔진 호출 프로세스를 생략하여 즉각적인 응답 반환 확인.
+
+#### 🔍 트러블슈팅 (Troubleshooting)
+| 이슈 (Issue) | 원인 및 해결 (Solution) |
+| :--- | :--- |
+| **Panic (Nil Pointer)** | Redis 클라이언트(`rdb`) 초기화 누락 -> `NewClient` 코드 추가로 해결. |
+| **Key 정합성** | JSON 필드명 오타(`anlysis`) -> `analysis`로 교정하여 프론트엔드 연동 정상화. |
+</details>
+
 ---
 
 ## 🚀 마일스톤 (Milestones)
+- [x] [2026-02-20] **Redis 캐싱 레이어 도입 및 성능 최적화 성공**
+- [x] [2026-02-16] **PostgreSQL 데이터 스키마 설계 및 연동 완료**
+- [x] [2026-02-15] **Svelte ↔ Go ↔ Python 3단 대통합 성공**
+- [x] [2026-02-15] Python 분석 엔진 구축 및 가상환경 설정
 - [x] [2026-02-14] Bun & SvelteKit 프로젝트 초기화 성공
 - [x] [2026-02-14] Tailwind CSS v4 디자인 시스템 적용
 - [x] [2026-02-14] Go 기반 API 서버 구축 (CORS 해결)
-- [x] [2026-02-15] Python 분석 엔진 구축 및 가상환경 설정
-- [x] [2026-02-15] **Svelte ↔ Go ↔ Python 3단 대통합 성공**
-- [x] [2026-02-16] **PostgreSQL 데이터 스키마 설계 및 연동 완료**
-- [ ] Redis 캐싱 레이어 도입
 - [ ] Docker 컨테이너 환경 구축
 
 ---

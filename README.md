@@ -17,7 +17,7 @@
 ### ⚙️ Backend & Engine
 - **Go**: 메인 API 서버, 트래픽 중계 및 고성능 처리.
 - **Python**: FastAPI 기반 데이터 분석 및 AI 엔진.
-- **Rust (예정)**: 고성능 데이터 파이프라인.
+- **Rust**: 고성능 데이터 파이프라인.
 - **C++ (예정)**: 저수준 최적화 모듈.
 
 ### 🗄️ Database & Infra
@@ -113,6 +113,18 @@
 | **Git 저장소 오염** | `venv` 폴더 업로드됨 → `git rm -r --cached venv/`로 인덱스 정화. |
 </details>
 
+### 🦀 Rust (Data Pipeline)
+> **역할:** 초고속 데이터 병렬 처리 및 대규모 연산 백그라운드 워커
+
+<details open>
+<summary><strong>📅 2026-02-24 (최신): Rust 파이프라인 뼈대 구축</strong></summary>
+
+#### ✅ 구축 내역
+- **웹 프레임워크**: `axum` 및 `tokio` 비동기 런타임을 활용한 고성능 API 서버 구동 (Port 8081).
+- **성능 검증**: `--release` 모드를 통한 컴파일러 최적화(Dead Code Elimination 등) 및 연산 한계 돌파 테스트 완료.
+- **Git 최적화**: `.gitignore` 설정을 통해 무거운 `target/` 빌드 디렉토리 추적 제외 완료.
+</details>
+
 <br>
 
 ### 🎨 Frontend (Svelte 5)
@@ -156,6 +168,7 @@
 ---
 
 ## 🚀 마일스톤 (Milestones)
+- [x] [2026-02-24] **Rust 기반 고성능 데이터 파이프라인 모듈(Axum) 초기화 및 최적화 테스트 완료**
 - [x] [2026-02-20] **Redis 캐싱 레이어 도입 및 성능 최적화 성공**
 - [x] [2026-02-16] **PostgreSQL 데이터 스키마 설계 및 연동 완료**
 - [x] [2026-02-15] **Svelte ↔ Go ↔ Python 3단 대통합 성공**

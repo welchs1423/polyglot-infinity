@@ -1,99 +1,245 @@
-<script lang="ts">
-  let status: any = $state(null);
-  let logs: any[] = $state([]); // 로그 데이터를 담을 변수
-  let loading = $state(false);
+<script>
+	/** @type {any} */
+	let systemData = $state(null);
+	
+	/** @type {string | null} */
+	let errorMsg = $state(null);
+	
+	/** @type {any[]} */
+	let logs = $state([]);
 
-  // 1. 시스템 상태 점검 및 로그 갱신 함수
-  async function checkSystem() {
-    loading = true;
-    try {
-      // (1) Go Backend 상태 체크 요청
-      const res = await fetch('http://localhost:8080/api/status');
-      status = await res.json();
-      
-      // (2) 로그 데이터 갱신 요청 (연쇄 호출)
-      await fetchLogs();
-    } catch (e) {
-      console.error(e);
-      status = { error: "System Offline" };
-    } finally {
-      loading = false;
-    }
-  }
+	async function syncSystem() {
+		try {
+			const res = await fetch('http://localhost:8080/api/status');
+			if (!res.ok) throw new Error('System Offline');
+			systemData = await res.json();
+			errorMsg = null;
+			fetchLogs();
+		} catch (err) {
+			// 에러 객체에서 안전하게 메시지 추출
+			errorMsg = err instanceof Error ? err.message : "Unknown Error";
+			systemData = null;
+		}
+	}
 
-  // 2. 로그 데이터 가져오기 함수
-  async function fetchLogs() {
-    try {
-        const res = await fetch('http://localhost:8080/api/history');
-        logs = await res.json();
-    } catch (e) {
-        console.error("로그 조회 실패:", e);
-    }
-  }
+	async function fetchLogs() {
+		try {
+			const res = await fetch('http://localhost:8080/api/history');
+			if (res.ok) logs = await res.json();
+		} catch (err) {
+			console.error("Failed to fetch logs");
+		}
+	}
 </script>
+<main class="container">
+	<h1 class="title">Polyglot Infinity Portal</h1>
 
-<div class="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
-  <h1 class="text-5xl font-bold mb-8 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-    Polyglot Infinity Portal
-  </h1>
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>System Status</h2>
+				<p class="subtitle">Svelte 5 ↔ Go ↔ Python ↔ Rust ↔ DB</p>
+			</div>
+			<button class="sync-btn" onclick={syncSystem}>Sync System</button>
+		</div>
 
-  <div class="bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 w-full max-w-2xl mb-8">
-    <div class="flex justify-between items-center mb-6">
-      <div>
-        <h2 class="text-xl font-semibold text-gray-300">System Status</h2>
-        <p class="text-gray-400 text-sm">Svelte 5 ↔ Go ↔ Python ↔ DB</p>
-      </div>
-      <button 
-        onclick={checkSystem}
-        class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-all transform active:scale-95 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={loading}
-      >
-        {loading ? 'Processing...' : 'Sync System'}
-      </button>
-    </div>
+		{#if errorMsg}
+			<div class="error-box">
+				<p>⚠️ {errorMsg}</p>
+			</div>
+		{:else if systemData}
+			<div class="card-grid">
+				<div class="status-card">
+					<h3>🏹 Go (Backend)</h3>
+					<p class="status online">● {systemData.status}</p>
+					<span class="version">{systemData.system}</span>
+				</div>
 
-    {#if status}
-      <div class="bg-black/50 p-4 rounded-lg font-mono text-sm border border-gray-600">
-        <pre class="whitespace-pre-wrap">{JSON.stringify(status, null, 2)}</pre>
-      </div>
-    {:else}
-      <div class="text-center text-gray-500 py-4">
-        시스템 동기화를 시작해주세요.
-      </div>
-    {/if}
-  </div>
+				<div class="status-card">
+					<h3>🗄️ PostgreSQL / Redis</h3>
+					<p class="status {systemData.database === 'connected' ? 'online' : 'error'}">
+						● {systemData.database}
+					</p>
+					<span class="version">Data & Cache Layer</span>
+				</div>
 
-  <div class="bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700 w-full max-w-2xl">
-    <h2 class="text-xl font-semibold text-gray-300 mb-4 border-b border-gray-700 pb-2">
-        System Memory (Latest Logs)
-    </h2>
-    
-    {#if logs.length > 0}
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-gray-400">
-                <thead class="bg-gray-700 text-gray-200">
-                    <tr>
-                        <th class="p-3 rounded-tl-lg">ID</th>
-                        <th class="p-3">Source</th>
-                        <th class="p-3">Message</th>
-                        <th class="p-3 rounded-tr-lg">Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {#each logs as log}
-                        <tr class="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
-                            <td class="p-3 text-blue-400 font-mono">#{log.id}</td>
-                            <td class="p-3 font-semibold text-white">{log.source}</td>
-                            <td class="p-3">{log.message}</td>
-                            <td class="p-3 text-xs text-gray-500">{new Date(log.created_at).toLocaleString()}</td>
-                        </tr>
-                    {/each}
-                </tbody>
-            </table>
+        <div class="status-card">
+          <h3>🐍 Python (Engine)</h3>
+          {#if systemData.engine_analysis.version} <p class="status online">● online</p> <span class="version">{systemData.engine_analysis.version}</span>
+            <div class="badge">{systemData.engine_analysis.source}</div>
+          {:else}
+            <p class="status error">● Offline</p>
+          {/if}
         </div>
-    {:else}
-        <p class="text-center text-gray-500 py-4">저장된 기록이 없습니다.</p>
-    {/if}
-  </div>
 
-</div>
+				<div class="status-card">
+					<h3>🦀 Rust (Pipeline)</h3>
+					{#if systemData.pipeline_node.status === 'online'}
+						<p class="status online">● {systemData.pipeline_node.status}</p>
+						<span class="version">{systemData.pipeline_node.module}</span>
+					{:else}
+						<p class="status error">● Offline</p>
+					{/if}
+				</div>
+			</div>
+		{:else}
+			<div class="empty-box">
+				<p>우측 상단의 Sync System 버튼을 눌러 전체 시스템을 스캔하세요.</p>
+			</div>
+		{/if}
+	</section>
+
+	<section class="panel">
+		<h2>System Memory (Latest Logs)</h2>
+		{#if logs.length > 0}
+			<table class="log-table">
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>Source</th>
+						<th>Message</th>
+						<th>Time</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each logs as log}
+						<tr>
+							<td class="log-id">#{log.id}</td>
+							<td class="log-source">{log.source}</td>
+							<td>{log.message}</td>
+							<td class="log-time">{new Date(log.created_at).toLocaleString()}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<p class="empty-text">저장된 기록이 없습니다.</p>
+		{/if}
+	</section>
+</main>
+
+<style>
+	:global(body) {
+		background-color: #0f172a;
+		color: #e2e8f0;
+		font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		margin: 0;
+		padding: 2rem;
+	}
+	.container {
+		max-width: 900px;
+		margin: 0 auto;
+	}
+  .title {
+      text-align: center;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+      -webkit-background-clip: text;
+      background-clip: text; /* ✨ 이 표준 속성을 추가해 주세요! */
+      -webkit-text-fill-color: transparent;
+      font-size: 2.5rem;
+      margin-bottom: 2rem;
+  }
+	.panel {
+		background: #1e293b;
+		border-radius: 12px;
+		padding: 1.5rem;
+		margin-bottom: 1.5rem;
+		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+	}
+	.panel-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+	}
+	.panel-header h2 {
+		margin: 0;
+	}
+	.subtitle {
+		margin: 0;
+		color: #94a3b8;
+		font-size: 0.9rem;
+	}
+	.sync-btn {
+		background: #2563eb;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.sync-btn:hover {
+		background: #1d4ed8;
+	}
+	
+	/* 카드 그리드 스타일 */
+	.card-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 1rem;
+	}
+	.status-card {
+		background: #0f172a;
+		border: 1px solid #334155;
+		border-radius: 8px;
+		padding: 1.2rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.status-card h3 {
+		margin: 0;
+		font-size: 1.1rem;
+		color: #f8fafc;
+	}
+	.status {
+		font-weight: bold;
+		margin: 0;
+	}
+	.online { color: #22c55e; }
+	.error { color: #ef4444; }
+	.version {
+		font-size: 0.85rem;
+		color: #64748b;
+	}
+	.badge {
+		display: inline-block;
+		background: #3b82f6;
+		color: white;
+		font-size: 0.7rem;
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+		align-self: flex-start;
+		margin-top: 0.5rem;
+	}
+
+	.error-box, .empty-box {
+		background: #0f172a;
+		padding: 1.5rem;
+		border-radius: 8px;
+		text-align: center;
+		color: #94a3b8;
+	}
+	.error-box {
+		border: 1px solid #7f1d1d;
+		color: #fca5a5;
+	}
+
+	.log-table {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 1rem;
+	}
+	.log-table th, .log-table td {
+		padding: 0.75rem;
+		text-align: left;
+		border-bottom: 1px solid #334155;
+	}
+	.log-table th { color: #cbd5e1; font-weight: 600; }
+	.log-id { color: #3b82f6; font-weight: bold; }
+	.log-source { font-weight: 600; }
+	.log-time { color: #64748b; font-size: 0.9rem; }
+	.empty-text { color: #64748b; text-align: center; padding: 2rem 0; }
+</style>

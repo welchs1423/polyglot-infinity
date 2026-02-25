@@ -39,7 +39,7 @@ async fn main(){
 
 async fn status_handler() -> Json<StatusResponse> {
     Json(StatusResponse {
-        module: "Rust-Popeline-v1".to_string(),
+        module: "Rust-Pipeline-v1".to_string(),
         status: "online".to_string(),
         message: "Ready for high-performance processing".to_string(),
     })

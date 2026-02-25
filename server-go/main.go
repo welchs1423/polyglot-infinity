@@ -71,7 +71,6 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 
 	var engineData map[string]interface{}
 	cacheKey := "engine_analysis_cache"
-
 	val, err := rdb.Get(ctx, cacheKey).Result()
 
 	if err == nil {
@@ -86,7 +85,6 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 			defer resp.Body.Close()
 			json.NewDecoder(resp.Body).Decode(&engineData)
 			engineData["source"] = "Python Engine"
-
 			jsonData, _ := json.Marshal(engineData)
 			rdb.Set(ctx, cacheKey, jsonData, 10*time.Second)
 		} else {
@@ -94,11 +92,24 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var rustData map[string]interface{}
+	rustResp, rustErr := http.Get("http://localhost:8081/api/rust/status")
+	if rustErr == nil {
+		defer rustResp.Body.Close()
+		json.NewDecoder(rustResp.Body).Decode(&rustData)
+	} else {
+		rustData = map[string]interface{}{
+			"status":  "offline",
+			"message": "Rust Pipeline is down",
+		}
+	}
+
 	response := map[string]interface{}{
 		"system":          "Go-Backend-v1",
 		"status":          "online",
 		"database":        dbStatus,
-		"engine_anlaysis": engineData,
+		"engine_analysis": engineData,
+		"pipeline_node":   rustData, // Svelte로 Rust 데이터 전달
 	}
 
 	json.NewEncoder(w).Encode(response)

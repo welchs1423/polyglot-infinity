@@ -18,7 +18,7 @@
 - **Go**: 메인 API 서버, 트래픽 중계 및 고성능 처리.
 - **Python**: FastAPI 기반 데이터 분석 및 AI 엔진.
 - **Rust**: 고성능 데이터 파이프라인.
-- **C++ (예정)**: 저수준 최적화 모듈.
+- **C++**: 저수준 최적화 모듈.
 
 ### 🗄️ Database & Infra
 - **Primary**: **PostgreSQL**
@@ -33,7 +33,7 @@
 > **역할:** 데이터 영구 저장, 시스템 로그 기록
 
 <details open>
-<summary><strong>📅 2026-02-16 (최신): DB 구축 및 스키마 설계</strong></summary>
+<summary><strong>📅 2026-02-16 : DB 구축 및 스키마 설계</strong></summary>
 
 #### ✅ 구축 내역
 - WSL 환경 내 PostgreSQL 설치 및 서비스 구동.
@@ -48,7 +48,7 @@
 
 
 <details open>
-<summary><strong>📅 2026-02-18 (최신): 로그 조회 API 개발</strong></summary>
+<summary><strong>📅 2026-02-18 : 로그 조회 API 개발</strong></summary>
 
 #### ✅ 구축 내역
 - **History API (`/api/history`)**: PostgreSQL에 저장된 로그를 최신순(DESC)으로 조회하여 반환.
@@ -56,7 +56,7 @@
 </details>
 
 <details>
-<summary><strong>📅 2026-02-16 (최신): DB 연동 및 버전 업그레이드</strong></summary>
+<summary><strong>📅 2026-02-16 : DB 연동 및 버전 업그레이드</strong></summary>
 
 #### ✅ 구축 내역
 - `lib/pq` 드라이버를 활용한 PostgreSQL 접속 구현 (`main.go`).
@@ -93,8 +93,21 @@
 
 <br>
 
+### ⚡ C++ (Low-level Core)
+> **역할:** 하드웨어 성능을 극한으로 끌어올리는 초고속 수학 연산 엔진
+
+<details open>
+<summary><strong>📅 2026-03-05 (최신): C++ 코어 엔진 및 Python FFI 연동 완료</strong></summary>
+
+#### ✅ 구축 내역
+- **고성능 모듈 빌드**: g++ 최적화 옵션(`-O3`)을 적용한 공유 라이브러리(`libcore.so`) 생성.
+- **Python FFI 브릿지**: `ctypes`를 활용하여 Python에서 C++ 함수를 직접 호출하는 인터페이스 구축.
+- **성능 비약적 향상**: 순수 Python 연산 대비 약 **47배** 이상의 처리 속도 향상 검증.
+- **시스템 대통합**: Go 백엔드를 통해 Svelte UI까지 C++ 연산 결과가 실시간으로 전달되도록 통합 성공.
+</details>
+
 ### 🐍 Python (Engine)
-> **역할:** 데이터 분석, AI 추론, Go 서버의 요청 처리
+> **역할:** 데이터 분석 및 C++ 엔진을 통한 가속 연산 수행
 
 <details>
 <summary><strong>📅 2026-02-15: 엔진 구축 및 환경 최적화</strong></summary>
@@ -117,7 +130,7 @@
 > **역할:** 초고속 데이터 병렬 처리 및 대규모 연산 백그라운드 워커
 
 <details open>
-<summary><strong>📅 2026-02-24 (최신): Rust 파이프라인 뼈대 구축</strong></summary>
+<summary><strong>📅 2026-02-24 : Rust 파이프라인 뼈대 구축</strong></summary>
 
 #### ✅ 구축 내역
 - **웹 프레임워크**: `axum` 및 `tokio` 비동기 런타임을 활용한 고성능 API 서버 구동 (Port 8081).
@@ -160,7 +173,7 @@
 > **역할:** 데이터 캐싱을 통한 엔진 부하 감소 및 응답 속도 최적화
 
 <details open>
-<summary><strong>📅 2026-02-20 (최신): Redis 캐싱 레이어 도입</strong></summary>
+<summary><strong>📅 2026-02-20 : Redis 캐싱 레이어 도입</strong></summary>
 
 #### ✅ 구축 내역
 - **Cache-Aside 패턴**: 요청 시 Redis를 우선 조회(Cache Hit)하고, 데이터가 없을 경우에만 Python 엔진을 호출(Cache Miss)하는 로직 구현.
@@ -177,6 +190,9 @@
 ---
 
 ## 🚀 마일스톤 (Milestones)
+- [x] [2026-03-05] **최종 병기 C++ Core 엔진 구축 및 Python FFI(Foreign Function Interface) 연동 성공**
+    - 1억 번의 연산 테스트에서 Python 대비 약 **47배** 이상의 속도 향상 달성
+    - `libcore.so` 공유 라이브러리 빌드 및 전체 시스템 아키텍처 통합 완료
 - [x] [2026-02-25] **Svelte 대시보드 상태 카드 UI 고도화 및 TypeScript/CSS 경고 완벽 제거**
 - [x] [2026-02-24] **Rust 기반 고성능 데이터 파이프라인 모듈(Axum) 초기화 및 최적화 테스트 완료**
 - [x] [2026-02-20] **Redis 캐싱 레이어 도입 및 성능 최적화 성공**

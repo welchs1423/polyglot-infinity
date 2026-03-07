@@ -2,7 +2,7 @@
 > **5대 핵심 언어(Svelte, Go, Python, Rust, C++) 정복을 위한 통합 포털**
 
 본 프로젝트는 각 언어의 성능을 극대화하여 실시간 데이터 수집부터 AI 분석까지 구현하는 개발자의 성장 기록입니다.
-현재 **Svelte 5(Frontend) ↔ Go(Backend) ↔ Python(Engine) ↔ PostgreSQL(Database)** 4대 요소가 유기적으로 연결되어 동작 중입니다.
+현재 **Svelte 5(UI) ↔ Go(Hub) ↔ Python + C++ FFI(Risk Engine) ↔ Rust(Data Pipeline) ↔ PostgreSQL & Redis**의 6대 기술 스택이 유기적으로 연결되어, 실시간 외부 금융 데이터 기반의 초고속 마이크로 대출 리스크 분석(Micro-lending Risk Analysis)을 수행하는 다국어(Polyglot) 마이크로서비스로 동작 중입니다.
 
 ---
 
@@ -189,7 +189,12 @@
 
 ---
 
-## 🚀 마일스톤 (Milestones)
+## 🚀 프로젝트 마일스톤 (최신순)
+
+- [x] [2026-03-07] **마이크로 대출 리스크 평가 시뮬레이션을 위한 외부 금융 API 연동 및 UI 표출**
+    - `urllib`를 활용한 실시간 달러/원(USD/KRW) 환율 데이터 파이프라인 구축
+    - C++ FFI 코어와 연계한 대출 리스크(Risk Score) 초고속 연산 처리 연동
+    - Svelte 대시보드 내 금융 데이터 실시간 시각화 완료
 - [x] [2026-03-05] **최종 병기 C++ Core 엔진 구축 및 Python FFI(Foreign Function Interface) 연동 성공**
     - 1억 번의 연산 테스트에서 Python 대비 약 **47배** 이상의 속도 향상 달성
     - `libcore.so` 공유 라이브러리 빌드 및 전체 시스템 아키텍처 통합 완료

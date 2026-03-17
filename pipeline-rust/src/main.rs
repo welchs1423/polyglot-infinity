@@ -1,62 +1,78 @@
 use axum::{
-    routing::{get, post},
+    routing::post,
     Router,
+    response::IntoResponse,
     Json,
+    extract::State,
 };
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
-
-#[derive(Serialize)]
-struct StatusResponse {
-    module: String,
-    status: String,
-    message: String,
-}
-
-#[derive(Deserialize)]
-struct ComputeRequest {
-    data_size: usize,
-}
-
-#[derive(Serialize)]
-struct ComputeResponse {
-    processed_count: usize,
-    elapsed_ms: u128,
-}
+use sqlx::postgres::PgPoolOptions;
+use std::time::Instant;
+use serde_json::json;
 
 #[tokio::main]
-async fn main(){
+async fn main() {
+
+    let db_url = "postgres://postgres:postgres@localhost:5433/postgres";
+    
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(db_url)
+        .await
+        .expect("Failed to connect to PostgreSQL");
+
+    // 2. 리스크 데이터 적재용 테이블 자동 생성
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS risk_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL,
+            risk_score FLOAT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3. Axum 라우터 구성 및 상태(커넥션 풀) 공유
     let app = Router::new()
-    .route("/api/rust/status",get(status_handler))
-    .route("/api/rust/compute", post(compute_handler));
+        .route("/api/bulk-insert", post(bulk_insert))
+        .with_state(pool);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8081));
-    println!("Rust Pipeline Server running on http://{}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    println!("[Rust Pipeline] Server is running on http://0.0.0.0:3000");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn status_handler() -> Json<StatusResponse> {
-    Json(StatusResponse {
-        module: "Rust-Pipeline-v1".to_string(),
-        status: "online".to_string(),
-        message: "Ready for high-performance processing".to_string(),
-    })
-}
+// 대규모 데이터 적재 핸들러
+async fn bulk_insert(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
+    let start_time = Instant::now();
+    let record_count = 10000;
 
-async fn compute_handler(Json(payload): Json<ComputeRequest>) -> Json<ComputeResponse> {
-    let start = std::time::Instant::now();
+    // 4. 트랜잭션 시작 (벌크 인서트의 핵심: 하나씩 넣지 않고 모아서 한 번에 커밋)
+    let mut tx = pool.begin().await.expect("Failed to begin transaction");
 
-    let mut sum: u64 = 0;
-    for i in 0..payload.data_size {
-        sum = sum.wrapping_add(i as u64);
+    for i in 0..record_count {
+        // 복잡한 연산 결과를 시뮬레이션한 리스크 점수
+        let risk_score = (i as f64) * 0.12345;
+        
+        sqlx::query("INSERT INTO risk_logs (user_id, risk_score) VALUES ($1, $2)")
+            .bind(i)
+            .bind(risk_score)
+            .execute(&mut *tx)
+            .await
+            .expect("Failed to insert record");
     }
 
-    let duration = start.elapsed();
+    // 5. 트랜잭션 커밋 (이때 실제 DB에 일괄 기록됨)
+    tx.commit().await.expect("Failed to commit transaction");
 
-    Json(ComputeResponse {
-        processed_count: payload.data_size,
-        elapsed_ms: duration.as_millis(),
-    })
+    let elapsed = start_time.elapsed();
+    println!("Inserted {} records in {:?}", record_count, elapsed);
+
+    // 결과를 JSON으로 반환
+    Json(json!({
+        "status": "success",
+        "inserted_rows": record_count,
+        "elapsed_time_ms": elapsed.as_millis()
+    }))
 }

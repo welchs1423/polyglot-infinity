@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **10개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **11개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -26,6 +26,7 @@
 [Kotlin Scheduler · :9000]  ← 60s 코루틴 리포트 생성
 [Elixir/Phoenix Hub · :4000] ← WebSocket · GenServer 폴링
 [Julia GBM Engine · :8002]   ← 병렬 Monte Carlo
+[R Plumber Engine · :8003]   ← MLE 분포 피팅 · VaR/CVaR
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -37,6 +38,7 @@
 | **Kotlin (코루틴)** | **9000** | **60초 주기 리스크 리포트 스케줄러** |
 | **Elixir/Phoenix** | **4000** | **WebSocket Hub · GenServer OTP 슈퍼바이저** |
 | **Julia (HTTP.jl)** | **8002** | **GBM 병렬 Monte Carlo · VaR/CVaR 95%** |
+| **R (Plumber)** | **8003** | **MLE 분포 피팅 · VaR/CVaR · Sharpe Ratio** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -58,6 +60,7 @@
 | **Scheduler** | **Kotlin 2.0 + Coroutines, Java HttpServer (:9000)** |
 | **Realtime Hub** | **Elixir/Phoenix, OTP Supervisor, WebSocket (:4000)** |
 | **Simulation** | **Julia 1.10, HTTP.jl, Threads.@threads GBM (:8002)** |
+| **Statistics** | **R 4.1, Plumber, MASS — MLE 분포 피팅 · Sharpe (:8003)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -108,6 +111,14 @@
 | `GET` | `/api/julia/simulate` | GBM Monte Carlo (`paths`, `days`, `vol`, `mu` 파라미터) |
 | `GET` | `/health` | 헬스체크 |
 
+### R `:8003`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/r/fit` | MLE 정규·t분포 피팅 · VaR/CVaR 95% · Sharpe Ratio (`n`, `seed` 파라미터) |
+| `GET` | `/api/r/correlation` | 4-asset 상관행렬 · 포트폴리오 연율화 변동성 |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -144,6 +155,9 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-08** — **R 통계 엔진 추가 (6번째 신규 언어)**
+  - **R 4.1 + Plumber**: MLE 정규/t분포 피팅 · VaR/CVaR 95% · Sharpe Ratio · 4-asset 상관행렬 (`:8003`)
+  - Svelte: **R Distribution Fit 패널** 추가
 - [x] **2026-04-08** — **5개 언어 추가 (Lua · Zig · Kotlin · Elixir · Julia)**
   - **Lua**: Go 내 Redis `EVAL` 원자적 Lua 스크립트로 캐시 히트/미스 카운터 (`/api/cache/stats`)
   - **Zig 0.13**: `libzigcore.so` C ABI — `volatility_estimate()` · `value_at_risk()` · Python ctypes 연동
@@ -450,6 +464,29 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 - 로직 검증 완료: `mean=0.0495 std=0.2067`.
 </details>
 
+<br>
+
+### 📊 R (통계 분석 엔진)
+
+<details open>
+<summary><strong>📅 2026-04-08 : MLE 분포 피팅 · VaR/CVaR · 상관 분석</strong></summary>
+
+#### ✅ 구축 내역
+- R 4.1.2 (사전 설치), plumber + jsonlite 패키지 설치 (`~/R/library`).
+- `engine-r/server.R`: 두 엔드포인트 구현:
+  - `/api/r/fit` — `MASS::fitdistr()` MLE 정규/t분포 피팅, VaR 95%, CVaR 95%, Sharpe Ratio.
+  - `/api/r/correlation` — 4-asset(KRW/JPY/EUR/CNY) 상관행렬, 등가중 포트폴리오 연율화 변동성.
+- `engine-r/run.R`: Plumber HTTP 진입점 (`:8003`).
+- 로직 검증 완료: `VaR 95%=0.0288 CVaR 95%=0.0361`.
+- Svelte: **R Distribution Fit 패널** (6-grid 메트릭) 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `/usr/local/lib/R` 쓰기 권한 없음 | `~/R/library` 사용자 라이브러리 경로 지정 |
+| `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
+</details>
+
 ---
 
 ## 🛡️ 유지보수 가이드
@@ -458,9 +495,10 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 2. **Zig**: `cd core-zig && ~/.local/zig/zig build` → `zig-out/lib/libzigcore.so`.
 3. **Kotlin Scheduler**: `bash scheduler-kotlin/run.sh` (OpenJDK 21 자동 참조).
 4. **Julia Engine**: `~/.local/julia/bin/julia --threads auto engine-julia/server.jl`.
-5. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
-6. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/` 커밋 금지.
-7. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
+5. **R Engine**: `Rscript engine-r/run.R` (포트 `:8003`).
+6. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
+7. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/` 커밋 금지.
+8. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
 
 ---
 

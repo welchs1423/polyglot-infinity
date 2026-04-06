@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **11개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **12개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F#**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -27,6 +27,7 @@
 [Elixir/Phoenix Hub · :4000] ← WebSocket · GenServer 폴링
 [Julia GBM Engine · :8002]   ← 병렬 Monte Carlo
 [R Plumber Engine · :8003]   ← MLE 분포 피팅 · VaR/CVaR
+[F# ASP.NET Engine · :9001] ← Black-Scholes Greeks · DCF
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -39,6 +40,7 @@
 | **Elixir/Phoenix** | **4000** | **WebSocket Hub · GenServer OTP 슈퍼바이저** |
 | **Julia (HTTP.jl)** | **8002** | **GBM 병렬 Monte Carlo · VaR/CVaR 95%** |
 | **R (Plumber)** | **8003** | **MLE 분포 피팅 · VaR/CVaR · Sharpe Ratio** |
+| **F# (ASP.NET 8)** | **9001** | **Black-Scholes Greeks · DCF 가치평가** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -61,6 +63,7 @@
 | **Realtime Hub** | **Elixir/Phoenix, OTP Supervisor, WebSocket (:4000)** |
 | **Simulation** | **Julia 1.10, HTTP.jl, Threads.@threads GBM (:8002)** |
 | **Statistics** | **R 4.1, Plumber, MASS — MLE 분포 피팅 · Sharpe (:8003)** |
+| **Option Pricing** | **F# (.NET 8), ASP.NET Core — Black-Scholes Greeks · DCF (:9001)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -119,6 +122,14 @@
 | `GET` | `/api/r/correlation` | 4-asset 상관행렬 · 포트폴리오 연율화 변동성 |
 | `GET` | `/health` | 헬스체크 |
 
+### F# `:9001`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/fsharp/option` | Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho (`s`,`k`,`r`,`sigma`,`t`) |
+| `GET` | `/api/fsharp/dcf` | DCF 내재가치 · 안전마진 · 현금흐름 PV (`fcf`,`growth`,`terminal`,`wacc`,`years`) |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -155,6 +166,9 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-08** — **F# 옵션 프라이서 추가 (7번째 신규 언어)**
+  - **F# (.NET 8) + ASP.NET Core**: Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho · DCF 가치평가 (`:9001`)
+  - Svelte: **F# Black-Scholes 패널** 추가 (6-grid Greeks 카드)
 - [x] **2026-04-08** — **R 통계 엔진 추가 (6번째 신규 언어)**
   - **R 4.1 + Plumber**: MLE 정규/t분포 피팅 · VaR/CVaR 95% · Sharpe Ratio · 4-asset 상관행렬 (`:8003`)
   - Svelte: **R Distribution Fit 패널** 추가
@@ -487,6 +501,28 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 | `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
 </details>
 
+<br>
+
+### 🟣 F# (옵션 프라이서)
+
+<details open>
+<summary><strong>📅 2026-04-08 : Black-Scholes Greeks · DCF 가치평가 엔진</strong></summary>
+
+#### ✅ 구축 내역
+- .NET SDK 8.0 apt 설치 (`dotnet-sdk-8.0`).
+- `pricer-fsharp/` F# ASP.NET Core 프로젝트 생성 (`dotnet new web -lang F#`).
+- `MathHelper` 모듈: Abramowitz & Stegun 근사 `normCdf`, `normPdf` 구현.
+- `BlackScholes` 모듈: d1/d2 계산 → Call/Put 가격, Δ/Γ/ν/Θ/ρ Greeks 전량 반환.
+- `Dcf` 모듈: FCF 연도별 성장 PV + Terminal Value → 내재가치 · 안전마진.
+- `RequestDelegate` 명시 캐스팅으로 F# `MapGet` 오버로드 해결.
+- `dotnet build -c Release` 성공 (경고 3건, 에러 0).
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `MapGet` overload FS0041 | `fun (ctx: HttpContext)` → `RequestDelegate(fun ctx ->)` 명시 캐스팅 |
+</details>
+
 ---
 
 ## 🛡️ 유지보수 가이드
@@ -496,9 +532,10 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 3. **Kotlin Scheduler**: `bash scheduler-kotlin/run.sh` (OpenJDK 21 자동 참조).
 4. **Julia Engine**: `~/.local/julia/bin/julia --threads auto engine-julia/server.jl`.
 5. **R Engine**: `Rscript engine-r/run.R` (포트 `:8003`).
-6. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
-7. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/` 커밋 금지.
-8. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
+6. **F# Pricer**: `dotnet run --project pricer-fsharp` (포트 `:9001`).
+7. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
+8. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/`, `pricer-fsharp/bin/`, `pricer-fsharp/obj/` 커밋 금지.
+9. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
 
 ---
 

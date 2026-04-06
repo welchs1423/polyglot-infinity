@@ -1,0 +1,26 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node / Svelte
+node_modules/
+.svelte-kit/
+build/
+
+# Go
+server-go/main
+
+# Rust
+pipeline-rust/target/
+
+# Zig
+core-zig/zig-out/
+core-zig/.zig-cache/
+
+# .NET / F#
+pricer-fsharp/bin/
+pricer-fsharp/obj/
+
+# Julia
+engine-julia/Manifest.toml

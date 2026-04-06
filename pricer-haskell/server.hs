@@ -112,7 +112,69 @@ percentile xs p =
       i      = min idx (length sorted - 1)
   in sorted !! i
 
--- ---------- HTTP helpers ----------
+-- ---------- Lazy Infinite Price Stream (Haskell 핵심 강점) ----------
+-- iterate로 무한 리스트 생성 → 필요한 만큼만 take로 구체화
+-- 메모리에 전체 스트림을 올리지 않음 (레이지 평가)
+
+-- 무한 GBM 가격 스트림: iterate + scanl 조합
+gbmStream :: Double -> Double -> Double -> Int -> [Double]
+gbmStream s0 mu sigma seed =
+  let dt    = 1.0 / 252.0
+      drift = (mu - 0.5 * sigma * sigma) * dt
+      diff  = sigma * sqrt dt
+      zs    = boxMuller (drop 1 $ lcgSeq seed)  -- 무한 정규분포 스트림
+  in scanl (\p z -> p * exp (drift + diff * z)) s0 zs
+
+-- 로그 수익률 스트림 (zipWith로 인접 쌍 처리)
+logReturns :: [Double] -> [Double]
+logReturns ps = zipWith (\a b -> log (b / max a 1e-10)) ps (tail ps)
+
+-- EWMA 변동성 스트림 (RiskMetrics λ=0.94, scanl로 상태 전이)
+ewmaVol :: Double -> [Double] -> [Double]
+ewmaVol lambda rets =
+  let lam1   = 1.0 - lambda
+      v0     = case rets of { [] -> 0.0; (r:_) -> r * r }
+      update v r = lambda * v + lam1 * r * r
+  in map sqrt $ scanl update v0 rets
+
+-- 누적 최대 낙폭 스트림 (scanl로 peak 추적)
+runningDrawdown :: [Double] -> [Double]
+runningDrawdown prices =
+  let peaks = scanl1 max prices
+      dds   = zipWith (\peak p -> if peak > 0 then (peak - p) / peak else 0.0)
+                      peaks prices
+  in scanl max 0.0 dds
+
+-- ---------- Stream JSON ----------
+
+showList' :: [Double] -> String
+showList' xs = "[" ++ intercalate "," (map (show . roundTo 6) xs) ++ "]"
+
+streamJson :: [Double] -> Int -> String
+streamJson stream n =
+  let prices  = take (n + 1) stream          -- 무한 스트림에서 n+1개만 구체화
+      rets    = take n $ logReturns prices   -- 레이지 zipWith
+      vols    = take n $ ewmaVol 0.94 rets   -- 레이지 scanl
+      drawdowns = take (n + 1) $ runningDrawdown prices
+      finalP  = last prices
+      annRet  = mean' rets * 252.0
+      annVol  = std' rets * sqrt 252.0
+      sharpe  = if annVol > 0 then annRet / annVol else 0.0
+      mdd     = last drawdowns
+  in "{" ++ intercalate ","
+    [ jsonKVI  "n"                n
+    , jsonKV   "final_price"      finalP
+    , jsonKV   "annualized_return" annRet
+    , jsonKV   "annualized_vol"    annVol
+    , jsonKV   "sharpe_ratio"      sharpe
+    , jsonKV   "max_drawdown"      mdd
+    , "\"prices\":"     ++ showList' prices
+    , "\"ewma_vol\":"   ++ showList' vols
+    , "\"drawdowns\":"  ++ showList' drawdowns
+    , jsonStr  "engine" "Haskell GHC 8.8.4 — infinite lazy stream (iterate/scanl/zipWith)"
+    ] ++ "}"
+
+
 
 type Query = [(String, String)]
 
@@ -255,6 +317,16 @@ handleRequest path query
           days   = lookupInt q "days"   252
           finals = monteCarloFinals s mu vol n days 42
       in httpResponse 200 "application/json" (mcJson finals s mu vol days n)
+
+  | path == "/api/haskell/stream" =
+      let q     = parseQuery query
+          s     = lookupParam q "s"     100.0
+          mu    = lookupParam q "mu"    0.08
+          sigma = lookupParam q "sigma" 0.2
+          n     = min 500 $ lookupInt q "n" 60
+          seed  = lookupInt q "seed" 42
+          stream = gbmStream s mu sigma seed
+      in httpResponse 200 "application/json" (streamJson stream n)
 
   | otherwise =
       httpResponse 404 "application/json" "{\"error\":\"not found\"}"

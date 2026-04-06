@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **12개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F#**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **13개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -28,6 +28,7 @@
 [Julia GBM Engine · :8002]   ← 병렬 Monte Carlo
 [R Plumber Engine · :8003]   ← MLE 분포 피팅 · VaR/CVaR
 [F# ASP.NET Engine · :9001] ← Black-Scholes Greeks · DCF
+[WebAssembly (Zig → WASM32)]  ← 브라우저 직접 실행 · 서버 왕복 없음
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -41,6 +42,7 @@
 | **Julia (HTTP.jl)** | **8002** | **GBM 병렬 Monte Carlo · VaR/CVaR 95%** |
 | **R (Plumber)** | **8003** | **MLE 분포 피팅 · VaR/CVaR · Sharpe Ratio** |
 | **F# (ASP.NET 8)** | **9001** | **Black-Scholes Greeks · DCF 가치평가** |
+| **WebAssembly (Zig → WASM32)** | **Browser** | **클라이언트 직접 실행 · Black-Scholes/VaR/DCF · 서버 불필요** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -64,6 +66,7 @@
 | **Simulation** | **Julia 1.10, HTTP.jl, Threads.@threads GBM (:8002)** |
 | **Statistics** | **R 4.1, Plumber, MASS — MLE 분포 피팅 · Sharpe (:8003)** |
 | **Option Pricing** | **F# (.NET 8), ASP.NET Core — Black-Scholes Greeks · DCF (:9001)** |
+| **WebAssembly** | **Zig 0.13 → WASM32 freestanding — 브라우저 클라이언트 실행 (서버 없음)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -166,6 +169,9 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-08** — **WebAssembly 추가 (8번째 신규 언어 — 브라우저 런타임)**
+  - **Zig → WASM32 freestanding**: `finance.wasm` (24KB) — normCdf · bsCall · bsPut · bsDelta · bsGamma · varNormal · dcfValue
+  - Svelte: **WebAssembly 패널** 추가 (`fetch` → `WebAssembly.instantiate` · 서버 왕복 없음)
 - [x] **2026-04-08** — **F# 옵션 프라이서 추가 (7번째 신규 언어)**
   - **F# (.NET 8) + ASP.NET Core**: Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho · DCF 가치평가 (`:9001`)
   - Svelte: **F# Black-Scholes 패널** 추가 (6-grid Greeks 카드)
@@ -503,7 +509,35 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 <br>
 
-### 🟣 F# (옵션 프라이서)
+### �️ WebAssembly (Client-side)
+
+<details open>
+<summary><strong>📅 2026-04-08 : Zig → WASM32 · 브라우저 직접 실행</strong></summary>
+
+#### ✅ 구축 내역
+- `wasm-zig/src/finance.zig`: `normCdf` · `bsCall` · `bsPut` · `bsDelta` · `bsGamma` · `varNormal` · `dcfValue` 구현.
+- `wasm32-freestanding` + `ReleaseFast` 컴파일 → `portal-svelte/static/finance.wasm` (24KB).
+- Svelte: `fetch('/finance.wasm')` → `WebAssembly.instantiate` → 내보낸 함수 직접 호출 (서버 없음).
+- 패널: Call·Put 가격, Delta, Gamma, VaR 95%, DCF Value 실시간 계산 표시.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `-dynamic` 플래그 실패 (`dynamic linking unavailable on wasm32-freestanding`) | `--export=funcname` 명시 플래그로 대체 |
+
+#### 🔧 WASM 재빌드 명령
+```bash
+~/.local/zig/zig build-lib wasm-zig/src/finance.zig \
+  -target wasm32-freestanding -O ReleaseFast \
+  --export=normCdf --export=bsCall --export=bsPut \
+  --export=bsDelta --export=bsGamma --export=varNormal --export=dcfValue \
+  -femit-bin=portal-svelte/static/finance.wasm
+```
+</details>
+
+<br>
+
+### �🟣 F# (옵션 프라이서)
 
 <details open>
 <summary><strong>📅 2026-04-08 : Black-Scholes Greeks · DCF 가치평가 엔진</strong></summary>
@@ -533,8 +567,9 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 4. **Julia Engine**: `~/.local/julia/bin/julia --threads auto engine-julia/server.jl`.
 5. **R Engine**: `Rscript engine-r/run.R` (포트 `:8003`).
 6. **F# Pricer**: `dotnet run --project pricer-fsharp` (포트 `:9001`).
-7. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
-8. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/`, `pricer-fsharp/bin/`, `pricer-fsharp/obj/` 커밋 금지.
+7. **WASM 재빌드**: `~/.local/zig/zig build-lib wasm-zig/src/finance.zig -target wasm32-freestanding -O ReleaseFast --export=normCdf --export=bsCall --export=bsPut --export=bsDelta --export=bsGamma --export=varNormal --export=dcfValue -femit-bin=portal-svelte/static/finance.wasm`
+8. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
+9. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/`, `pricer-fsharp/bin/`, `pricer-fsharp/obj/` 커밋 금지.
 9. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
 
 ---

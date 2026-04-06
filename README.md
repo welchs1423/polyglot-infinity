@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
   - **Elixir/Phoenix**: OTP Supervisor · GenServer Poller · WebSocket Channel `:4000` (코드 완성, Erlang 설치 필요)
   - **Julia 1.10**: `Threads.@threads` GBM Monte Carlo `:8002` — VaR 95% · CVaR 95% · Sharpe Ratio
   - Svelte: **Lua/Julia/Kotlin/Elixir 패널** 4개 추가, Zig 상태 카드 추가
+  - Svelte: `reports` null 안전성 버그 수정 (`reports.length` → `reports && reports.length`)
 - [x] **2026-04-07** — 전 서비스 연동 완성 및 UI 기능 대폭 강화
   - Rust 포트 불일치 버그 수정 (3000 → **8081**)
   - Rust `GET /api/rust/status` 신규 추가 (DB 레코드 수 포함)
@@ -178,7 +179,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### 🎨 Svelte 5 (Frontend)
 
 <details open>
-<summary><strong>📅 2026-04-08 : 5개 언어 패널 추가</strong></summary>
+<summary><strong>📅 2026-04-08 : 5개 언어 패널 추가 · 버그 수정</strong></summary>
 
 #### ✅ 구축 내역
 - **Zig 상태 카드**: 변동성 추정치 · VaR 95% 표시.
@@ -186,6 +187,9 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 - **Julia Monte Carlo 패널**: 6-grid 메트릭 카드 (VaR, CVaR, 평균, 변동성, Sharpe, 경로 수).
 - **Kotlin Reports 패널**: 스케줄러 리포트 테이블 (평균·최대·최소 리스크 스코어).
 - **Elixir Hub 패널**: Hub 상태 확인 + WebSocket 안내.
+
+#### 🔧 버그 수정
+- **Svelte TS 오류 수정**: `reports` 초기값이 `null`이므로 `reports.length` 접근 시 `TS18047` 발생 → `reports && reports.length > 0` 조건으로 수정.
 </details>
 
 <details>

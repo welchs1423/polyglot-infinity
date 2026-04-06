@@ -415,7 +415,7 @@
 				>최신 리포트</button
 			>
 		</div>
-		{#if reports.length > 0}
+		{#if reports && reports.length > 0}
 			<table class="log-table">
 				<thead
 					><tr

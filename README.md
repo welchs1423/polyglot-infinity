@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **15개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **16개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -31,6 +31,7 @@
 [WebAssembly (Zig → WASM32)]  ← 브라우저 직접 실행 · 서버 왕복 없음
 [OCaml Risk Engine · :8004]   ← 규칙 기반 리스크 판정 · 신용 스코어링
 [Crystal Gateway · :9002]     ← 포트폴리오 성과 · Sharpe/MDD · FX 가중평균
+[Nim Analytics · :8005]       ← 시계열 기술통계 · RSI/MACD/볼린저 모멘텀
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -47,6 +48,7 @@
 | **WebAssembly (Zig → WASM32)** | **Browser** | **클라이언트 직접 실행 · Black-Scholes/VaR/DCF · 서버 불필요** |
 | **OCaml 4.13** | **8004** | **규칙 기반 리스크 판정 · 신용 스코어링 (로지스틱)** |
 | **Crystal 1.19** | **9002** | **포트폴리오 성과 · Sharpe/Sortino/MDD · FX 가중평균** |
+| **Nim 2.2.8** | **8005** | **시계열 기술통계 · skewness/kurtosis/autocorr · RSI/MACD/볼린저** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -73,6 +75,7 @@
 | **WebAssembly** | **Zig 0.13 → WASM32 freestanding — 브라우저 클라이언트 실행 (서버 없음)** |
 | **Risk Rules** | **OCaml 4.13, stdlib Unix HTTP — 규칙 기반 리스크 + 로지스틱 신용점수 (:8004)** |
 | **Portfolio/FX** | **Crystal 1.19, HTTP::Server — 포트폴리오 Sharpe/Sortino/MDD + FX 가중평균 (:9002)** |
+| **Time-series** | **Nim 2.2.8, asynchttpserver — 시계열 기술통계 + RSI/MACD/Bollinger (:8005)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -175,6 +178,11 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **Nim 시계열 분석 엔진 추가 (11번째 신규 언어)**
+  - **Nim 2.2.8** (choosenim 설치) asynchttpserver — 외부 패키지 무의존
+  - `/api/nim/timeseries`: mean/std/skewness/excess_kurtosis/autocorr 연환산 (`:8005`)
+  - `/api/nim/momentum`: RSI(14) · MACD · EMA12/26 · 볼린저밴드 (너비/위치)
+  - Svelte: **Nim Time-series Analytics 패널** 추가 (초록 그라디언트)
 - [x] **2026-04-07** — **Crystal 포트폴리오 게이트웨이 추가 (10번째 신규 언어)**
   - **Crystal 1.19** (Ruby 문법 + LLVM 싼 컴파일) `HTTP::Server` — 3.2MB 네이티브 바이너리
   - `/api/crystal/portfolio`: 의사난수 수익률 시뮬레이션 → Total Return · Sharpe · Sortino · MDD (`:9002`)
@@ -523,6 +531,26 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 | `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
 </details>
 
+<br>### 💎 Nim (시계열 분석 엔진)
+
+<details open>
+<summary><strong>📅 2026-04-07 : 시계열 기술통계 + RSI/MACD/볼린저 모멘텀</strong></summary>
+
+#### ✅ 구축 내역
+- `choosenim` 공식 설치 → Nim 2.2.8 (`~/.nimble/bin`).
+- `analytics-nim/server.nim`: `asynchttpserver` 내장 → 외부 패키지 무의존.
+- `/api/nim/timeseries`: mean/std/skewness/excess_kurtosis/autocorr(lag=1) + 연환산 수익률/변동성.
+- `/api/nim/momentum`: RSI(14) · MACD · EMA12/26 · 볼린저밴드 너비/위치.
+- `nim compile --opt:speed` → C 트랜스파일 후 gcc 최적화 컴파일.
+- Svelte: 초록 그라디언트 Nim 패널 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `apt install nim` 패키지 없음 | choosenim 공식 설치 스크립트 사용 |
+| `else 0.0` 문법 오류 | Nim `if` 표현식은 `else:` 콜론 필수 |
+</details>
+
 <br>
 ### � Crystal (포트폴리오 게이트웨이)
 
@@ -626,7 +654,8 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 7. **WASM 재빌드**: `~/.local/zig/zig build-lib wasm-zig/src/finance.zig -target wasm32-freestanding -O ReleaseFast --export=normCdf --export=bsCall --export=bsPut --export=bsDelta --export=bsGamma --export=varNormal --export=dcfValue -femit-bin=portal-svelte/static/finance.wasm`
 8. **OCaml Engine**: `ocamlfind ocamlopt -package unix -linkpkg risk-ocaml/server.ml -o risk-ocaml/server && ./risk-ocaml/server` (포트 `:8004`).
 9. **Crystal Gateway**: `crystal build --release gateway-crystal/server.cr -o gateway-crystal/server && ./gateway-crystal/server` (포트 `:9002`).
-10. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
+10. **Nim Analytics**: `export PATH=$HOME/.nimble/bin:$PATH && nim compile --opt:speed -o:analytics-nim/server analytics-nim/server.nim && ./analytics-nim/server` (포트 `:8005`).
+11. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
 9. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/`, `pricer-fsharp/bin/`, `pricer-fsharp/obj/` 커밋 금지.
 9. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
 

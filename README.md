@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **16개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **17개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -32,6 +32,7 @@
 [OCaml Risk Engine · :8004]   ← 규칙 기반 리스크 판정 · 신용 스코어링
 [Crystal Gateway · :9002]     ← 포트폴리오 성과 · Sharpe/MDD · FX 가중평균
 [Nim Analytics · :8005]       ← 시계열 기술통계 · RSI/MACD/볼린저 모멘텀
+[Scala Streamer · :9003]      ← 스트림 집계 · Holt 이중 지수평활 · SMA/percentile
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -49,6 +50,7 @@
 | **OCaml 4.13** | **8004** | **규칙 기반 리스크 판정 · 신용 스코어링 (로지스틱)** |
 | **Crystal 1.19** | **9002** | **포트폴리오 성과 · Sharpe/Sortino/MDD · FX 가중평균** |
 | **Nim 2.2.8** | **8005** | **시계열 기술통계 · skewness/kurtosis/autocorr · RSI/MACD/볼린저** |
+| **Scala 3.8.3** | **9003** | **스트림 집계 · Holt 이중 지수평활 · SMA/percentile/EWM** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -76,6 +78,7 @@
 | **Risk Rules** | **OCaml 4.13, stdlib Unix HTTP — 규칙 기반 리스크 + 로지스틱 신용점수 (:8004)** |
 | **Portfolio/FX** | **Crystal 1.19, HTTP::Server — 포트폴리오 Sharpe/Sortino/MDD + FX 가중평균 (:9002)** |
 | **Time-series** | **Nim 2.2.8, asynchttpserver — 시계열 기술통계 + RSI/MACD/Bollinger (:8005)** |
+| **Stream Agg** | **Scala 3.8.3, JDK HttpServer — Holt 이중 지수평활 + 스트림 집계 (:9003)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -142,6 +145,14 @@
 | `GET` | `/api/fsharp/dcf` | DCF 내재가치 · 안전마진 · 현금흐름 PV (`fcf`,`growth`,`terminal`,`wacc`,`years`) |
 | `GET` | `/health` | 헬스체크 |
 
+### Scala `:9003`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/scala/aggregate` | 의사난수 수익률 집계: mean/std/median/ann\_return/ann\_vol/p5/p95/sma20 (`mu`,`sigma`,`n`) |
+| `GET` | `/api/scala/smooth` | Holt 이중 지수평활 + 1-step 예측 (`mu`,`sigma`,`n`,`alpha`,`beta`) |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -178,6 +189,11 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **Scala 스트리밍 집계 엔진 추가 (12번째 신규 언어)**
+  - **Scala 3.8.3** (Coursier 설치) + JDK 21 내장 `HttpServer` — 외부 의존 무
+  - `/api/scala/aggregate`: mean/std/median/ann_return/ann_vol/p5/p95/sma20 (`:9003`)
+  - `/api/scala/smooth`: Holt 이중 지수평활 · 1-step ahead 예측
+  - Svelte: **Scala Streaming Aggregator 패널** 추가 (빨강 그라디언트)
 - [x] **2026-04-07** — **Nim 시계열 분석 엔진 추가 (11번째 신규 언어)**
   - **Nim 2.2.8** (choosenim 설치) asynchttpserver — 외부 패키지 무의존
   - `/api/nim/timeseries`: mean/std/skewness/excess_kurtosis/autocorr 연환산 (`:8005`)
@@ -531,7 +547,33 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 | `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
 </details>
 
-<br>### 💎 Nim (시계열 분석 엔진)
+<br>
+
+### ⚡ Scala (스트리밍 집계 엔진)
+
+<details open>
+<summary><strong>📅 2026-04-07 : 스트림 집계 + Holt 이중 지수평활 예측</strong></summary>
+
+#### ✅ 구축 내역
+- Scala 3.8.3 (Coursier 설치) + JDK 21 내장 `com.sun.net.httpserver.HttpServer` — 외부 의존 완전 무.
+- `streamer-scala/server.scala`: `object Stats` — mean/variance/stdDev/median/percentile/sma/ewma/holtSmooth.
+- `LazyList.iterate(...).drop(1)` — Box-Muller 변환 시 seed 값 제외 (NaN 방지).
+- `/api/scala/aggregate`: 252일 의사난수 수익률 시계열 집계 통계 + SMA-20.
+- `/api/scala/smooth`: Holt Double Exponential Smoothing (α/β 파라미터) + 1-step 예측.
+- `streamer-scala/server.jar` (25KB) + `run.sh` (JDK PATH 자동 설정).
+- Svelte: 빨강 그라디언트 **Scala Streaming Aggregator 패널** 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `scalac: java not found` | JDK가 `/home/dev/.local/jdk/bin`에 있어 PATH에 없음 → `run.sh`에서 export 설정 |
+| `@main def` → `CommandLineParser$ParseError` | `object Main { def main(args: Array[String]) }` 패턴으로 변경 |
+| Box-Muller → NaN | `LazyList.iterate(seed)` 시 seed 값(3.0) 포함으로 log(>1) → sqrt(음수) → `.drop(1)` 으로 수정 |
+</details>
+
+<br>
+
+### 💎 Nim (시계열 분석 엔진)
 
 <details open>
 <summary><strong>📅 2026-04-07 : 시계열 기술통계 + RSI/MACD/볼린저 모멘텀</strong></summary>

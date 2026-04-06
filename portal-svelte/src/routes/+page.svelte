@@ -294,20 +294,57 @@
 		nimData = null;
 		try {
 			const [tsRes, momRes] = await Promise.all([
-				fetch('http://localhost:8005/api/nim/timeseries?mu=0.10&sigma=0.20&n=252'),
-				fetch('http://localhost:8005/api/nim/momentum?mu=0.10&sigma=0.20&n=252'),
+				fetch(
+					"http://localhost:8005/api/nim/timeseries?mu=0.10&sigma=0.20&n=252",
+				),
+				fetch(
+					"http://localhost:8005/api/nim/momentum?mu=0.10&sigma=0.20&n=252",
+				),
 			]);
 			if (tsRes.ok && momRes.ok) {
 				const ts = await tsRes.json();
 				const mom = await momRes.json();
-				nimData = { ...ts, rsi_14: mom.rsi_14, macd: mom.macd, bb_width: mom.bb_width, bb_position: mom.bb_position };
+				nimData = {
+					...ts,
+					rsi_14: mom.rsi_14,
+					macd: mom.macd,
+					bb_width: mom.bb_width,
+					bb_position: mom.bb_position,
+				};
 			} else {
-				nimData = { error: 'Nim 엔진 오프라인' };
+				nimData = { error: "Nim 엔진 오프라인" };
 			}
 		} catch {
-			nimData = { error: 'Nim 서버 접속 불가 (:8005)' };
+			nimData = { error: "Nim 서버 접속 불가 (:8005)" };
 		} finally {
 			nimLoading = false;
+		}
+	}
+
+	/** @type {any | null} */
+	let scalaData = $state(null);
+	/** @type {boolean} */
+	let scalaLoading = $state(false);
+
+	async function runScala() {
+		scalaLoading = true;
+		scalaData = null;
+		try {
+			const [aggRes, smRes] = await Promise.all([
+				fetch('http://localhost:9003/api/scala/aggregate?mu=0.08&sigma=0.15&n=252'),
+				fetch('http://localhost:9003/api/scala/smooth?mu=0.08&sigma=0.15&n=252&alpha=0.3&beta=0.1'),
+			]);
+			if (aggRes.ok && smRes.ok) {
+				const agg = await aggRes.json();
+				const sm = await smRes.json();
+				scalaData = { ...agg, forecast_next: sm.forecast_next, alpha: sm.alpha, beta: sm.beta };
+			} else {
+				scalaData = { error: 'Scala 스트리머 오프라인' };
+			}
+		} catch {
+			scalaData = { error: 'Scala 서버 접속 불가 (:9003)' };
+		} finally {
+			scalaLoading = false;
 		}
 	}
 </script>
@@ -1016,28 +1053,99 @@
 		<div class="panel-header">
 			<div>
 				<h2>💎 Nim (Time-series Analytics)</h2>
-				<p class="subtitle">Nim 2.2.8 · Python 문법 + C 속도 · 시계열 기술통계 + 모멘텀 지표 (:8005)</p>
+				<p class="subtitle">
+					Nim 2.2.8 · Python 문법 + C 속도 · 시계열 기술통계 + 모멘텀
+					지표 (:8005)
+				</p>
 			</div>
 			<button class="nim-btn" onclick={runNim} disabled={nimLoading}>
-				{nimLoading ? '분석 중...' : '시계열 분석'}
+				{nimLoading ? "분석 중..." : "시계열 분석"}
 			</button>
 		</div>
 		{#if nimData}
 			{#if nimData.error}
-				<div class="empty-box"><p style="color:#f87171">{nimData.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{nimData.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card nim-card"><span class="jlabel">Ann. Return</span><span class="jval">{(nimData.annualized_return * 100).toFixed(2)}%</span></div>
-					<div class="julia-card nim-card"><span class="jlabel">Ann. Volatility</span><span class="jval">{(nimData.annualized_volatility * 100).toFixed(2)}%</span></div>
-					<div class="julia-card nim-card"><span class="jlabel">Skewness</span><span class="jval">{nimData.skewness.toFixed(4)}</span></div>
-					<div class="julia-card nim-card"><span class="jlabel">Excess Kurtosis</span><span class="jval">{nimData.excess_kurtosis.toFixed(4)}</span></div>
-					<div class="julia-card nim-card"><span class="jlabel">RSI (14)</span><span class="jval">{nimData.rsi_14.toFixed(2)}</span></div>
-					<div class="julia-card nim-card"><span class="jlabel">MACD</span><span class="jval">{nimData.macd.toFixed(4)}</span></div>
+					<div class="julia-card nim-card">
+						<span class="jlabel">Ann. Return</span><span
+							class="jval"
+							>{(nimData.annualized_return * 100).toFixed(
+								2,
+							)}%</span
+						>
+					</div>
+					<div class="julia-card nim-card">
+						<span class="jlabel">Ann. Volatility</span><span
+							class="jval"
+							>{(nimData.annualized_volatility * 100).toFixed(
+								2,
+							)}%</span
+						>
+					</div>
+					<div class="julia-card nim-card">
+						<span class="jlabel">Skewness</span><span class="jval"
+							>{nimData.skewness.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card nim-card">
+						<span class="jlabel">Excess Kurtosis</span><span
+							class="jval"
+							>{nimData.excess_kurtosis.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card nim-card">
+						<span class="jlabel">RSI (14)</span><span class="jval"
+							>{nimData.rsi_14.toFixed(2)}</span
+						>
+					</div>
+					<div class="julia-card nim-card">
+						<span class="jlabel">MACD</span><span class="jval"
+							>{nimData.macd.toFixed(4)}</span
+						>
+					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>버튼을 눌러 Nim 시계열 기술통계 (skewness/kurtosis/autocorr) + 모멘텀 지표 (RSI/MACD/볼린저)를 분석하세요. (Nim 서버 :8005 필요)</p>
+				<p>
+					버튼을 눌러 Nim 시계열 기술통계 (skewness/kurtosis/autocorr)
+					+ 모멘텀 지표 (RSI/MACD/볼린저)를 분석하세요. (Nim 서버
+					:8005 필요)
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- Scala Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>☢️ Scala (Streaming Aggregator)</h2>
+				<p class="subtitle">Scala 3.8.3 + JVM · 함수형 스트림 집계 · Holt 이중지수평활 (:9003)</p>
+			</div>
+			<button class="scala-btn" onclick={runScala} disabled={scalaLoading}>
+				{scalaLoading ? '분석 중...' : '스트림 집계'}
+			</button>
+		</div>
+		{#if scalaData}
+			{#if scalaData.error}
+				<div class="empty-box"><p style="color:#f87171">{scalaData.error}</p></div>
+			{:else}
+				<div class="julia-grid">
+					<div class="julia-card scala-card"><span class="jlabel">Ann. Return</span><span class="jval">{(scalaData.annualized_return * 100).toFixed(2)}%</span></div>
+					<div class="julia-card scala-card"><span class="jlabel">Ann. Volatility</span><span class="jval">{(scalaData.annualized_volatility * 100).toFixed(2)}%</span></div>
+					<div class="julia-card scala-card"><span class="jlabel">Median Daily</span><span class="jval">{(scalaData.median_daily * 100).toFixed(4)}%</span></div>
+					<div class="julia-card scala-card"><span class="jlabel">P5 / P95</span><span class="jval">{(scalaData.p5 * 100).toFixed(2)}% / {(scalaData.p95 * 100).toFixed(2)}%</span></div>
+					<div class="julia-card scala-card"><span class="jlabel">SMA-20 (last)</span><span class="jval">{(scalaData.sma_20_last * 100).toFixed(4)}%</span></div>
+					<div class="julia-card scala-card"><span class="jlabel">Holt Forecast</span><span class="jval">{(scalaData.forecast_next * 100).toFixed(4)}%</span></div>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>버튼을 눌러 Scala 스트림 집계 (SMA/EWM/백분위수) + Holt 이중지수평활 예측을 실행하세요. (Scala 서버 :9003 필요)</p>
 			</div>
 		{/if}
 	</section>
@@ -1589,5 +1697,27 @@
 
 	.nim-card {
 		border-color: #10b981 !important;
+	}
+
+	.scala-btn {
+		background: linear-gradient(135deg, #dc2626, #991b1b);
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.scala-btn:hover:not(:disabled) {
+		background: linear-gradient(135deg, #b91c1c, #7f1d1d);
+	}
+	.scala-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.scala-card {
+		border-color: #dc2626 !important;
 	}
 </style>

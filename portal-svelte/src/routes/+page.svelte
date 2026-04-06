@@ -459,6 +459,7 @@
 		}
 	}
 
+	/** @type {any} */
 	let gleamData = $state(null);
 	let gleamLoading = $state(false);
 	async function runGleam() {
@@ -477,6 +478,28 @@
 			gleamData = { error: "Gleam 서버 접속 불가 (:4001)" };
 		} finally {
 			gleamLoading = false;
+		}
+	}
+
+	/** @type {any} */
+	let vData = $state(null);
+	let vLoading = $state(false);
+	async function runV() {
+		vLoading = true;
+		try {
+			const [r, p] = await Promise.all([
+				fetch(
+					"http://localhost:4002/api/v/var?n=252&mu=0.08&sigma=0.2",
+				).then((x) => x.json()),
+				fetch(
+					"http://localhost:4002/api/v/portfolio?mu1=0.10&mu2=0.06&sig1=0.20&sig2=0.12&rho=0.3",
+				).then((x) => x.json()),
+			]);
+			vData = { ...r, portfolio: p };
+		} catch {
+			vData = { error: "V 서버 접속 불가 (:4002)" };
+		} finally {
+			vLoading = false;
 		}
 	}
 </script>

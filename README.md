@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **19개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **20개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -35,6 +35,7 @@
 [Scala Streamer · :9003]      ← 스트림 집계 · Holt 이중 지수평활 · SMA/percentile
 [Haskell Pricer · :8006]      ← 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo
 [Ruby Scorer · :9004]         ← 로지스틱 신용 스코어링 · 포트폴리오 요약 통계
+[Dart Engine · :9005]         ← 채구 가격 · 듀레이션 · Nelson-Siegel 수익률 곡선
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -55,6 +56,7 @@
 | **Scala 3.8.3** | **9003** | **스트림 집계 · Holt 이중 지수평활 · SMA/percentile/EWM** |
 | **Haskell GHC 8.8.4** | **8006** | **순수 함수형 옵션 프라이서 · Black-Scholes Greeks · GBM Monte Carlo** |
 | **Ruby 3.0.2** | **9004** | **로지스틱 신용 스코어링 · 포트폴리오 통계 (WEBrick stdlib)** |
+| **Dart 3.11** | **9005** | **채구 가격 · Macaulay/Modified Duration · DV01 · Nelson-Siegel 수익률 곡선** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -85,6 +87,7 @@
 | **Stream Agg** | **Scala 3.8.3, JDK HttpServer — Holt 이중 지수평활 + 스트림 집계 (:9003)** |
 | **Option Pricer** | **Haskell GHC 8.8.4, Network.Socket — 순수 함수형 Black-Scholes Greeks + GBM Monte Carlo (:8006)** |
 | **Credit Scoring** | **Ruby 3.0.2, WEBrick stdlib — 로지스틱 신용 스코어링 + 포트폴리오 요약 (:9004)** |
+| **Yield Curve** | **Dart 3.11, dart:io HttpServer — 채구 가격 + Nelson-Siegel 수익률 곡선 (:9005)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -175,6 +178,14 @@
 | `GET` | `/api/ruby/summary` | n개 대출 포트폴리오 요약: 평균/std/백분위수 + 리스크 분포 (`n`,`seed`) |
 | `GET` | `/health` | 헬스체크 |
 
+### Dart `:9005`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/dart/bond` | 채권 가격 · Macaulay/Modified Duration · Convexity · DV01 (`face`,`coupon`,`ytm`,`years`) |
+| `GET` | `/api/dart/yieldcurve` | Nelson-Siegel 수익률 곡선 · 10Y-2Y 스프레드 · 곡선 형태 (`b0`,`b1`,`b2`,`tau`) |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -211,6 +222,11 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **Dart 수익률 곡선 엔진 추가 (15번째 신규 언어)**
+  - **Dart 3.11** (SDK zip 설치) `dart:io HttpServer` — 외부 패키지 완전 무
+  - `/api/dart/bond`: 채구 가격 · Macaulay/Modified Duration · Convexity · DV01 (`:9005`)
+  - `/api/dart/yieldcurve`: Nelson-Siegel 면 (b0/b1/b2/tau) · 10Y-2Y 스프레드 · 곡선 형태 판정
+  - Svelte: **Dart Yield Curve Engine 패널** 추가 (청리씨 그라디언트)
 - [x] **2026-04-07** — **Ruby 신용 스코어링 엔진 추가 (14번째 신규 언어)**
   - **Ruby 3.0.2** (apt 설치) WEBrick stdlib — 외부 gem 완전 무
   - `/api/ruby/score`: 로지스틱 회귀 신용 스코어(0-1000) + 등급(A+~D) + PD (`:9004`)
@@ -577,6 +593,29 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 |:---|:---|
 | `/usr/local/lib/R` 쓰기 권한 없음 | `~/R/library` 사용자 라이브러리 경로 지정 |
 | `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
+</details>
+
+<br>
+
+### 🎯 Dart (수익률 곡선 엔진)
+
+<details open>
+<summary><strong>📅 2026-04-07 : 채권 가격 + Nelson-Siegel 수익률 곡선</strong></summary>
+
+#### ✅ 구축 내역
+- Dart 3.11.4 (SDK zip 직접 다운로드 → `~/.local/dart-sdk`) `dart:io HttpServer` — 외부 패키지 완전 무.
+- `engine-dart/bin/server.dart`: 순수 함수형 채권 수학 구현.
+- `bondPrice` (반기 이표), `macaulayDuration`, `modifiedDuration`, `convexity`, `dv01`.
+- `nelsonSiegel` — b0(수준)/b1(기울기)/b2(곡률)/tau(감쇠) 4-파라미터 수익률 면 모델.
+- `/api/dart/bond`: 채권 가격 + 6개 지표.
+- `/api/dart/yieldcurve`: 10개 만기 수익률 배열 + 10Y-2Y 스프레드 + 곡선 형태(normal/inverted).
+- Svelte: 청리색 그라디언트 **Dart Yield Curve Engine 패널** 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `apt install dart` —  GPG 서명 실패 | SDK zip 직접 다운로드 후 `~/.local/dart-sdk` 추출 |
+| `The argument type 'num' can't be assigned to 'double'` | 정수 리터럴 `[0.25, 0.5, 1, 2, ...]` → `[0.25, 0.5, 1.0, 2.0, ...]` 로 수정 |
 </details>
 
 <br>

@@ -22,6 +22,21 @@
 	/** @type {number | null} */
 	let autoSyncInterval = $state(null);
 
+	/** @type {any[] | null} */
+	let reports = $state(null);
+
+	/** @type {any | null} */
+	let juliaResult = $state(null);
+
+	/** @type {boolean} */
+	let juliaLoading = $state(false);
+
+	/** @type {any | null} */
+	let cacheStats = $state(null);
+
+	/** @type {any | null} */
+	let elixirStatus = $state(null);
+
 	async function syncSystem() {
 		try {
 			const res = await fetch("http://localhost:8080/api/status");
@@ -78,6 +93,50 @@
 	onDestroy(() => {
 		if (autoSyncInterval !== null) clearInterval(autoSyncInterval);
 	});
+
+	async function fetchReports() {
+		try {
+			const res = await fetch("http://localhost:9000/api/reports/latest");
+			if (res.ok) reports = await res.json();
+		} catch {
+			reports = null;
+		}
+	}
+
+	async function runJulia() {
+		juliaLoading = true;
+		juliaResult = null;
+		try {
+			const res = await fetch(
+				"http://localhost:8002/api/julia/simulate?paths=10000&days=252&vol=0.20&mu=0.05",
+			);
+			if (res.ok) juliaResult = await res.json();
+			else juliaResult = { error: "Julia engine offline" };
+		} catch {
+			juliaResult = { error: "Julia engine unreachable" };
+		} finally {
+			juliaLoading = false;
+		}
+	}
+
+	async function fetchCacheStats() {
+		try {
+			const res = await fetch("http://localhost:8080/api/cache/stats");
+			if (res.ok) cacheStats = await res.json();
+		} catch {
+			cacheStats = null;
+		}
+	}
+
+	async function checkElixir() {
+		try {
+			const res = await fetch("http://localhost:4000/health");
+			if (res.ok) elixirStatus = await res.json();
+			else elixirStatus = { status: "offline" };
+		} catch {
+			elixirStatus = { status: "offline" };
+		}
+	}
 </script>
 
 <main class="container">
@@ -164,6 +223,28 @@
 				</div>
 
 				<div class="status-card">
+					<h3>⚡ Zig (Core)</h3>
+					{#if systemData.engine_analysis?.zig_analysis?.engine}
+						<p class="status online">● online</p>
+						<span class="version"
+							>{systemData.engine_analysis.zig_analysis
+								.engine}</span
+						>
+						<div class="financial-data">
+							<p class="rate">
+								σ {systemData.engine_analysis.zig_analysis
+									.volatility}
+							</p>
+							<p class="risk">
+								VaR 95%: ₩{systemData.engine_analysis.zig_analysis.var_95?.toLocaleString()}
+							</p>
+						</div>
+					{:else}
+						<p class="status error">● Offline</p>
+					{/if}
+				</div>
+
+				<div class="status-card">
 					<h3>🦀 Rust (Pipeline)</h3>
 					{#if systemData.pipeline_node.status === "online"}
 						<p class="status online">
@@ -229,6 +310,188 @@
 		{:else}
 			<div class="empty-box">
 				<p>버튼을 눌러 Rust 파이프라인을 가동하세요.</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- Lua Cache Stats Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>🌙 Lua Cache Stats</h2>
+				<p class="subtitle">Redis EVAL 원자적 캐시 히트/미스 카운터</p>
+			</div>
+			<button class="lua-btn" onclick={fetchCacheStats}>조회</button>
+		</div>
+		{#if cacheStats}
+			<div class="stats-row">
+				<div class="stat-box hit">
+					✅ Cache Hits<br /><strong>{cacheStats.cache_hits}</strong>
+				</div>
+				<div class="stat-box miss">
+					🔄 Cache Misses<br /><strong
+						>{cacheStats.cache_misses}</strong
+					>
+				</div>
+				<div class="stat-box engine">
+					⚙️ Engine<br /><strong>{cacheStats.engine}</strong>
+				</div>
+			</div>
+		{:else}
+			<div class="empty-box">
+				<p>조회 버튼을 눌러 Lua 스크립트 통계를 확인하세요.</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- Julia Monte Carlo Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>🔬 Julia Monte Carlo</h2>
+				<p class="subtitle">GBM 기반 병렬 시뮬레이션 · VaR/CVaR 95%</p>
+			</div>
+			<button
+				class="julia-btn"
+				onclick={runJulia}
+				disabled={juliaLoading}
+			>
+				{juliaLoading ? "분석 중..." : "시뮬레이션"}
+			</button>
+		</div>
+		{#if juliaResult}
+			<div class="julia-grid">
+				<div class="julia-card">
+					<span class="jlabel">VaR 95%</span><span class="jval"
+						>{(juliaResult.var_95 * 100).toFixed(2)}%</span
+					>
+				</div>
+				<div class="julia-card">
+					<span class="jlabel">CVaR 95%</span><span class="jval"
+						>{(juliaResult.cvar_95 * 100).toFixed(2)}%</span
+					>
+				</div>
+				<div class="julia-card">
+					<span class="jlabel">평균 수익</span><span class="jval"
+						>{(juliaResult.mean_return * 100).toFixed(2)}%</span
+					>
+				</div>
+				<div class="julia-card">
+					<span class="jlabel">변동성</span><span class="jval"
+						>{(juliaResult.std_return * 100).toFixed(2)}%</span
+					>
+				</div>
+				<div class="julia-card">
+					<span class="jlabel">샤프 비율</span><span class="jval"
+						>{juliaResult.sharpe.toFixed(3)}</span
+					>
+				</div>
+				<div class="julia-card">
+					<span class="jlabel">시뮬레이션 경로</span><span
+						class="jval">{juliaResult.paths?.toLocaleString()}</span
+					>
+				</div>
+			</div>
+		{:else}
+			<div class="empty-box">
+				<p>
+					버튼을 눌러 Julia GBM 몬테카를로 분석을 실행하세요. (Julia
+					서버 :8002 필요)
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- Kotlin Reports Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>☕ Kotlin Reports</h2>
+				<p class="subtitle">
+					코루틴 스케줄러 · 리스크 리포트 생성 (:9000)
+				</p>
+			</div>
+			<button class="kotlin-btn" onclick={fetchReports}
+				>최신 리포트</button
+			>
+		</div>
+		{#if reports.length > 0}
+			<table class="log-table">
+				<thead
+					><tr
+						><th>ID</th><th>생성 시각</th><th>평균 리스크</th><th
+							>총 기록</th
+						><th>최대</th><th>최소</th></tr
+					></thead
+				>
+				<tbody>
+					{#each reports as r}
+						<tr>
+							<td class="log-id">#{r.id}</td>
+							<td class="log-time"
+								>{new Date(r.generatedAt).toLocaleString(
+									"ko-KR",
+								)}</td
+							>
+							<td
+								><strong>{r.avgRiskScore?.toFixed(4)}</strong
+								></td
+							>
+							<td>{r.totalRecords}</td>
+							<td style="color:#f87171"
+								>{r.maxRiskScore?.toFixed(4)}</td
+							>
+							<td style="color:#34d399"
+								>{r.minRiskScore?.toFixed(4)}</td
+							>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<div class="empty-box">
+				<p>
+					버튼을 눌러 Kotlin 스케줄러 리포트를 불러오세요. (Kotlin
+					서버 :9000 필요)
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- Elixir Hub Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>💜 Elixir Hub</h2>
+				<p class="subtitle">
+					Phoenix WebSocket · GenServer 폴링 · OTP 슈퍼바이저 (:4000)
+				</p>
+			</div>
+			<button class="elixir-btn" onclick={checkElixir}>상태 확인</button>
+		</div>
+		{#if elixirStatus}
+			<div class="stats-row">
+				<div class="stat-box hit">
+					🟢 Status<br /><strong>{elixirStatus.status}</strong>
+				</div>
+				<div class="stat-box engine">
+					🔧 Services<br /><strong
+						>{elixirStatus.services?.join(", ") ?? "N/A"}</strong
+					>
+				</div>
+				<div class="stat-box miss">
+					🕐 Uptime<br /><strong
+						>{elixirStatus.uptime ?? "N/A"}</strong
+					>
+				</div>
+			</div>
+		{:else}
+			<div class="empty-box">
+				<p>
+					Elixir/Erlang 설치 후 <code
+						>mix deps.get &amp;&amp; mix run</code
+					> 으로 실행하세요.
+				</p>
 			</div>
 		{/if}
 	</section>
@@ -507,5 +770,126 @@
 		margin-left: auto;
 		color: #64748b;
 		font-size: 0.9rem;
+	}
+
+	/* Lua, Julia, Kotlin, Elixir 버튼 */
+	.lua-btn {
+		background: #b45309;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.lua-btn:hover {
+		background: #92400e;
+	}
+
+	.julia-btn {
+		background: #0d9488;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.julia-btn:hover:not(:disabled) {
+		background: #0f766e;
+	}
+	.julia-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.kotlin-btn {
+		background: linear-gradient(135deg, #e8590c, #c2410c);
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: filter 0.2s;
+	}
+	.kotlin-btn:hover {
+		filter: brightness(1.15);
+	}
+
+	.elixir-btn {
+		background: #7c3aed;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.elixir-btn:hover {
+		background: #6d28d9;
+	}
+
+	/* Cache stats row */
+	.stats-row {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	.stat-box {
+		flex: 1;
+		min-width: 120px;
+		padding: 1rem;
+		border-radius: 8px;
+		text-align: center;
+		font-size: 0.9rem;
+		line-height: 1.8;
+	}
+	.stat-box.hit {
+		background: #052e16;
+		border: 1px solid #16a34a;
+		color: #86efac;
+	}
+	.stat-box.miss {
+		background: #1e1b4b;
+		border: 1px solid #6366f1;
+		color: #a5b4fc;
+	}
+	.stat-box.engine {
+		background: #0f172a;
+		border: 1px solid #334155;
+		color: #94a3b8;
+	}
+
+	/* Julia metrics grid */
+	.julia-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.75rem;
+		margin-top: 0.5rem;
+	}
+	.julia-card {
+		background: #0f172a;
+		border: 1px solid #0d9488;
+		border-radius: 8px;
+		padding: 0.9rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		text-align: center;
+	}
+	.jlabel {
+		font-size: 0.75rem;
+		color: #5eead4;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.jval {
+		font-size: 1.15rem;
+		font-weight: bold;
+		color: #f0fdfa;
 	}
 </style>

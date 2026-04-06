@@ -52,6 +52,7 @@ func main() {
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/history", historyHandler)
 	http.HandleFunc("/api/pipeline/trigger", pipelineTriggerHandler)
+	http.HandleFunc("/api/cache/stats", cacheStatsHandler)
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -72,14 +73,29 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 
 	var engineData map[string]interface{}
 	cacheKey := "engine_analysis_cache"
-	val, err := rdb.Get(ctx, cacheKey).Result()
+	hitCountKey := "cache_hit_count"
+	missCountKey := "cache_miss_count"
 
-	if err == nil {
-		json.Unmarshal([]byte(val), &engineData)
-		fmt.Println("Cache Hit! (Redis에서 즉시 반환)")
-		engineData["source"] = "Redis Cache"
+	// Lua 스크립트: GET + 히트 카운터 증가를 원자적으로 처리
+	luaGetAndCount := redis.NewScript(`
+		local val = redis.call('GET', KEYS[1])
+		if val then
+			redis.call('INCR', KEYS[2])
+			return val
+		else
+			redis.call('INCR', KEYS[3])
+			return false
+		end
+	`)
+
+	result, luaErr := luaGetAndCount.Run(ctx, rdb, []string{cacheKey, hitCountKey, missCountKey}).Result()
+
+	if luaErr == nil && result != nil {
+		json.Unmarshal([]byte(result.(string)), &engineData)
+		fmt.Println("Cache Hit! [Lua atomic] (Redis에서 즉시 반환)")
+		engineData["source"] = "Redis Cache (Lua)"
 	} else {
-		fmt.Println("Cache MISS! (Python 엔진 호출)")
+		fmt.Println("Cache MISS! [Lua atomic] (Python 엔진 호출)")
 		resp, err := http.Get("http://localhost:8000/api/analyze")
 
 		if err == nil {
@@ -87,7 +103,13 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewDecoder(resp.Body).Decode(&engineData)
 			engineData["source"] = "Python Engine"
 			jsonData, _ := json.Marshal(engineData)
-			rdb.Set(ctx, cacheKey, jsonData, 10*time.Second)
+			// Lua 스크립트: SET + TTL을 원자적으로 처리
+			luaSetWithTTL := redis.NewScript(`
+				redis.call('SET', KEYS[1], ARGV[1])
+				redis.call('EXPIRE', KEYS[1], ARGV[2])
+				return 1
+			`)
+			luaSetWithTTL.Run(ctx, rdb, []string{cacheKey}, string(jsonData), "10")
 		} else {
 			engineData = map[string]interface{}{"message": "Engine is offline"}
 		}
@@ -143,6 +165,29 @@ func pipelineTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		"Rust-Pipeline", fmt.Sprintf("Bulk insert triggered: %v rows", result["inserted_rows"]))
 
 	json.NewEncoder(w).Encode(result)
+}
+
+func cacheStatsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	// Lua 스크립트: hit/miss 카운터를 원자적으로 동시 조회
+	luaGetStats := redis.NewScript(`
+		local hits  = redis.call('GET', KEYS[1]) or '0'
+		local misses = redis.call('GET', KEYS[2]) or '0'
+		return {hits, misses}
+	`)
+	res, err := luaGetStats.Run(ctx, rdb, []string{"cache_hit_count", "cache_miss_count"}).StringSlice()
+	hits, misses := "0", "0"
+	if err == nil && len(res) == 2 {
+		hits, misses = res[0], res[1]
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"engine":       "Lua (Redis EVAL)",
+		"cache_hits":   hits,
+		"cache_misses": misses,
+	})
 }
 
 func historyHandler(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **13개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **14개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -29,6 +29,7 @@
 [R Plumber Engine · :8003]   ← MLE 분포 피팅 · VaR/CVaR
 [F# ASP.NET Engine · :9001] ← Black-Scholes Greeks · DCF
 [WebAssembly (Zig → WASM32)]  ← 브라우저 직접 실행 · 서버 왕복 없음
+[OCaml Risk Engine · :8004]   ← 규칙 기반 리스크 판정 · 신용 스코어링
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -43,6 +44,7 @@
 | **R (Plumber)** | **8003** | **MLE 분포 피팅 · VaR/CVaR · Sharpe Ratio** |
 | **F# (ASP.NET 8)** | **9001** | **Black-Scholes Greeks · DCF 가치평가** |
 | **WebAssembly (Zig → WASM32)** | **Browser** | **클라이언트 직접 실행 · Black-Scholes/VaR/DCF · 서버 불필요** |
+| **OCaml 4.13** | **8004** | **규칙 기반 리스크 판정 · 신용 스코어링 (로지스틱)** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -67,6 +69,7 @@
 | **Statistics** | **R 4.1, Plumber, MASS — MLE 분포 피팅 · Sharpe (:8003)** |
 | **Option Pricing** | **F# (.NET 8), ASP.NET Core — Black-Scholes Greeks · DCF (:9001)** |
 | **WebAssembly** | **Zig 0.13 → WASM32 freestanding — 브라우저 클라이언트 실행 (서버 없음)** |
+| **Risk Rules** | **OCaml 4.13, stdlib Unix HTTP — 규칙 기반 리스크 + 로지스틱 신용점수 (:8004)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -169,6 +172,11 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **OCaml 리스크 엔진 추가 (9번째 신규 언어)**
+  - **OCaml 4.13** stdlib Unix 소켓 HTTP 서버 — 외부 패키지 무의존 네이티브 컴파일 (`ocamlfind ocamlopt -package unix`)
+  - `/api/ocaml/risk`: 부체비율·영변도·레버리지·신용점수 규칙 기반 LOW/MEDIUM/HIGH/CRITICAL 판정 (`:8004`)
+  - `/api/ocaml/score`: 로지스틱 회귀 신용 점수 + A+~D 등급
+  - Svelte: **OCaml Risk Rule Engine 패널** 추가 (리스크 레벨 색상 코딩)
 - [x] **2026-04-08** — **WebAssembly 추가 (8번째 신규 언어 — 브라우저 런타임)**
   - **Zig → WASM32 freestanding**: `finance.wasm` (24KB) — normCdf · bsCall · bsPut · bsDelta · bsGamma · varNormal · dcfValue
   - Svelte: **WebAssembly 패널** 추가 (`fetch` → `WebAssembly.instantiate` · 서버 왕복 없음)
@@ -508,7 +516,26 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 </details>
 
 <br>
+### 🐪 OCaml (리스크 룰 엔진)
 
+<details open>
+<summary><strong>📅 2026-04-07 : 규칙 기반 리스크 판정 · 신용 스코어링</strong></summary>
+
+#### ✅ 구축 내역
+- `apt install ocaml ocaml-findlib` — OCaml 4.13.1 + ocamlfind 설치.
+- `risk-ocaml/server.ml`: 외부 패키지 의존 없이 `Unix` stdlib 소켓으로 HTTP 서버 구현.
+- `/api/ocaml/risk`: 부채비율·변동성·레버리지·신용점수 4개 규칙 → LOW/MEDIUM/HIGH/CRITICAL 판정.
+- `/api/ocaml/score`: 로지스틱 회귀 근사 → 300~850 신용점수 + A+~D 등급 + 상환 확률.
+- `ocamlfind ocamlopt -package unix -linkpkg` 단일 명령 컴파일 → 1.4MB 네이티브 바이너리.
+- Svelte: 리스크 레벨 색상 코딩 (green/yellow/orange/red) 패널 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| 외부 HTTP 라이브러리 opam 설치 불필요 | stdlib `Unix` 소켓으로 직접 HTTP 파싱 구현 |
+</details>
+
+<br>
 ### �️ WebAssembly (Client-side)
 
 <details open>
@@ -568,7 +595,8 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 5. **R Engine**: `Rscript engine-r/run.R` (포트 `:8003`).
 6. **F# Pricer**: `dotnet run --project pricer-fsharp` (포트 `:9001`).
 7. **WASM 재빌드**: `~/.local/zig/zig build-lib wasm-zig/src/finance.zig -target wasm32-freestanding -O ReleaseFast --export=normCdf --export=bsCall --export=bsPut --export=bsDelta --export=bsGamma --export=varNormal --export=dcfValue -femit-bin=portal-svelte/static/finance.wasm`
-8. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
+8. **OCaml Engine**: `ocamlfind ocamlopt -package unix -linkpkg risk-ocaml/server.ml -o risk-ocaml/server && ./risk-ocaml/server` (포트 `:8004`).
+9. **Elixir Hub**: Erlang/OTP 설치 후 `cd hub-elixir && mix deps.get && mix run --no-halt`.
 9. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`), `zig-out/`, `target/`, `pricer-fsharp/bin/`, `pricer-fsharp/obj/` 커밋 금지.
 9. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
 

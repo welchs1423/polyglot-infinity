@@ -193,7 +193,7 @@
 		wasmLoading = true;
 		try {
 			if (!wasmExports) {
-				const res = await fetch('/finance.wasm');
+				const res = await fetch("/finance.wasm");
 				const bytes = await res.arrayBuffer();
 				const { instance } = await WebAssembly.instantiate(bytes, {});
 				wasmExports = instance.exports;
@@ -201,17 +201,44 @@
 			}
 			const exp = wasmExports;
 			wasmBsResult = {
-				call:  exp.bsCall(100, 100, 0.05, 0.20, 1.0),
-				put:   exp.bsPut(100, 100, 0.05, 0.20, 1.0),
-				delta: exp.bsDelta(100, 100, 0.05, 0.20, 1.0),
-				gamma: exp.bsGamma(100, 100, 0.05, 0.20, 1.0),
+				call: exp.bsCall(100, 100, 0.05, 0.2, 1.0),
+				put: exp.bsPut(100, 100, 0.05, 0.2, 1.0),
+				delta: exp.bsDelta(100, 100, 0.05, 0.2, 1.0),
+				gamma: exp.bsGamma(100, 100, 0.05, 0.2, 1.0),
 				var95: exp.varNormal(0.0005, 0.018, 0.95),
-				dcf:   exp.dcfValue(1_000_000, 0.10, 0.03, 0.08, 5),
+				dcf: exp.dcfValue(1_000_000, 0.1, 0.03, 0.08, 5),
 			};
 		} catch (e) {
 			wasmBsResult = { error: String(e) };
 		} finally {
 			wasmLoading = false;
+		}
+	}
+
+	/** @type {any | null} */
+	let ocamlRisk = $state(null);
+	/** @type {boolean} */
+	let ocamlLoading = $state(false);
+
+	async function runOcamlRisk() {
+		ocamlLoading = true;
+		ocamlRisk = null;
+		try {
+			const [riskRes, scoreRes] = await Promise.all([
+				fetch('http://localhost:8004/api/ocaml/risk?debt_ratio=0.75&volatility=0.28&leverage=3.5&credit_score=650'),
+				fetch('http://localhost:8004/api/ocaml/score?income=5000000&debt=2000000&history_years=3&missed_payments=1'),
+			]);
+			if (riskRes.ok && scoreRes.ok) {
+				const risk = await riskRes.json();
+				const score = await scoreRes.json();
+				ocamlRisk = { ...risk, credit_grade: score.grade, credit_score_model: score.score, prob_good: score.prob_good };
+			} else {
+				ocamlRisk = { error: 'OCaml 리스크 엔진 오프라인' };
+			}
+		} catch {
+			ocamlRisk = { error: 'OCaml 엔진 접속 불가 (:8004)' };
+		} finally {
+			ocamlLoading = false;
 		}
 	}
 </script>
@@ -707,29 +734,97 @@
 		<div class="panel-header">
 			<div>
 				<h2>🕸️ WebAssembly (Client-side)</h2>
-				<p class="subtitle">Zig → WASM32 · 브라우저 직접 실행 · 서버 왕복 없음</p>
+				<p class="subtitle">
+					Zig → WASM32 · 브라우저 직접 실행 · 서버 왕복 없음
+				</p>
 			</div>
 			<button class="wasm-btn" onclick={runWasm} disabled={wasmLoading}>
-				{#if wasmLoading}계산 중...{:else if wasmLoaded}재계산{:else}WASM 로드 & 실행{/if}
+				{#if wasmLoading}계산 중...{:else if wasmLoaded}재계산{:else}WASM
+					로드 & 실행{/if}
 			</button>
 		</div>
 		{#if wasmBsResult}
 			{#if wasmBsResult.error}
-				<div class="empty-box"><p style="color:#f87171">{wasmBsResult.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{wasmBsResult.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card wasm-card"><span class="jlabel">Call Price</span><span class="jval">${wasmBsResult.call.toFixed(4)}</span></div>
-					<div class="julia-card wasm-card"><span class="jlabel">Put Price</span><span class="jval">${wasmBsResult.put.toFixed(4)}</span></div>
-					<div class="julia-card wasm-card"><span class="jlabel">Delta</span><span class="jval">{wasmBsResult.delta.toFixed(4)}</span></div>
-					<div class="julia-card wasm-card"><span class="jlabel">Gamma</span><span class="jval">{wasmBsResult.gamma.toFixed(6)}</span></div>
-					<div class="julia-card wasm-card"><span class="jlabel">VaR 95%</span><span class="jval">{(wasmBsResult.var95 * 100).toFixed(3)}%</span></div>
-					<div class="julia-card wasm-card"><span class="jlabel">DCF Value</span><span class="jval">₩{Math.round(wasmBsResult.dcf).toLocaleString()}</span></div>
+					<div class="julia-card wasm-card">
+						<span class="jlabel">Call Price</span><span class="jval"
+							>${wasmBsResult.call.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card wasm-card">
+						<span class="jlabel">Put Price</span><span class="jval"
+							>${wasmBsResult.put.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card wasm-card">
+						<span class="jlabel">Delta</span><span class="jval"
+							>{wasmBsResult.delta.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card wasm-card">
+						<span class="jlabel">Gamma</span><span class="jval"
+							>{wasmBsResult.gamma.toFixed(6)}</span
+						>
+					</div>
+					<div class="julia-card wasm-card">
+						<span class="jlabel">VaR 95%</span><span class="jval"
+							>{(wasmBsResult.var95 * 100).toFixed(3)}%</span
+						>
+					</div>
+					<div class="julia-card wasm-card">
+						<span class="jlabel">DCF Value</span><span class="jval"
+							>₩{Math.round(
+								wasmBsResult.dcf,
+							).toLocaleString()}</span
+						>
+					</div>
 				</div>
-				<p class="wasm-hint">✓ 서버 없이 브라우저에서 직접 계산됨 (S=100 K=100 r=5% σ=20% T=1y)</p>
+				<p class="wasm-hint">
+					✓ 서버 없이 브라우저에서 직접 계산됨 (S=100 K=100 r=5% σ=20%
+					T=1y)
+				</p>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>Zig로 컴파일된 WASM을 브라우저에서 직접 실행합니다. 서버 없이 Black-Scholes · VaR · DCF 계산.</p>
+				<p>
+					Zig로 컴파일된 WASM을 브라우저에서 직접 실행합니다. 서버
+					없이 Black-Scholes · VaR · DCF 계산.
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- OCaml Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>🐪 OCaml (Risk Rule Engine)</h2>
+				<p class="subtitle">OCaml 4.13 · 규칙 기반 리스크 판정 · 신용 스코어링 (:8004)</p>
+			</div>
+			<button class="ocaml-btn" onclick={runOcamlRisk} disabled={ocamlLoading}>
+				{ocamlLoading ? '분석 중...' : '리스크 분석'}
+			</button>
+		</div>
+		{#if ocamlRisk}
+			{#if ocamlRisk.error}
+				<div class="empty-box"><p style="color:#f87171">{ocamlRisk.error}</p></div>
+			{:else}
+				<div class="julia-grid">
+					<div class="julia-card ocaml-card"><span class="jlabel">Risk Level</span><span class="jval risk-{ocamlRisk.level?.toLowerCase()}">{ocamlRisk.level}</span></div>
+					<div class="julia-card ocaml-card"><span class="jlabel">Risk Score</span><span class="jval">{ocamlRisk.risk_score} / 100</span></div>
+					<div class="julia-card ocaml-card"><span class="jlabel">Credit Score</span><span class="jval">{ocamlRisk.credit_score_model}</span></div>
+					<div class="julia-card ocaml-card"><span class="jlabel">Credit Grade</span><span class="jval">{ocamlRisk.credit_grade}</span></div>
+					<div class="julia-card ocaml-card"><span class="jlabel">Debt Ratio</span><span class="jval">{(ocamlRisk.debt_ratio * 100).toFixed(1)}%</span></div>
+					<div class="julia-card ocaml-card"><span class="jlabel">Volatility</span><span class="jval">{(ocamlRisk.volatility * 100).toFixed(1)}%</span></div>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>버튼을 눌러 OCaml 규칙 기반 리스크 판정 · 신용 스코어링을 실행하세요. (OCaml 서버 :8004 필요)</p>
 			</div>
 		{/if}
 	</section>
@@ -1203,4 +1298,31 @@
 		color: #67e8f9;
 		text-align: center;
 	}
+
+	.ocaml-btn {
+		background: linear-gradient(135deg, #f97316, #c2410c);
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.ocaml-btn:hover:not(:disabled) {
+		background: linear-gradient(135deg, #ea580c, #9a3412);
+	}
+	.ocaml-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.ocaml-card {
+		border-color: #f97316 !important;
+	}
+
+	.risk-low      { color: #4ade80 !important; }
+	.risk-medium   { color: #facc15 !important; }
+	.risk-high     { color: #fb923c !important; }
+	.risk-critical { color: #f87171 !important; }
 </style>

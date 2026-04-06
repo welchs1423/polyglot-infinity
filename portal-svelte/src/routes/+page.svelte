@@ -347,6 +347,33 @@
 			scalaLoading = false;
 		}
 	}
+
+	/** @type {any | null} */
+	let haskellData = $state(null);
+	/** @type {boolean} */
+	let haskellLoading = $state(false);
+
+	async function runHaskell() {
+		haskellLoading = true;
+		haskellData = null;
+		try {
+			const [bsRes, mcRes] = await Promise.all([
+				fetch('http://localhost:8006/api/haskell/blackscholes?s=100&k=100&r=0.05&sigma=0.2&t=1'),
+				fetch('http://localhost:8006/api/haskell/montecarlo?s=100&vol=0.2&mu=0.08&n=500&days=252'),
+			]);
+			if (bsRes.ok && mcRes.ok) {
+				const bs = await bsRes.json();
+				const mc = await mcRes.json();
+				haskellData = { ...bs, mc_annualized_return: mc.annualized_return, mc_annualized_vol: mc.annualized_vol, mc_var95: mc.var_95, mc_cvar95: mc.cvar_95, mc_avg_final: mc.avg_final_price };
+			} else {
+				haskellData = { error: 'Haskell 프라이서 오프라인' };
+			}
+		} catch {
+			haskellData = { error: 'Haskell 서버 접속 불가 (:8006)' };
+		} finally {
+			haskellLoading = false;
+		}
+	}
 </script>
 
 <main class="container">
@@ -1150,6 +1177,37 @@
 		{/if}
 	</section>
 
+	<!-- Haskell Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>λ Haskell (Option Pricer)</h2>
+				<p class="subtitle">GHC 8.8.4 · 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo (:8006)</p>
+			</div>
+			<button class="haskell-btn" onclick={runHaskell} disabled={haskellLoading}>
+				{haskellLoading ? '계산 중...' : '파생상품 계산'}
+			</button>
+		</div>
+		{#if haskellData}
+			{#if haskellData.error}
+				<div class="empty-box"><p style="color:#f87171">{haskellData.error}</p></div>
+			{:else}
+				<div class="julia-grid">
+					<div class="julia-card haskell-card"><span class="jlabel">Call Price</span><span class="jval">{haskellData.call_price?.toFixed(4)}</span></div>
+					<div class="julia-card haskell-card"><span class="jlabel">Put Price</span><span class="jval">{haskellData.put_price?.toFixed(4)}</span></div>
+					<div class="julia-card haskell-card"><span class="jlabel">Delta / Gamma</span><span class="jval">{haskellData.delta?.toFixed(4)} / {haskellData.gamma?.toFixed(4)}</span></div>
+					<div class="julia-card haskell-card"><span class="jlabel">Vega / Theta</span><span class="jval">{haskellData.vega?.toFixed(4)} / {haskellData.theta_daily?.toFixed(4)}</span></div>
+					<div class="julia-card haskell-card"><span class="jlabel">MC Ann. Return</span><span class="jval">{((haskellData.mc_annualized_return ?? 0) * 100).toFixed(2)}%</span></div>
+					<div class="julia-card haskell-card"><span class="jlabel">MC VaR 95%</span><span class="jval">{((haskellData.mc_var95 ?? 0) * 100).toFixed(2)}%</span></div>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>버튼을 눌러 Haskell 순수 함수형 Black-Scholes Greeks와 GBM Monte Carlo 시뮬레이션을 실행하세요. (Haskell 서버 :8006 필요)</p>
+			</div>
+		{/if}
+	</section>
+
 	<section class="panel">
 		<h2>System Memory (Latest Logs)</h2>
 		{#if logs.length > 0}
@@ -1719,5 +1777,27 @@
 
 	.scala-card {
 		border-color: #dc2626 !important;
+	}
+
+	.haskell-btn {
+		background: linear-gradient(135deg, #7c3aed, #4c1d95);
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.haskell-btn:hover:not(:disabled) {
+		background: linear-gradient(135deg, #6d28d9, #3b0764);
+	}
+	.haskell-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.haskell-card {
+		border-color: #7c3aed !important;
 	}
 </style>

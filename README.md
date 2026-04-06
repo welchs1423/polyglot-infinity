@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **17개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **18개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -33,6 +33,7 @@
 [Crystal Gateway · :9002]     ← 포트폴리오 성과 · Sharpe/MDD · FX 가중평균
 [Nim Analytics · :8005]       ← 시계열 기술통계 · RSI/MACD/볼린저 모멘텀
 [Scala Streamer · :9003]      ← 스트림 집계 · Holt 이중 지수평활 · SMA/percentile
+[Haskell Pricer · :8006]      ← 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -51,6 +52,7 @@
 | **Crystal 1.19** | **9002** | **포트폴리오 성과 · Sharpe/Sortino/MDD · FX 가중평균** |
 | **Nim 2.2.8** | **8005** | **시계열 기술통계 · skewness/kurtosis/autocorr · RSI/MACD/볼린저** |
 | **Scala 3.8.3** | **9003** | **스트림 집계 · Holt 이중 지수평활 · SMA/percentile/EWM** |
+| **Haskell GHC 8.8.4** | **8006** | **순수 함수형 옵션 프라이서 · Black-Scholes Greeks · GBM Monte Carlo** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -79,6 +81,7 @@
 | **Portfolio/FX** | **Crystal 1.19, HTTP::Server — 포트폴리오 Sharpe/Sortino/MDD + FX 가중평균 (:9002)** |
 | **Time-series** | **Nim 2.2.8, asynchttpserver — 시계열 기술통계 + RSI/MACD/Bollinger (:8005)** |
 | **Stream Agg** | **Scala 3.8.3, JDK HttpServer — Holt 이중 지수평활 + 스트림 집계 (:9003)** |
+| **Option Pricer** | **Haskell GHC 8.8.4, Network.Socket — 순수 함수형 Black-Scholes Greeks + GBM Monte Carlo (:8006)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -153,6 +156,14 @@
 | `GET` | `/api/scala/smooth` | Holt 이중 지수평활 + 1-step 예측 (`mu`,`sigma`,`n`,`alpha`,`beta`) |
 | `GET` | `/health` | 헬스체크 |
 
+### Haskell `:8006`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/haskell/blackscholes` | Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta (`s`,`k`,`r`,`sigma`,`t`) |
+| `GET` | `/api/haskell/montecarlo` | GBM Monte Carlo (LCG + Box-Muller) · VaR/CVaR 95% (`s`,`vol`,`mu`,`n`,`days`) |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -189,6 +200,11 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **Haskell 옵션 프라이서 추가 (13번째 신규 언어)**
+  - **Haskell GHC 8.8.4** (apt 설치) `Network.Socket` + `libghc-network-dev` — Stdlib 전용
+  - `/api/haskell/blackscholes`: Black-Scholes 옵션 가격 + Delta/Gamma/Vega/Theta (`:8006`)
+  - `/api/haskell/montecarlo`: GBM Monte Carlo (LCG + Box-Muller) • VaR/CVaR 95% + 연율화 수익률/변동성
+  - Svelte: **Haskell Option Pricer 패널** 추가 (보라 그라디언트)
 - [x] **2026-04-07** — **Scala 스트리밍 집계 엔진 추가 (12번째 신규 언어)**
   - **Scala 3.8.3** (Coursier 설치) + JDK 21 내장 `HttpServer` — 외부 의존 무
   - `/api/scala/aggregate`: mean/std/median/ann_return/ann_vol/p5/p95/sma20 (`:9003`)
@@ -545,6 +561,29 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 |:---|:---|
 | `/usr/local/lib/R` 쓰기 권한 없음 | `~/R/library` 사용자 라이브러리 경로 지정 |
 | `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
+</details>
+
+<br>
+
+### λ Haskell (순수 함수형 옵션 프라이서)
+
+<details open>
+<summary><strong>📅 2026-04-07 : Black-Scholes Greeks + GBM Monte Carlo</strong></summary>
+
+#### ✅ 구축 내역
+- GHC 8.8.4 (`apt install ghc`) + `libghc-network-dev` — stdlib 전용, 외부 의존 없음.
+- `pricer-haskell/server.hs`: 순수 함수형 구현, IO 모나드 내 소켓 서버.
+- `normCdf` (Hart 근사), `blackScholes` — call/put/Delta/Gamma/Vega/Theta/d1/d2.
+- `monteCarloFinals` — LCG 의사난수 + Box-Muller 변환 → GBM 경로 생성.
+- `/api/haskell/blackscholes`: 6개 Greeks 반환.
+- `/api/haskell/montecarlo`: 연율화 수익률/변동성 · VaR 95% · CVaR 95% · 평균 최종가격.
+- `ghc -O2 -o server server.hs` → 네이티브 바이너리 컴파일.
+- Svelte: 보라 그라디언트 **Haskell Option Pricer 패널** 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `Could not find module 'Network.Socket'` | `sudo apt install libghc-network-dev` |
 </details>
 
 <br>

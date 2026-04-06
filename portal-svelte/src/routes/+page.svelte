@@ -374,6 +374,33 @@
 			haskellLoading = false;
 		}
 	}
+
+	/** @type {any | null} */
+	let rubyData = $state(null);
+	/** @type {boolean} */
+	let rubyLoading = $state(false);
+
+	async function runRuby() {
+		rubyLoading = true;
+		rubyData = null;
+		try {
+			const [scoreRes, summaryRes] = await Promise.all([
+				fetch('http://localhost:9004/api/ruby/score?debt_ratio=0.4&ltv=0.6&num_defaults=1&annual_income_k=60'),
+				fetch('http://localhost:9004/api/ruby/summary?n=300&seed=42'),
+			]);
+			if (scoreRes.ok && summaryRes.ok) {
+				const score = await scoreRes.json();
+				const summary = await summaryRes.json();
+				rubyData = { ...score, summary };
+			} else {
+				rubyData = { error: 'Ruby 스코어러 오프라인' };
+			}
+		} catch {
+			rubyData = { error: 'Ruby 서버 접속 불가 (:9004)' };
+		} finally {
+			rubyLoading = false;
+		}
+	}
 </script>
 
 <main class="container">
@@ -1208,6 +1235,37 @@
 		{/if}
 	</section>
 
+	<!-- Ruby Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>💎 Ruby (Credit Scorer)</h2>
+				<p class="subtitle">Ruby 3.0 · WEBrick stdlib · 신용 스코어링 · 포트폴리오 요약 (:9004)</p>
+			</div>
+			<button class="ruby-btn" onclick={runRuby} disabled={rubyLoading}>
+				{rubyLoading ? '계산 중...' : '신용 평가'}
+			</button>
+		</div>
+		{#if rubyData}
+			{#if rubyData.error}
+				<div class="empty-box"><p style="color:#f87171">{rubyData.error}</p></div>
+			{:else}
+				<div class="julia-grid">
+					<div class="julia-card ruby-card"><span class="jlabel">Credit Score</span><span class="jval">{rubyData.score}</span></div>
+					<div class="julia-card ruby-card"><span class="jlabel">Grade / Risk</span><span class="jval">{rubyData.grade} / {rubyData.risk_tier}</span></div>
+					<div class="julia-card ruby-card"><span class="jlabel">PD (prob. default)</span><span class="jval">{((rubyData.pd ?? 0) * 100).toFixed(1)}%</span></div>
+					<div class="julia-card ruby-card"><span class="jlabel">Portfolio Mean Score</span><span class="jval">{rubyData.summary?.mean_score?.toFixed(1)}</span></div>
+					<div class="julia-card ruby-card"><span class="jlabel">Portfolio Mean PD</span><span class="jval">{((rubyData.summary?.mean_pd ?? 0) * 100).toFixed(1)}%</span></div>
+					<div class="julia-card ruby-card"><span class="jlabel">P50 / P90 Score</span><span class="jval">{rubyData.summary?.p50_score} / {rubyData.summary?.p90_score}</span></div>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>버튼을 눌러 Ruby 로지스틱 신용 스코어링과 포트폴리오 요약 통계를 실행하세요. (Ruby 서버 :9004 필요)</p>
+			</div>
+		{/if}
+	</section>
+
 	<section class="panel">
 		<h2>System Memory (Latest Logs)</h2>
 		{#if logs.length > 0}
@@ -1799,5 +1857,27 @@
 
 	.haskell-card {
 		border-color: #7c3aed !important;
+	}
+
+	.ruby-btn {
+		background: linear-gradient(135deg, #dc2626, #c2410c);
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.ruby-btn:hover:not(:disabled) {
+		background: linear-gradient(135deg, #b91c1c, #9a3412);
+	}
+	.ruby-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.ruby-card {
+		border-color: #dc2626 !important;
 	}
 </style>

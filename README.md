@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **18개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **19개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -34,6 +34,7 @@
 [Nim Analytics · :8005]       ← 시계열 기술통계 · RSI/MACD/볼린저 모멘텀
 [Scala Streamer · :9003]      ← 스트림 집계 · Holt 이중 지수평활 · SMA/percentile
 [Haskell Pricer · :8006]      ← 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo
+[Ruby Scorer · :9004]         ← 로지스틱 신용 스코어링 · 포트폴리오 요약 통계
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -53,6 +54,7 @@
 | **Nim 2.2.8** | **8005** | **시계열 기술통계 · skewness/kurtosis/autocorr · RSI/MACD/볼린저** |
 | **Scala 3.8.3** | **9003** | **스트림 집계 · Holt 이중 지수평활 · SMA/percentile/EWM** |
 | **Haskell GHC 8.8.4** | **8006** | **순수 함수형 옵션 프라이서 · Black-Scholes Greeks · GBM Monte Carlo** |
+| **Ruby 3.0.2** | **9004** | **로지스틱 신용 스코어링 · 포트폴리오 통계 (WEBrick stdlib)** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -82,6 +84,7 @@
 | **Time-series** | **Nim 2.2.8, asynchttpserver — 시계열 기술통계 + RSI/MACD/Bollinger (:8005)** |
 | **Stream Agg** | **Scala 3.8.3, JDK HttpServer — Holt 이중 지수평활 + 스트림 집계 (:9003)** |
 | **Option Pricer** | **Haskell GHC 8.8.4, Network.Socket — 순수 함수형 Black-Scholes Greeks + GBM Monte Carlo (:8006)** |
+| **Credit Scoring** | **Ruby 3.0.2, WEBrick stdlib — 로지스틱 신용 스코어링 + 포트폴리오 요약 (:9004)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -164,6 +167,14 @@
 | `GET` | `/api/haskell/montecarlo` | GBM Monte Carlo (LCG + Box-Muller) · VaR/CVaR 95% (`s`,`vol`,`mu`,`n`,`days`) |
 | `GET` | `/health` | 헬스체크 |
 
+### Ruby `:9004`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/ruby/score` | 로지스틱 회귀 신용 스코어(0-1000) · 등급 · PD (`debt_ratio`,`ltv`,`num_defaults`,`annual_income_k`) |
+| `GET` | `/api/ruby/summary` | n개 대출 포트폴리오 요약: 평균/std/백분위수 + 리스크 분포 (`n`,`seed`) |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -200,6 +211,11 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **Ruby 신용 스코어링 엔진 추가 (14번째 신규 언어)**
+  - **Ruby 3.0.2** (apt 설치) WEBrick stdlib — 외부 gem 완전 무
+  - `/api/ruby/score`: 로지스틱 회귀 신용 스코어(0-1000) + 등급(A+~D) + PD (`:9004`)
+  - `/api/ruby/summary`: n개 대울 포트폴리오 요약 (평균/표준편차/백분위수 + 리스크 분포)
+  - Svelte: **Ruby Credit Scorer 패널** 추가 (써레드 빨겕 그라디언트)
 - [x] **2026-04-07** — **Haskell 옵션 프라이서 추가 (13번째 신규 언어)**
   - **Haskell GHC 8.8.4** (apt 설치) `Network.Socket` + `libghc-network-dev` — Stdlib 전용
   - `/api/haskell/blackscholes`: Black-Scholes 옵션 가격 + Delta/Gamma/Vega/Theta (`:8006`)
@@ -561,6 +577,27 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 |:---|:---|
 | `/usr/local/lib/R` 쓰기 권한 없음 | `~/R/library` 사용자 라이브러리 경로 지정 |
 | `curl` 패키지 빌드 실패 | `libcurl4-openssl-dev` + `libsodium-dev` sudo 설치 후 재시도 |
+</details>
+
+<br>
+
+### 💎 Ruby (신용 스코어링 엔진)
+
+<details open>
+<summary><strong>📅 2026-04-07 : 로지스틱 회귀 신용 스코어 + 포트폴리오 요약</strong></summary>
+
+#### ✅ 구축 내역
+- Ruby 3.0.2 (`apt install ruby`) + WEBrick stdlib — 외부 gem 완전 무.
+- `scorer-ruby/server.rb`: `credit_score` 함수 — 4-feature 로지스틱 회귀 (debt_ratio/LTV/num_defaults/income).
+- 점수 0-1000, 등급 A+~D, 리스크 티어 LOW/MEDIUM/HIGH/CRITICAL.
+- `/api/ruby/score`: 개별 신용 평가.
+- `/api/ruby/summary`: LCG 의사난수 → n개 대출 시뮬레이션 → 분포/백분위수/리스크 분포.
+- Svelte: 쉐이드 빨강 그라디언트 **Ruby Credit Scorer 패널** 추가.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `ruby` apt 패키지명 | `apt install ruby` (버전 3.0.2 설치됨) |
 </details>
 
 <br>

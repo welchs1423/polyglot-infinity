@@ -1,5 +1,5 @@
 use axum::{
-    routing::post,
+    routing::{get, post},
     Router,
     response::IntoResponse,
     Json,
@@ -35,12 +35,27 @@ async fn main() {
 
     // 3. Axum 라우터 구성 및 상태(커넥션 풀) 공유
     let app = Router::new()
+        .route("/api/rust/status", get(status_handler))
         .route("/api/bulk-insert", post(bulk_insert))
         .with_state(pool);
 
-    println!("[Rust Pipeline] Server is running on http://0.0.0.0:3000");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    println!("[Rust Pipeline] Server is running on http://0.0.0.0:8081");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8081").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+// 상태 확인 핸들러
+async fn status_handler(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
+    let row_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM risk_logs")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+
+    Json(json!({
+        "status": "online",
+        "module": "Rust-Pipeline-v1",
+        "total_risk_logs": row_count
+    }))
 }
 
 // 대규모 데이터 적재 핸들러

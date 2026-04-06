@@ -1,224 +1,308 @@
-# 🌈 Polyglot 5: Infinity Project
-> **5대 핵심 언어(Svelte, Go, Python, Rust, C++) 정복을 위한 통합 포털**
+# 🌈 Polyglot Infinity
 
-본 프로젝트는 각 언어의 성능을 극대화하여 실시간 데이터 수집부터 AI 분석까지 구현하는 개발자의 성장 기록입니다.
-현재 **Svelte 5(UI) ↔ Go(Hub) ↔ Python + C++ FFI(Risk Engine) ↔ Rust(Data Pipeline) ↔ PostgreSQL & Redis**의 6대 기술 스택이 유기적으로 연결되어, 실시간 외부 금융 데이터 기반의 초고속 마이크로 대출 리스크 분석(Micro-lending Risk Analysis)을 수행하는 다국어(Polyglot) 마이크로서비스로 동작 중입니다.
-
----
-
-## 🛠 현재 기술 스택 (Tech Stack)
-
-### 🎨 Frontend
-- **Framework**: SvelteKit (Svelte 5)
-- **Runtime**: **Bun**
-- **Style**: Tailwind CSS v4
-- **Language**: TypeScript
-
-### ⚙️ Backend & Engine
-- **Go**: 메인 API 서버, 트래픽 중계 및 고성능 처리.
-- **Python**: FastAPI 기반 데이터 분석 및 AI 엔진.
-- **Rust**: 고성능 데이터 파이프라인.
-- **C++**: 저수준 최적화 모듈.
-
-### 🗄️ Database & Infra
-- **Primary**: **PostgreSQL**
-- **Driver**: Go `lib/pq`, `go-redis/v9`
-- **Environment**: WSL2 (Ubuntu), OrbStack
+> 5개 언어(Svelte · Go · Python · Rust · C++)와 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
 
-## 🏗️ 개발 로그 및 트러블슈팅 (Dev Log)
+## 📐 시스템 아키텍처
 
-### 🗄️ Database (PostgreSQL)
-> **역할:** 데이터 영구 저장, 시스템 로그 기록
+```
+[Svelte 5 · :5173]
+       │ fetch
+       ▼
+[Go API Hub · :8080] ──────────────────────────────┐
+       │                                            │
+       ├─ Cache Hit → [Redis · :6379]               │
+       │                                            │
+       ├─ Cache Miss → [Python FastAPI · :8000]     │
+       │                    └─ C++ FFI (libcore.so) │
+       │                                            │
+       └─ Pipeline → [Rust Axum · :8081] ───────────┘
+                          └─ [PostgreSQL · :5433]
+```
+
+| 서비스 | 포트 | 역할 |
+|:---|:---:|:---|
+| Svelte 5 (SvelteKit + Bun) | 5173 | UI · 실시간 대시보드 |
+| Go (`net/http`) | 8080 | API Hub · Redis 캐싱 · 프록시 |
+| Python (FastAPI) | 8000 | 다중 환율 수집 · C++ FFI 리스크 연산 |
+| Rust (Axum + tokio) | 8081 | 고성능 벌크 인서트 파이프라인 |
+| PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
+| Redis | 6379 | Python 분석 결과 10초 캐싱 |
+
+---
+
+## 🛠 기술 스택
+
+| 영역 | 기술 |
+|:---|:---|
+| **Frontend** | SvelteKit (Svelte 5), Bun, Tailwind CSS v4, TypeScript |
+| **API Gateway** | Go 1.23+, `net/http`, `lib/pq`, `go-redis/v9` |
+| **Risk Engine** | Python 3, FastAPI, `ctypes` (C++ FFI) |
+| **Core** | C++ (`-O3`), `libcore.so` 공유 라이브러리 |
+| **Pipeline** | Rust, Axum, tokio, sqlx |
+| **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
+
+---
+
+## 🔌 API 명세
+
+### Go `:8080`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/status` | 전체 시스템 상태 · Python 분석 결과 · Rust 상태 집계 |
+| `GET` | `/api/history` | `system_logs` 최신 10건 조회 |
+| `POST` | `/api/pipeline/trigger` | Rust 벌크 인서트 트리거 · 결과 DB 기록 |
+
+### Python `:8000`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/analyze` | KRW·JPY·EUR·CNY 환율 수집 → C++ 복합 리스크 계산 |
+
+### Rust `:8081`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/rust/status` | 파이프라인 상태 · `risk_logs` 총 레코드 수 반환 |
+| `POST` | `/api/bulk-insert` | 10,000건 리스크 데이터 트랜잭션 일괄 적재 |
+
+---
+
+## 🗄️ DB 스키마
+
+```sql
+-- Go (polyglot_db)
+CREATE TABLE system_logs (
+    id         SERIAL PRIMARY KEY,
+    source     TEXT,
+    message    TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Rust (postgres DB · :5433)
+CREATE TABLE IF NOT EXISTS risk_logs (
+    id         SERIAL PRIMARY KEY,
+    user_id    INT NOT NULL,
+    risk_score FLOAT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## 🚀 마일스톤 (최신순)
+
+- [x] **2026-04-07** — 전 서비스 연동 완성 및 UI 기능 대폭 강화
+  - Rust 포트 불일치 버그 수정 (3000 → **8081**)
+  - Rust `GET /api/rust/status` 신규 추가 (DB 레코드 수 포함)
+  - Go `POST /api/pipeline/trigger` 신규 추가 (Rust 프록시 + DB 로깅)
+  - Python 단일 통화(KRW) → **4개 통화(KRW·JPY·EUR·CNY) 가중합** 복합 리스크 연산
+  - Svelte: **Auto-Sync 토글** (10초 자동 갱신) 추가
+  - Svelte: **Bulk Insert 트리거 패널** 추가 (소요시간·적재 건수 표시)
+  - Svelte: Python 카드에 **멀티 통화 칩**, Rust 카드에 **DB 레코드 수** 표시
+- [x] **2026-03-18** — Rust 파이프라인 실전 가동 · Docker PostgreSQL 컨테이너 연동
+- [x] **2026-03-07** — 외부 금융 API(USD/KRW) 연동 · Svelte 금융 데이터 시각화
+- [x] **2026-03-05** — C++ Core 엔진 구축 · Python FFI 연동 · Python 대비 **47배** 속도 향상
+- [x] **2026-02-25** — Svelte 상태 카드 UI 고도화 · TypeScript/CSS 경고 제거
+- [x] **2026-02-24** — Rust Axum 파이프라인 초기화 · `--release` 최적화 검증
+- [x] **2026-02-20** — Redis Cache-Aside 패턴 도입 (TTL 10s)
+- [x] **2026-02-18** — Go `/api/history` 로그 조회 API · Svelte 로그 테이블 UI
+- [x] **2026-02-16** — PostgreSQL 스키마 설계 · Go DB 연동 · Go 1.23+ 업그레이드
+- [x] **2026-02-15** — Svelte ↔ Go ↔ Python 3단 대통합 성공
+- [x] **2026-02-14** — 프로젝트 초기화 (SvelteKit + Bun, Go API, Tailwind CSS v4)
+- [ ] Docker Compose 전체 스택 컨테이너화
+
+---
+
+## 🏗️ 개발 로그
+
+### 🎨 Svelte 5 (Frontend)
 
 <details open>
-<summary><strong>📅 2026-02-16 : DB 구축 및 스키마 설계</strong></summary>
+<summary><strong>📅 2026-04-07 : UI 기능 대폭 강화</strong></summary>
 
 #### ✅ 구축 내역
-- WSL 환경 내 PostgreSQL 설치 및 서비스 구동.
-- 전용 유저(`dev`) 및 데이터베이스(`polyglot_db`) 생성.
-- 시스템 로그 저장을 위한 `system_logs` 테이블 스키마 설계.
-</details>
-
-<br>
-
-### Go (Backend)
-> **역할:** 프론트엔드와 엔진 사이의 중계(Proxy), 메인 비즈니스 로직
-
-
-<details open>
-<summary><strong>📅 2026-02-18 : 로그 조회 API 개발</strong></summary>
-
-#### ✅ 구축 내역
-- **History API (`/api/history`)**: PostgreSQL에 저장된 로그를 최신순(DESC)으로 조회하여 반환.
-- **DB 조회 로직**: `Query` 및 `Scan`을 활용한 데이터 매핑 구현.
+- **Auto-Sync 토글**: 활성화 시 10초마다 `/api/status` · `/api/history` 자동 갱신. `onDestroy`로 인터벌 메모리 정리.
+- **Rust Pipeline 패널**: `POST /api/pipeline/trigger` 호출 후 적재 건수·소요 시간 실시간 표시.
+- **멀티 통화 칩**: Python 카드에 KRW·JPY·EUR·CNY 환율 값을 뱃지로 표시.
+- **Rust DB 레코드 수**: Rust 카드에 `total_risk_logs` 값 표시.
 </details>
 
 <details>
-<summary><strong>📅 2026-02-16 : DB 연동 및 버전 업그레이드</strong></summary>
+<summary><strong>📅 2026-02-25 : 대시보드 고도화</strong></summary>
 
 #### ✅ 구축 내역
-- `lib/pq` 드라이버를 활용한 PostgreSQL 접속 구현 (`main.go`).
-- API 요청 시 자동으로 DB에 로그를 적재(`INSERT`)하는 로직 추가.
-- Go 최신 문법 지원을 위한 런타임 업그레이드 (1.18 → 1.23+).
-
-#### 🔍 트러블슈팅 (Troubleshooting)
-| 이슈 (Issue) | 원인 및 해결 (Solution) |
-| :--- | :--- |
-| **패키지 버전 에러** | `slices` 등 최신 패키지 미지원(Go 1.18) → PPA 추가하여 Go 1.23+로 업그레이드. |
-| **VS Code 멈춤** | Go 버전 변경으로 인한 `gopls` 재설정 지연 → 언어 서버(Language Server) 리스타트. |
+- JSON 데이터를 상태 카드 그리드로 재설계하여 가독성 극대화.
+- JSDoc `@type` 도입으로 Svelte 5 `$state` TypeScript 추론 에러 해결.
+- CSS `background-clip` 표준 속성 적용으로 브라우저 호환성 경고 제거.
 </details>
 
 <details>
-<summary><strong>📅 2026-02-15: Python 엔진 연동</strong></summary>
-
-#### ✅ 구축 내역
-- Python 서버(`localhost:8000`)로 HTTP 요청 전송 및 응답 수신 로직 구현.
-- Svelte에게 최종 데이터를 병합하여 반환하는 구조체 설계.
-
-#### 🔍 트러블슈팅 (Troubleshooting)
-| 이슈 (Issue) | 원인 및 해결 (Solution) |
-| :--- | :--- |
-| **컴파일 에러 (Syntax)** | 구조체 마지막 필드 뒤 콤마(`,`) 누락 → Go 문법 준수하여 수정. |
-</details>
-
-<details>
-<summary><strong>📅 2026-02-14: 초기 서버 구축</strong></summary>
-
-#### ✅ 구축 내역
-- `net/http` 기반 웹 서버 구동.
-- CORS (Cross-Origin Resource Sharing) 정책 설정 완료.
-</details>
-
-<br>
-
-### ⚡ C++ (Low-level Core)
-> **역할:** 하드웨어 성능을 극한으로 끌어올리는 초고속 수학 연산 엔진
-
-<details open>
-<summary><strong>📅 2026-03-05 (최신): C++ 코어 엔진 및 Python FFI 연동 완료</strong></summary>
-
-#### ✅ 구축 내역
-- **고성능 모듈 빌드**: g++ 최적화 옵션(`-O3`)을 적용한 공유 라이브러리(`libcore.so`) 생성.
-- **Python FFI 브릿지**: `ctypes`를 활용하여 Python에서 C++ 함수를 직접 호출하는 인터페이스 구축.
-- **성능 비약적 향상**: 순수 Python 연산 대비 약 **47배** 이상의 처리 속도 향상 검증.
-- **시스템 대통합**: Go 백엔드를 통해 Svelte UI까지 C++ 연산 결과가 실시간으로 전달되도록 통합 성공.
-</details>
-
-### 🐍 Python (Engine)
-> **역할:** 데이터 분석 및 C++ 엔진을 통한 가속 연산 수행
-
-<details>
-<summary><strong>📅 2026-02-15: 엔진 구축 및 환경 최적화</strong></summary>
-
-#### ✅ 구축 내역
-- FastAPI 서버 구축 (`main.py`) 및 JSON 응답 API 구현.
-- 가상환경(`venv`) 구성 및 의존성 관리(`requirements.txt`).
-- `.gitignore` 적용을 통한 저장소 경량화.
-
-#### 🔍 트러블슈팅 (Troubleshooting)
-| 이슈 (Issue) | 원인 및 해결 (Solution) |
-| :--- | :--- |
-| **`venv` 생성 실패** | `ensurepip` 누락 → `sudo apt install python3-venv` 설치. |
-| **`pip`/`uvicorn` 미인식** | 시스템 패키지 부재 → `python3-pip` 설치 및 `python3 -m` 실행 방식 적용. |
-| **`ImportError`** | `from fastapi import fastapi` 오타 → `FastAPI` (대문자)로 수정. |
-| **Git 저장소 오염** | `venv` 폴더 업로드됨 → `git rm -r --cached venv/`로 인덱스 정화. |
-</details>
-
-### 🦀 Rust (Data Pipeline)
-> **역할:** 초고속 데이터 병렬 처리 및 대규모 연산 백그라운드 워커
-
-<details open>
-<summary><strong>📅 2026-02-24 : Rust 파이프라인 뼈대 구축</strong></summary>
-
-#### ✅ 구축 내역
-- **웹 프레임워크**: `axum` 및 `tokio` 비동기 런타임을 활용한 고성능 API 서버 구동 (Port 8081).
-- **성능 검증**: `--release` 모드를 통한 컴파일러 최적화(Dead Code Elimination 등) 및 연산 한계 돌파 테스트 완료.
-- **Git 최적화**: `.gitignore` 설정을 통해 무거운 `target/` 빌드 디렉토리 추적 제외 완료.
-</details>
-
-<br>
-
-### 🎨 Frontend (Svelte 5)
-> **역할:** 사용자 인터페이스, 실시간 데이터 시각화
-
-<details open>
-<summary><strong>📅 2026-02-25 : 대시보드 UI 고도화 및 코드 안정화</strong></summary>
-
-#### ✅ 구축 내역
-- **UI/UX 대규모 개선**: 날것의 JSON 데이터를 상태 카드(Status Cards) 그리드로 분리하여 시스템 가독성 극대화.
-- **타입 안정성 (Type Safety) 확보**: JSDoc(`@type`)을 도입하여 Svelte 5 상태(`$state`) 변수의 TypeScript 추론 에러 완벽 해결.
-- **웹 표준 준수**: CSS `background-clip` 표준 속성 적용으로 브라우저 호환성 경고(Warning) 제거.
-</details>
-
-<details open>
-<summary><strong>📅 2026-02-18 : 시스템 로그 대시보드 구현</strong></summary>
-
-#### ✅ 구축 내역
-- **로그 시각화 UI**: 백엔드에서 받은 시스템 로그를 테이블 형태로 출력하는 컴포넌트 구현.
-- **상태 동기화 로직**: `Status Check` → `Log Fetch`로 이어지는 비동기 연쇄 호출(Chaining) 처리.
-</details>
-
-<details>
-<summary><strong>📅 2026-02-14: 프로젝트 스캐폴딩</strong></summary>
+<summary><strong>📅 2026-02-14 : 프로젝트 스캐폴딩</strong></summary>
 
 #### ✅ 구축 내역
 - Bun 런타임 기반 SvelteKit 프로젝트 초기화.
 - Tailwind CSS v4 디자인 시스템 통합.
-- 백엔드(Go) 통신을 위한 Fetch 로직 구현.
+- Go 백엔드 통신용 Fetch 로직 구현.
 </details>
 
-### ⚡ Redis (Cache)
-> **역할:** 데이터 캐싱을 통한 엔진 부하 감소 및 응답 속도 최적화
+<br>
+
+### ⚙️ Go (API Hub)
+
+<details open>
+<summary><strong>📅 2026-04-07 : Pipeline Trigger API 추가</strong></summary>
+
+#### ✅ 구축 내역
+- **`POST /api/pipeline/trigger`**: Rust `:8081/api/bulk-insert`를 프록시 호출, 결과를 `system_logs`에 기록 후 JSON 반환.
+- Rust 포트 불일치 버그 수정 (`:3000` → `:8081`).
+</details>
+
+<details>
+<summary><strong>📅 2026-02-18 : 로그 조회 API</strong></summary>
+
+#### ✅ 구축 내역
+- `GET /api/history`: PostgreSQL 로그 최신 10건 DESC 조회.
+</details>
+
+<details>
+<summary><strong>📅 2026-02-16 : DB 연동 · 버전 업그레이드</strong></summary>
+
+#### ✅ 구축 내역
+- `lib/pq` 기반 PostgreSQL 접속 및 API 요청 시 자동 로그 적재.
+- Go 1.18 → 1.23+ 업그레이드.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| 최신 패키지 미지원 | PPA 추가 후 Go 1.23+ 업그레이드 |
+| VS Code `gopls` 멈춤 | 언어 서버 재시작 |
+</details>
+
+<details>
+<summary><strong>📅 2026-02-14 : 초기 서버 구축</strong></summary>
+
+#### ✅ 구축 내역
+- `net/http` 기반 웹 서버 구동.
+- CORS 정책 설정 완료.
+</details>
+
+<br>
+
+### 🐍 Python (Risk Engine)
+
+<details open>
+<summary><strong>📅 2026-04-07 : 다중 통화 복합 리스크 분석</strong></summary>
+
+#### ✅ 구축 내역
+- **4개 통화 동시 수집**: KRW(45%) · JPY(25%) · EUR(20%) · CNY(10%) 가중합으로 복합 리스크 이터레이션 계산.
+- API 실패 시 통화별 폴백 값 개별 적용.
+- 응답에 `rates` 객체 및 `rate_summary` 필드 추가.
+</details>
+
+<details>
+<summary><strong>📅 2026-03-07 : 외부 환율 API 연동</strong></summary>
+
+#### ✅ 구축 내역
+- `open.er-api.com`에서 실시간 USD/KRW 환율 수집.
+- 환율 기반 C++ FFI 연산 이터레이션 동적 계산.
+</details>
+
+<details>
+<summary><strong>📅 2026-02-15 : 엔진 구축</strong></summary>
+
+#### ✅ 구축 내역
+- FastAPI 서버 구축 및 `venv` 가상환경 구성.
+
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| `venv` 생성 실패 | `sudo apt install python3-venv` |
+| `uvicorn` 미인식 | `python3-pip` 설치 후 `python3 -m` 방식 적용 |
+| `ImportError` | `FastAPI` 대소문자 오타 수정 |
+| Git 저장소 오염 | `git rm -r --cached venv/` |
+</details>
+
+<br>
+
+### ⚡ C++ (Core Engine)
+
+<details open>
+<summary><strong>📅 2026-03-05 : FFI 연동 완료</strong></summary>
+
+#### ✅ 구축 내역
+- g++ `-O3` 최적화 옵션으로 `libcore.so` 공유 라이브러리 빌드.
+- Python `ctypes`로 C++ 함수 직접 호출 인터페이스 구축.
+- 순수 Python 대비 **약 47배** 처리 속도 향상 검증.
+</details>
+
+<br>
+
+### 🦀 Rust (Data Pipeline)
+
+<details open>
+<summary><strong>📅 2026-04-07 : 상태 API 추가 · 포트 통일</strong></summary>
+
+#### ✅ 구축 내역
+- **`GET /api/rust/status`** 신규 추가: `risk_logs` 총 레코드 수를 집계하여 반환.
+- 포트 `:3000` → **`:8081`** 변경 (Go와 일치).
+</details>
+
+<details>
+<summary><strong>📅 2026-03-18 : 파이프라인 실전 가동</strong></summary>
+
+#### ✅ 구축 내역
+- `sqlx` 비동기 드라이버 · 트랜잭션 기반 벌크 인서트 구현.
+- 10,000건 리스크 데이터 초고속 DB 적재 성공.
+- Docker 기반 PostgreSQL `:5433` 컨테이너 연동.
+</details>
+
+<details>
+<summary><strong>📅 2026-02-24 : 뼈대 구축</strong></summary>
+
+#### ✅ 구축 내역
+- Axum + tokio 비동기 서버 초기화.
+- `--release` 모드 컴파일러 최적화 검증.
+- `target/` 빌드 디렉토리 `.gitignore` 등록.
+</details>
+
+<br>
+
+### 🗄️ PostgreSQL / Redis
 
 <details open>
 <summary><strong>📅 2026-02-20 : Redis 캐싱 레이어 도입</strong></summary>
 
 #### ✅ 구축 내역
-- **Cache-Aside 패턴**: 요청 시 Redis를 우선 조회(Cache Hit)하고, 데이터가 없을 경우에만 Python 엔진을 호출(Cache Miss)하는 로직 구현.
-- **TTL(Time To Live) 설정**: 캐시 데이터의 유효 시간을 10초로 설정하여 데이터 정합성 유지.
-- **성능 개선**: 캐시 적중 시 엔진 호출 프로세스를 생략하여 즉각적인 응답 반환 확인.
+- **Cache-Aside 패턴**: Redis 우선 조회 → Miss 시에만 Python 엔진 호출.
+- TTL 10초 설정으로 데이터 정합성 유지.
 
-#### 🔍 트러블슈팅 (Troubleshooting)
-| 이슈 (Issue) | 원인 및 해결 (Solution) |
-| :--- | :--- |
-| **Panic (Nil Pointer)** | Redis 클라이언트(`rdb`) 초기화 누락 -> `NewClient` 코드 추가로 해결. |
-| **Key 정합성** | JSON 필드명 오타(`anlysis`) -> `analysis`로 교정하여 프론트엔드 연동 정상화. |
+#### 🔍 트러블슈팅
+| 이슈 | 해결 |
+|:---|:---|
+| Panic (Nil Pointer) | Redis `NewClient` 초기화 코드 누락 추가 |
+| JSON 키 오타 | `anlysis` → `analysis` 수정 |
+</details>
+
+<details>
+<summary><strong>📅 2026-02-16 : DB 구축</strong></summary>
+
+#### ✅ 구축 내역
+- WSL 환경 내 PostgreSQL 설치 및 서비스 구동.
+- `dev` 유저 · `polyglot_db` 데이터베이스 · `system_logs` 테이블 설계.
 </details>
 
 ---
 
-## 🚀 프로젝트 마일스톤 (최신순)
-
-- [x] [2026-03-18] **Rust 기반 고성능 데이터 파이프라인 실전 가동** [cite: 2026-03-18]
-    - `sqlx` 비동기 드라이버 및 트랜잭션 기반 벌크 인서트 구현 [cite: 2026-03-05]
-    - 10,000건의 리스크 평가 데이터 초고속 DB 적재 성공 [cite: 2026-03-05]
-    - Docker 기반 PostgreSQL 컨테이너 환경 통합 완료 [cite: 2026-03-05]
-- [x] [2026-03-07] **마이크로 대출 리스크 평가 시뮬레이션을 위한 외부 금융 API 연동 및 UI 표출**
-    - `urllib`를 활용한 실시간 달러/원(USD/KRW) 환율 데이터 파이프라인 구축
-    - C++ FFI 코어와 연계한 대출 리스크(Risk Score) 초고속 연산 처리 연동
-    - Svelte 대시보드 내 금융 데이터 실시간 시각화 완료
-- [x] [2026-03-05] **최종 병기 C++ Core 엔진 구축 및 Python FFI(Foreign Function Interface) 연동 성공**
-    - 1억 번의 연산 테스트에서 Python 대비 약 **47배** 이상의 속도 향상 달성
-    - `libcore.so` 공유 라이브러리 빌드 및 전체 시스템 아키텍처 통합 완료
-- [x] [2026-02-25] **Svelte 대시보드 상태 카드 UI 고도화 및 TypeScript/CSS 경고 완벽 제거**
-- [x] [2026-02-24] **Rust 기반 고성능 데이터 파이프라인 모듈(Axum) 초기화 및 최적화 테스트 완료**
-- [x] [2026-02-20] **Redis 캐싱 레이어 도입 및 성능 최적화 성공**
-- [x] [2026-02-16] **PostgreSQL 데이터 스키마 설계 및 연동 완료**
-- [x] [2026-02-15] **Svelte ↔ Go ↔ Python 3단 대통합 성공**
-- [x] [2026-02-15] Python 분석 엔진 구축 및 가상환경 설정
-- [x] [2026-02-14] Bun & SvelteKit 프로젝트 초기화 성공
-- [x] [2026-02-14] Tailwind CSS v4 디자인 시스템 적용
-- [x] [2026-02-14] Go 기반 API 서버 구축 (CORS 해결)
-- [ ] Docker 컨테이너 환경 구축
-
----
-
 ## 🛡️ 유지보수 가이드
+
 1. **Python 환경**: 실행 전 반드시 `source venv/bin/activate` 활성화.
-2. **Git 관리**: `venv/`, `node_modules/`, `main` (Go 바이너리) 등은 절대 커밋하지 않음. 실수로 추가 시 즉시 `git rm --cached` 수행.
-3. **기록 원칙**: 작업 완료 시 README의 해당 언어 섹션 최상단에 날짜별 로그를 추가한다.
+2. **Git 관리**: `venv/`, `node_modules/`, Go 바이너리(`main`)는 커밋 금지. 실수 추가 시 `git rm --cached` 즉시 수행.
+3. **기록 원칙**: 작업 완료 시 README 해당 섹션 최상단에 날짜별 로그 추가.
 
 ---
-*“1류는 도구에 매몰되지 않고, 도구를 지배하여 가치를 창출한다.”*
+
+*"1류는 도구에 매몰되지 않고, 도구를 지배하여 가치를 창출한다."*

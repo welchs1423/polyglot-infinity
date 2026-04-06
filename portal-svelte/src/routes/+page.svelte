@@ -1,4 +1,6 @@
 <script>
+	import { onMount, onDestroy } from "svelte";
+
 	/** @type {any} */
 	let systemData = $state(null);
 
@@ -8,6 +10,18 @@
 	/** @type {any[]} */
 	let logs = $state([]);
 
+	/** @type {{ status: string, inserted_rows?: number, elapsed_time_ms?: number, message?: string } | null} */
+	let pipelineResult = $state(null);
+
+	/** @type {boolean} */
+	let pipelineLoading = $state(false);
+
+	/** @type {boolean} */
+	let autoSync = $state(false);
+
+	/** @type {number | null} */
+	let autoSyncInterval = $state(null);
+
 	async function syncSystem() {
 		try {
 			const res = await fetch("http://localhost:8080/api/status");
@@ -16,7 +30,6 @@
 			errorMsg = null;
 			fetchLogs();
 		} catch (err) {
-			// 에러 객체에서 안전하게 메시지 추출
 			errorMsg = err instanceof Error ? err.message : "Unknown Error";
 			systemData = null;
 		}
@@ -30,6 +43,41 @@
 			console.error("Failed to fetch logs");
 		}
 	}
+
+	async function triggerPipeline() {
+		pipelineLoading = true;
+		pipelineResult = null;
+		try {
+			const res = await fetch(
+				"http://localhost:8080/api/pipeline/trigger",
+				{ method: "POST" },
+			);
+			pipelineResult = await res.json();
+			fetchLogs();
+		} catch (err) {
+			pipelineResult = {
+				status: "error",
+				message: "Rust Pipeline unreachable",
+			};
+		} finally {
+			pipelineLoading = false;
+		}
+	}
+
+	function toggleAutoSync() {
+		autoSync = !autoSync;
+		if (autoSync) {
+			syncSystem();
+			autoSyncInterval = setInterval(syncSystem, 10000);
+		} else {
+			if (autoSyncInterval !== null) clearInterval(autoSyncInterval);
+			autoSyncInterval = null;
+		}
+	}
+
+	onDestroy(() => {
+		if (autoSyncInterval !== null) clearInterval(autoSyncInterval);
+	});
 </script>
 
 <main class="container">
@@ -41,7 +89,17 @@
 				<h2>System Status</h2>
 				<p class="subtitle">Svelte 5 ↔ Go ↔ Python ↔ Rust ↔ DB</p>
 			</div>
-			<button class="sync-btn" onclick={syncSystem}>Sync System</button>
+			<div class="btn-group">
+				<button
+					class="auto-btn {autoSync ? 'active' : ''}"
+					onclick={toggleAutoSync}
+				>
+					{autoSync ? "⏸ Auto-Sync ON" : "▶ Auto-Sync"}
+				</button>
+				<button class="sync-btn" onclick={syncSystem}
+					>Sync System</button
+				>
+			</div>
 		</div>
 
 		{#if errorMsg}
@@ -83,6 +141,18 @@
 							<p class="rate">
 								💸 {systemData.engine_analysis.recommendation}
 							</p>
+							{#if systemData.engine_analysis.rates}
+								<div class="currency-grid">
+									{#each Object.entries(systemData.engine_analysis.rates) as [currency, value]}
+										<span class="currency-chip"
+											>{currency}: {typeof value ===
+											"number"
+												? value.toFixed(2)
+												: value}</span
+										>
+									{/each}
+								</div>
+							{/if}
 							<p class="risk">
 								⚠️ Risk Score: {systemData.engine_analysis
 									.computation_result}
@@ -102,6 +172,11 @@
 						<span class="version"
 							>{systemData.pipeline_node.module}</span
 						>
+						{#if systemData.pipeline_node.total_risk_logs !== undefined}
+							<span class="version"
+								>DB records: {systemData.pipeline_node.total_risk_logs.toLocaleString()}</span
+							>
+						{/if}
 					{:else}
 						<p class="status error">● Offline</p>
 					{/if}
@@ -113,6 +188,47 @@
 					우측 상단의 Sync System 버튼을 눌러 전체 시스템을
 					스캔하세요.
 				</p>
+			</div>
+		{/if}
+	</section>
+
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>🦀 Rust Pipeline</h2>
+				<p class="subtitle">10,000건 리스크 데이터 DB 일괄 적재</p>
+			</div>
+			<button
+				class="trigger-btn"
+				onclick={triggerPipeline}
+				disabled={pipelineLoading}
+			>
+				{pipelineLoading ? "⏳ Running..." : "🚀 Trigger Bulk Insert"}
+			</button>
+		</div>
+
+		{#if pipelineResult}
+			{#if pipelineResult.status === "success"}
+				<div class="pipeline-result success">
+					<span class="result-icon">✅</span>
+					<span
+						><strong
+							>{pipelineResult.inserted_rows?.toLocaleString()}</strong
+						>건 적재 완료</span
+					>
+					<span class="result-time"
+						>⏱ {pipelineResult.elapsed_time_ms}ms</span
+					>
+				</div>
+			{:else}
+				<div class="pipeline-result error-result">
+					<span class="result-icon">❌</span>
+					<span>{pipelineResult.message ?? "Unknown error"}</span>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>버튼을 눌러 Rust 파이프라인을 가동하세요.</p>
 			</div>
 		{/if}
 	</section>
@@ -311,5 +427,85 @@
 		color: #f87171;
 		margin: 0;
 		word-break: break-all;
+	}
+	.btn-group {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+	.auto-btn {
+		background: #374151;
+		color: #94a3b8;
+		border: 1px solid #4b5563;
+		padding: 0.75rem 1.25rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.auto-btn.active {
+		background: #065f46;
+		color: #6ee7b7;
+		border-color: #059669;
+	}
+	.auto-btn:hover {
+		background: #4b5563;
+	}
+	.currency-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin: 0.4rem 0;
+	}
+	.currency-chip {
+		background: #1e3a5f;
+		color: #93c5fd;
+		font-size: 0.72rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: 4px;
+		font-weight: 600;
+	}
+	.trigger-btn {
+		background: #7c3aed;
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.trigger-btn:hover:not(:disabled) {
+		background: #6d28d9;
+	}
+	.trigger-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	.pipeline-result {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem 1.5rem;
+		border-radius: 8px;
+		font-size: 1rem;
+	}
+	.pipeline-result.success {
+		background: #052e16;
+		border: 1px solid #16a34a;
+		color: #86efac;
+	}
+	.pipeline-result.error-result {
+		background: #450a0a;
+		border: 1px solid #dc2626;
+		color: #fca5a5;
+	}
+	.result-icon {
+		font-size: 1.3rem;
+	}
+	.result-time {
+		margin-left: auto;
+		color: #64748b;
+		font-size: 0.9rem;
 	}
 </style>

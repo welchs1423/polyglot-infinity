@@ -51,6 +51,7 @@ func main() {
 
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/history", historyHandler)
+	http.HandleFunc("/api/pipeline/trigger", pipelineTriggerHandler)
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -113,6 +114,35 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func pipelineTriggerHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method Not Allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	resp, err := http.Post("http://localhost:8081/api/bulk-insert", "application/json", nil)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "error",
+			"message": "Rust Pipeline is unreachable",
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	_, _ = db.Exec("INSERT INTO system_logs (source, message) VALUES ($1, $2)",
+		"Rust-Pipeline", fmt.Sprintf("Bulk insert triggered: %v rows", result["inserted_rows"]))
+
+	json.NewEncoder(w).Encode(result)
 }
 
 func historyHandler(w http.ResponseWriter, r *http.Request) {

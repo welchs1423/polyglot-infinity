@@ -1,0 +1,245 @@
+// ============================================================
+// Gleam 1.15 Functional Pipeline Engine
+// Port: 4001  (HTTP served by hub_gleam_server.erl via gen_tcp)
+// Endpoints:
+//   GET /health
+//   GET /api/gleam/pipeline
+//   GET /api/gleam/risk
+// ============================================================
+
+import gleam/float
+import gleam/int
+import gleam/list
+import gleam/result
+import gleam/string
+
+// ---------- Math ----------
+
+fn float_sqrt(x: Float) -> Float {
+  float.square_root(x) |> result.unwrap(0.0)
+}
+
+fn float_pow_int(base: Float, n: Int) -> Float {
+  case n {
+    0 -> 1.0
+    k -> base *. float_pow_int(base, k - 1)
+  }
+}
+
+fn factorial(n: Int) -> Int {
+  case n {
+    0 -> 1
+    1 -> 1
+    _ -> n * factorial(n - 1)
+  }
+}
+
+fn float_log(x: Float) -> Float {
+  case x >. 0.0 {
+    False -> -999.0
+    True -> {
+      let z = { x -. 1.0 } /. { x +. 1.0 }
+      let terms = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+      let sum =
+        list.fold(terms, 0.0, fn(acc, n) {
+          acc +. float_pow_int(z, n) /. int.to_float(n)
+        })
+      2.0 *. sum
+    }
+  }
+}
+
+fn float_cos(x: Float) -> Float {
+  let terms = [0, 2, 4, 6, 8, 10, 12]
+  list.index_fold(terms, 0.0, fn(acc, n, i) {
+    let sign = case i % 2 == 0 {
+      True -> 1.0
+      False -> -1.0
+    }
+    acc +. sign *. float_pow_int(x, n) /. int.to_float(factorial(n))
+  })
+}
+
+// ---------- LCG pseudo-random + Box-Muller ----------
+
+fn lcg_next(seed: Int) -> Int {
+  { 1_664_525 * seed + 1_013_904_223 }
+  |> int.modulo(2_147_483_648)
+  |> result.unwrap(0)
+}
+
+fn lcg_seq_loop(seed: Int, remaining: Int, acc: List(Float)) -> List(Float) {
+  case remaining {
+    0 -> list.reverse(acc)
+    _ -> {
+      let next = lcg_next(seed)
+      let val = int.to_float(next) /. 2_147_483_648.0
+      lcg_seq_loop(next, remaining - 1, [val, ..acc])
+    }
+  }
+}
+
+fn box_muller_loop(us: List(Float), acc: List(Float)) -> List(Float) {
+  case us {
+    [u1, u2, ..rest] -> {
+      let safe = case u1 <. 1.0e-10 { True -> 1.0e-10 False -> u1 }
+      let r = float_sqrt(-2.0 *. float_log(safe))
+      let z = r *. float_cos(2.0 *. 3.141592653589793 *. u2)
+      box_muller_loop(rest, [z, ..acc])
+    }
+    _ -> list.reverse(acc)
+  }
+}
+
+fn gbm_returns(n: Int, mu: Float, sigma: Float, seed: Int) -> List(Float) {
+  let dt = 1.0 /. 252.0
+  let drift = { mu -. 0.5 *. sigma *. sigma } *. dt
+  let diffusion = sigma *. float_sqrt(dt)
+  let randoms =
+    lcg_seq_loop(seed, n * 2, [])
+    |> box_muller_loop([])
+    |> list.take(n)
+  list.map(randoms, fn(z) { drift +. diffusion *. z })
+}
+
+// ---------- Statistics ----------
+
+fn list_mean(xs: List(Float)) -> Float {
+  case xs {
+    [] -> 0.0
+    _ ->
+      list.fold(xs, 0.0, fn(a, x) { a +. x }) /. int.to_float(list.length(xs))
+  }
+}
+
+fn list_std(xs: List(Float)) -> Float {
+  let m = list_mean(xs)
+  let v =
+    list.fold(xs, 0.0, fn(a, x) { a +. { x -. m } *. { x -. m } })
+    /. int.to_float(list.length(xs))
+  float_sqrt(v)
+}
+
+fn list_min(xs: List(Float)) -> Float {
+  case xs {
+    [] -> 0.0
+    [h, ..t] -> list.fold(t, h, fn(m, x) { case x <. m { True -> x False -> m } })
+  }
+}
+
+fn list_max(xs: List(Float)) -> Float {
+  case xs {
+    [] -> 0.0
+    [h, ..t] -> list.fold(t, h, fn(m, x) { case x >. m { True -> x False -> m } })
+  }
+}
+
+fn percentile_p(xs: List(Float), p: Float) -> Float {
+  case xs {
+    [] -> 0.0
+    _ -> {
+      let sorted = list.sort(xs, float.compare)
+      let n = list.length(sorted)
+      let raw_idx = float.round(p /. 100.0 *. int.to_float(n))
+      let idx = case raw_idx < 0 { True -> 0 False -> case raw_idx >= n { True -> n - 1 False -> raw_idx } }
+      sorted |> list.drop(idx) |> list.first |> result.unwrap(0.0)
+    }
+  }
+}
+
+fn sharpe(returns: List(Float)) -> Float {
+  let ann_ret = list_mean(returns) *. 252.0
+  let ann_vol = list_std(returns) *. float_sqrt(252.0)
+  case ann_vol == 0.0 { True -> 0.0 False -> ann_ret /. ann_vol }
+}
+
+fn max_drawdown(xs: List(Float)) -> Float {
+  let #(_, mdd) =
+    list.fold(xs, #(0.0, 0.0), fn(s, cr) {
+      let #(pk, md) = s
+      let new_pk = case cr >. pk { True -> cr False -> pk }
+      let dd = new_pk -. cr
+      #(new_pk, case dd >. md { True -> dd False -> md })
+    })
+  mdd
+}
+
+fn cumsum(xs: List(Float)) -> List(Float) {
+  list.scan(xs, 0.0, fn(acc, x) { acc +. x })
+}
+
+// ---------- JSON helpers ----------
+
+fn fmt_f(x: Float) -> String {
+  let r = float.round(x *. 1_000_000.0)
+  let ip = r / 1_000_000
+  let fp = int.absolute_value(r % 1_000_000)
+  int.to_string(ip) <> "." <> string.pad_start(int.to_string(fp), 6, "0")
+}
+
+// ---------- Pipeline step helpers ----------
+
+fn pipeline_step_json(
+  name: String,
+  xs: List(Float),
+) -> String {
+  "{"
+  <> "\"name\":\"" <> name <> "\","
+  <> "\"count\":" <> int.to_string(list.length(xs)) <> ","
+  <> "\"mean\":" <> fmt_f(list_mean(xs)) <> ","
+  <> "\"std\":" <> fmt_f(list_std(xs)) <> ","
+  <> "\"min\":" <> fmt_f(list_min(xs)) <> ","
+  <> "\"max\":" <> fmt_f(list_max(xs))
+  <> "}"
+}
+
+// ---------- Public API (called from Erlang) ----------
+
+pub fn pipeline_json(n: Int, mu: Float, sigma: Float) -> String {
+  let returns = gbm_returns(n, mu, sigma, 42)
+  let sigma2 = list_std(returns)
+  let filtered = list.filter(returns, fn(r) { float.absolute_value(r) <. 2.0 *. sigma2 })
+  let scaled = list.map(filtered, fn(r) { r *. 252.0 })
+  let positive = list.filter(filtered, fn(r) { r >. 0.0 })
+  let ann_ret = list_mean(returns) *. 252.0
+  let ann_vol = list_std(returns) *. float_sqrt(252.0)
+  "{"
+  <> "\"n\":" <> int.to_string(n) <> ","
+  <> "\"annualized_return\":" <> fmt_f(ann_ret) <> ","
+  <> "\"annualized_vol\":" <> fmt_f(ann_vol) <> ","
+  <> "\"pipeline_steps\":["
+  <> pipeline_step_json("raw_returns", returns) <> ","
+  <> pipeline_step_json("filtered_2sigma", filtered) <> ","
+  <> pipeline_step_json("annualized", scaled) <> ","
+  <> pipeline_step_json("positive_only", positive)
+  <> "],\"engine\":\"Gleam 1.15 (BEAM/Erlang)\"}"
+}
+
+pub fn risk_json(n: Int, mu: Float, sigma: Float) -> String {
+  let returns = gbm_returns(n, mu, sigma, 42)
+  let cum = cumsum(returns)
+  let var95 = percentile_p(returns, 5.0)
+  let cvar95 = list.filter(returns, fn(r) { r <=. var95 }) |> list_mean
+  let ann_ret = list_mean(returns) *. 252.0
+  let ann_vol = list_std(returns) *. float_sqrt(252.0)
+  let sr = sharpe(returns)
+  let mdd = max_drawdown(cum)
+  "{"
+  <> "\"annualized_return\":" <> fmt_f(ann_ret) <> ","
+  <> "\"annualized_vol\":" <> fmt_f(ann_vol) <> ","
+  <> "\"var_95\":" <> fmt_f(var95) <> ","
+  <> "\"cvar_95\":" <> fmt_f(cvar95) <> ","
+  <> "\"sharpe_ratio\":" <> fmt_f(sr) <> ","
+  <> "\"max_drawdown\":" <> fmt_f(mdd) <> ","
+  <> "\"n\":" <> int.to_string(n) <> ","
+  <> "\"engine\":\"Gleam 1.15 (BEAM/Erlang)\"}"
+}
+
+// ---------- Entry point ----------
+
+@external(erlang, "hub_gleam_server", "start")
+fn start_server() -> Nil
+
+pub fn main() {
+  start_server()
+}

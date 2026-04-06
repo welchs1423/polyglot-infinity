@@ -331,18 +331,27 @@
 		scalaData = null;
 		try {
 			const [aggRes, smRes] = await Promise.all([
-				fetch('http://localhost:9003/api/scala/aggregate?mu=0.08&sigma=0.15&n=252'),
-				fetch('http://localhost:9003/api/scala/smooth?mu=0.08&sigma=0.15&n=252&alpha=0.3&beta=0.1'),
+				fetch(
+					"http://localhost:9003/api/scala/aggregate?mu=0.08&sigma=0.15&n=252",
+				),
+				fetch(
+					"http://localhost:9003/api/scala/smooth?mu=0.08&sigma=0.15&n=252&alpha=0.3&beta=0.1",
+				),
 			]);
 			if (aggRes.ok && smRes.ok) {
 				const agg = await aggRes.json();
 				const sm = await smRes.json();
-				scalaData = { ...agg, forecast_next: sm.forecast_next, alpha: sm.alpha, beta: sm.beta };
+				scalaData = {
+					...agg,
+					forecast_next: sm.forecast_next,
+					alpha: sm.alpha,
+					beta: sm.beta,
+				};
 			} else {
-				scalaData = { error: 'Scala 스트리머 오프라인' };
+				scalaData = { error: "Scala 스트리머 오프라인" };
 			}
 		} catch {
-			scalaData = { error: 'Scala 서버 접속 불가 (:9003)' };
+			scalaData = { error: "Scala 서버 접속 불가 (:9003)" };
 		} finally {
 			scalaLoading = false;
 		}
@@ -358,18 +367,29 @@
 		haskellData = null;
 		try {
 			const [bsRes, mcRes] = await Promise.all([
-				fetch('http://localhost:8006/api/haskell/blackscholes?s=100&k=100&r=0.05&sigma=0.2&t=1'),
-				fetch('http://localhost:8006/api/haskell/montecarlo?s=100&vol=0.2&mu=0.08&n=500&days=252'),
+				fetch(
+					"http://localhost:8006/api/haskell/blackscholes?s=100&k=100&r=0.05&sigma=0.2&t=1",
+				),
+				fetch(
+					"http://localhost:8006/api/haskell/montecarlo?s=100&vol=0.2&mu=0.08&n=500&days=252",
+				),
 			]);
 			if (bsRes.ok && mcRes.ok) {
 				const bs = await bsRes.json();
 				const mc = await mcRes.json();
-				haskellData = { ...bs, mc_annualized_return: mc.annualized_return, mc_annualized_vol: mc.annualized_vol, mc_var95: mc.var_95, mc_cvar95: mc.cvar_95, mc_avg_final: mc.avg_final_price };
+				haskellData = {
+					...bs,
+					mc_annualized_return: mc.annualized_return,
+					mc_annualized_vol: mc.annualized_vol,
+					mc_var95: mc.var_95,
+					mc_cvar95: mc.cvar_95,
+					mc_avg_final: mc.avg_final_price,
+				};
 			} else {
-				haskellData = { error: 'Haskell 프라이서 오프라인' };
+				haskellData = { error: "Haskell 프라이서 오프라인" };
 			}
 		} catch {
-			haskellData = { error: 'Haskell 서버 접속 불가 (:8006)' };
+			haskellData = { error: "Haskell 서버 접속 불가 (:8006)" };
 		} finally {
 			haskellLoading = false;
 		}
@@ -385,18 +405,20 @@
 		rubyData = null;
 		try {
 			const [scoreRes, summaryRes] = await Promise.all([
-				fetch('http://localhost:9004/api/ruby/score?debt_ratio=0.4&ltv=0.6&num_defaults=1&annual_income_k=60'),
-				fetch('http://localhost:9004/api/ruby/summary?n=300&seed=42'),
+				fetch(
+					"http://localhost:9004/api/ruby/score?debt_ratio=0.4&ltv=0.6&num_defaults=1&annual_income_k=60",
+				),
+				fetch("http://localhost:9004/api/ruby/summary?n=300&seed=42"),
 			]);
 			if (scoreRes.ok && summaryRes.ok) {
 				const score = await scoreRes.json();
 				const summary = await summaryRes.json();
 				rubyData = { ...score, summary };
 			} else {
-				rubyData = { error: 'Ruby 스코어러 오프라인' };
+				rubyData = { error: "Ruby 스코어러 오프라인" };
 			}
 		} catch {
-			rubyData = { error: 'Ruby 서버 접속 불가 (:9004)' };
+			rubyData = { error: "Ruby 서버 접속 불가 (:9004)" };
 		} finally {
 			rubyLoading = false;
 		}
@@ -412,20 +434,49 @@
 		dartData = null;
 		try {
 			const [bondRes, ycRes] = await Promise.all([
-				fetch('http://localhost:9005/api/dart/bond?face=1000&coupon=0.05&ytm=0.06&years=10'),
-				fetch('http://localhost:9005/api/dart/yieldcurve'),
+				fetch(
+					"http://localhost:9005/api/dart/bond?face=1000&coupon=0.05&ytm=0.06&years=10",
+				),
+				fetch("http://localhost:9005/api/dart/yieldcurve"),
 			]);
 			if (bondRes.ok && ycRes.ok) {
 				const bond = await bondRes.json();
 				const yc = await ycRes.json();
-				dartData = { ...bond, spread_10y_2y: yc.spread_10y_2y, curve_shape: yc.curve_shape, y2y: yc.yields[3], y10y: yc.yields[7] };
+				dartData = {
+					...bond,
+					spread_10y_2y: yc.spread_10y_2y,
+					curve_shape: yc.curve_shape,
+					y2y: yc.yields[3],
+					y10y: yc.yields[7],
+				};
 			} else {
-				dartData = { error: 'Dart 엔진 오프라인' };
+				dartData = { error: "Dart 엔진 오프라인" };
 			}
 		} catch {
-			dartData = { error: 'Dart 서버 접속 불가 (:9005)' };
+			dartData = { error: "Dart 서버 접속 불가 (:9005)" };
 		} finally {
 			dartLoading = false;
+		}
+	}
+
+	let gleamData = $state(null);
+	let gleamLoading = $state(false);
+	async function runGleam() {
+		gleamLoading = true;
+		try {
+			const [p, r] = await Promise.all([
+				fetch(
+					"http://localhost:4001/api/gleam/pipeline?n=252&mu=0.08&sigma=0.2",
+				).then((x) => x.json()),
+				fetch(
+					"http://localhost:4001/api/gleam/risk?n=252&mu=0.08&sigma=0.2",
+				).then((x) => x.json()),
+			]);
+			gleamData = { ...p, ...r };
+		} catch {
+			gleamData = { error: "Gleam 서버 접속 불가 (:4001)" };
+		} finally {
+			gleamLoading = false;
 		}
 	}
 </script>
@@ -1205,28 +1256,75 @@
 		<div class="panel-header">
 			<div>
 				<h2>☢️ Scala (Streaming Aggregator)</h2>
-				<p class="subtitle">Scala 3.8.3 + JVM · 함수형 스트림 집계 · Holt 이중지수평활 (:9003)</p>
+				<p class="subtitle">
+					Scala 3.8.3 + JVM · 함수형 스트림 집계 · Holt 이중지수평활
+					(:9003)
+				</p>
 			</div>
-			<button class="scala-btn" onclick={runScala} disabled={scalaLoading}>
-				{scalaLoading ? '분석 중...' : '스트림 집계'}
+			<button
+				class="scala-btn"
+				onclick={runScala}
+				disabled={scalaLoading}
+			>
+				{scalaLoading ? "분석 중..." : "스트림 집계"}
 			</button>
 		</div>
 		{#if scalaData}
 			{#if scalaData.error}
-				<div class="empty-box"><p style="color:#f87171">{scalaData.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{scalaData.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card scala-card"><span class="jlabel">Ann. Return</span><span class="jval">{(scalaData.annualized_return * 100).toFixed(2)}%</span></div>
-					<div class="julia-card scala-card"><span class="jlabel">Ann. Volatility</span><span class="jval">{(scalaData.annualized_volatility * 100).toFixed(2)}%</span></div>
-					<div class="julia-card scala-card"><span class="jlabel">Median Daily</span><span class="jval">{(scalaData.median_daily * 100).toFixed(4)}%</span></div>
-					<div class="julia-card scala-card"><span class="jlabel">P5 / P95</span><span class="jval">{(scalaData.p5 * 100).toFixed(2)}% / {(scalaData.p95 * 100).toFixed(2)}%</span></div>
-					<div class="julia-card scala-card"><span class="jlabel">SMA-20 (last)</span><span class="jval">{(scalaData.sma_20_last * 100).toFixed(4)}%</span></div>
-					<div class="julia-card scala-card"><span class="jlabel">Holt Forecast</span><span class="jval">{(scalaData.forecast_next * 100).toFixed(4)}%</span></div>
+					<div class="julia-card scala-card">
+						<span class="jlabel">Ann. Return</span><span
+							class="jval"
+							>{(scalaData.annualized_return * 100).toFixed(
+								2,
+							)}%</span
+						>
+					</div>
+					<div class="julia-card scala-card">
+						<span class="jlabel">Ann. Volatility</span><span
+							class="jval"
+							>{(scalaData.annualized_volatility * 100).toFixed(
+								2,
+							)}%</span
+						>
+					</div>
+					<div class="julia-card scala-card">
+						<span class="jlabel">Median Daily</span><span
+							class="jval"
+							>{(scalaData.median_daily * 100).toFixed(4)}%</span
+						>
+					</div>
+					<div class="julia-card scala-card">
+						<span class="jlabel">P5 / P95</span><span class="jval"
+							>{(scalaData.p5 * 100).toFixed(2)}% / {(
+								scalaData.p95 * 100
+							).toFixed(2)}%</span
+						>
+					</div>
+					<div class="julia-card scala-card">
+						<span class="jlabel">SMA-20 (last)</span><span
+							class="jval"
+							>{(scalaData.sma_20_last * 100).toFixed(4)}%</span
+						>
+					</div>
+					<div class="julia-card scala-card">
+						<span class="jlabel">Holt Forecast</span><span
+							class="jval"
+							>{(scalaData.forecast_next * 100).toFixed(4)}%</span
+						>
+					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>버튼을 눌러 Scala 스트림 집계 (SMA/EWM/백분위수) + Holt 이중지수평활 예측을 실행하세요. (Scala 서버 :9003 필요)</p>
+				<p>
+					버튼을 눌러 Scala 스트림 집계 (SMA/EWM/백분위수) + Holt
+					이중지수평활 예측을 실행하세요. (Scala 서버 :9003 필요)
+				</p>
 			</div>
 		{/if}
 	</section>
@@ -1236,28 +1334,76 @@
 		<div class="panel-header">
 			<div>
 				<h2>λ Haskell (Option Pricer)</h2>
-				<p class="subtitle">GHC 8.8.4 · 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo (:8006)</p>
+				<p class="subtitle">
+					GHC 8.8.4 · 순수 함수형 · Black-Scholes Greeks · GBM Monte
+					Carlo (:8006)
+				</p>
 			</div>
-			<button class="haskell-btn" onclick={runHaskell} disabled={haskellLoading}>
-				{haskellLoading ? '계산 중...' : '파생상품 계산'}
+			<button
+				class="haskell-btn"
+				onclick={runHaskell}
+				disabled={haskellLoading}
+			>
+				{haskellLoading ? "계산 중..." : "파생상품 계산"}
 			</button>
 		</div>
 		{#if haskellData}
 			{#if haskellData.error}
-				<div class="empty-box"><p style="color:#f87171">{haskellData.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{haskellData.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card haskell-card"><span class="jlabel">Call Price</span><span class="jval">{haskellData.call_price?.toFixed(4)}</span></div>
-					<div class="julia-card haskell-card"><span class="jlabel">Put Price</span><span class="jval">{haskellData.put_price?.toFixed(4)}</span></div>
-					<div class="julia-card haskell-card"><span class="jlabel">Delta / Gamma</span><span class="jval">{haskellData.delta?.toFixed(4)} / {haskellData.gamma?.toFixed(4)}</span></div>
-					<div class="julia-card haskell-card"><span class="jlabel">Vega / Theta</span><span class="jval">{haskellData.vega?.toFixed(4)} / {haskellData.theta_daily?.toFixed(4)}</span></div>
-					<div class="julia-card haskell-card"><span class="jlabel">MC Ann. Return</span><span class="jval">{((haskellData.mc_annualized_return ?? 0) * 100).toFixed(2)}%</span></div>
-					<div class="julia-card haskell-card"><span class="jlabel">MC VaR 95%</span><span class="jval">{((haskellData.mc_var95 ?? 0) * 100).toFixed(2)}%</span></div>
+					<div class="julia-card haskell-card">
+						<span class="jlabel">Call Price</span><span class="jval"
+							>{haskellData.call_price?.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card haskell-card">
+						<span class="jlabel">Put Price</span><span class="jval"
+							>{haskellData.put_price?.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card haskell-card">
+						<span class="jlabel">Delta / Gamma</span><span
+							class="jval"
+							>{haskellData.delta?.toFixed(4)} / {haskellData.gamma?.toFixed(
+								4,
+							)}</span
+						>
+					</div>
+					<div class="julia-card haskell-card">
+						<span class="jlabel">Vega / Theta</span><span
+							class="jval"
+							>{haskellData.vega?.toFixed(4)} / {haskellData.theta_daily?.toFixed(
+								4,
+							)}</span
+						>
+					</div>
+					<div class="julia-card haskell-card">
+						<span class="jlabel">MC Ann. Return</span><span
+							class="jval"
+							>{(
+								(haskellData.mc_annualized_return ?? 0) * 100
+							).toFixed(2)}%</span
+						>
+					</div>
+					<div class="julia-card haskell-card">
+						<span class="jlabel">MC VaR 95%</span><span class="jval"
+							>{((haskellData.mc_var95 ?? 0) * 100).toFixed(
+								2,
+							)}%</span
+						>
+					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>버튼을 눌러 Haskell 순수 함수형 Black-Scholes Greeks와 GBM Monte Carlo 시뮬레이션을 실행하세요. (Haskell 서버 :8006 필요)</p>
+				<p>
+					버튼을 눌러 Haskell 순수 함수형 Black-Scholes Greeks와 GBM
+					Monte Carlo 시뮬레이션을 실행하세요. (Haskell 서버 :8006
+					필요)
+				</p>
 			</div>
 		{/if}
 	</section>
@@ -1267,28 +1413,68 @@
 		<div class="panel-header">
 			<div>
 				<h2>💎 Ruby (Credit Scorer)</h2>
-				<p class="subtitle">Ruby 3.0 · WEBrick stdlib · 신용 스코어링 · 포트폴리오 요약 (:9004)</p>
+				<p class="subtitle">
+					Ruby 3.0 · WEBrick stdlib · 신용 스코어링 · 포트폴리오 요약
+					(:9004)
+				</p>
 			</div>
 			<button class="ruby-btn" onclick={runRuby} disabled={rubyLoading}>
-				{rubyLoading ? '계산 중...' : '신용 평가'}
+				{rubyLoading ? "계산 중..." : "신용 평가"}
 			</button>
 		</div>
 		{#if rubyData}
 			{#if rubyData.error}
-				<div class="empty-box"><p style="color:#f87171">{rubyData.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{rubyData.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card ruby-card"><span class="jlabel">Credit Score</span><span class="jval">{rubyData.score}</span></div>
-					<div class="julia-card ruby-card"><span class="jlabel">Grade / Risk</span><span class="jval">{rubyData.grade} / {rubyData.risk_tier}</span></div>
-					<div class="julia-card ruby-card"><span class="jlabel">PD (prob. default)</span><span class="jval">{((rubyData.pd ?? 0) * 100).toFixed(1)}%</span></div>
-					<div class="julia-card ruby-card"><span class="jlabel">Portfolio Mean Score</span><span class="jval">{rubyData.summary?.mean_score?.toFixed(1)}</span></div>
-					<div class="julia-card ruby-card"><span class="jlabel">Portfolio Mean PD</span><span class="jval">{((rubyData.summary?.mean_pd ?? 0) * 100).toFixed(1)}%</span></div>
-					<div class="julia-card ruby-card"><span class="jlabel">P50 / P90 Score</span><span class="jval">{rubyData.summary?.p50_score} / {rubyData.summary?.p90_score}</span></div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">Credit Score</span><span
+							class="jval">{rubyData.score}</span
+						>
+					</div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">Grade / Risk</span><span
+							class="jval"
+							>{rubyData.grade} / {rubyData.risk_tier}</span
+						>
+					</div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">PD (prob. default)</span><span
+							class="jval"
+							>{((rubyData.pd ?? 0) * 100).toFixed(1)}%</span
+						>
+					</div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">Portfolio Mean Score</span><span
+							class="jval"
+							>{rubyData.summary?.mean_score?.toFixed(1)}</span
+						>
+					</div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">Portfolio Mean PD</span><span
+							class="jval"
+							>{((rubyData.summary?.mean_pd ?? 0) * 100).toFixed(
+								1,
+							)}%</span
+						>
+					</div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">P50 / P90 Score</span><span
+							class="jval"
+							>{rubyData.summary?.p50_score} / {rubyData.summary
+								?.p90_score}</span
+						>
+					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>버튼을 눌러 Ruby 로지스틱 신용 스코어링과 포트폴리오 요약 통계를 실행하세요. (Ruby 서버 :9004 필요)</p>
+				<p>
+					버튼을 눌러 Ruby 로지스틱 신용 스코어링과 포트폴리오 요약
+					통계를 실행하세요. (Ruby 서버 :9004 필요)
+				</p>
 			</div>
 		{/if}
 	</section>
@@ -1298,28 +1484,196 @@
 		<div class="panel-header">
 			<div>
 				<h2>🎯 Dart (Yield Curve Engine)</h2>
-				<p class="subtitle">Dart 3.11 · dart:io HttpServer · 채권 가격 · Nelson-Siegel 수익률 곡선 (:9005)</p>
+				<p class="subtitle">
+					Dart 3.11 · dart:io HttpServer · 채권 가격 · Nelson-Siegel
+					수익률 곡선 (:9005)
+				</p>
 			</div>
 			<button class="dart-btn" onclick={runDart} disabled={dartLoading}>
-				{dartLoading ? '계산 중...' : '수익률 곡선'}
+				{dartLoading ? "계산 중..." : "수익률 곡선"}
 			</button>
 		</div>
 		{#if dartData}
 			{#if dartData.error}
-				<div class="empty-box"><p style="color:#f87171">{dartData.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{dartData.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card dart-card"><span class="jlabel">Bond Price</span><span class="jval">{dartData.price?.toFixed(2)}</span></div>
-					<div class="julia-card dart-card"><span class="jlabel">Mod. Duration</span><span class="jval">{dartData.modified_duration?.toFixed(3)}</span></div>
-					<div class="julia-card dart-card"><span class="jlabel">Convexity</span><span class="jval">{dartData.convexity?.toFixed(3)}</span></div>
-					<div class="julia-card dart-card"><span class="jlabel">DV01</span><span class="jval">{dartData.dv01?.toFixed(4)}</span></div>
-					<div class="julia-card dart-card"><span class="jlabel">10Y-2Y Spread</span><span class="jval">{((dartData.spread_10y_2y ?? 0) * 100).toFixed(0)}bp ({dartData.curve_shape})</span></div>
-					<div class="julia-card dart-card"><span class="jlabel">2Y / 10Y Yield</span><span class="jval">{((dartData.y2y ?? 0) * 100).toFixed(2)}% / {((dartData.y10y ?? 0) * 100).toFixed(2)}%</span></div>
+					<div class="julia-card dart-card">
+						<span class="jlabel">Bond Price</span><span class="jval"
+							>{dartData.price?.toFixed(2)}</span
+						>
+					</div>
+					<div class="julia-card dart-card">
+						<span class="jlabel">Mod. Duration</span><span
+							class="jval"
+							>{dartData.modified_duration?.toFixed(3)}</span
+						>
+					</div>
+					<div class="julia-card dart-card">
+						<span class="jlabel">Convexity</span><span class="jval"
+							>{dartData.convexity?.toFixed(3)}</span
+						>
+					</div>
+					<div class="julia-card dart-card">
+						<span class="jlabel">DV01</span><span class="jval"
+							>{dartData.dv01?.toFixed(4)}</span
+						>
+					</div>
+					<div class="julia-card dart-card">
+						<span class="jlabel">10Y-2Y Spread</span><span
+							class="jval"
+							>{((dartData.spread_10y_2y ?? 0) * 100).toFixed(
+								0,
+							)}bp ({dartData.curve_shape})</span
+						>
+					</div>
+					<div class="julia-card dart-card">
+						<span class="jlabel">2Y / 10Y Yield</span><span
+							class="jval"
+							>{((dartData.y2y ?? 0) * 100).toFixed(2)}% / {(
+								(dartData.y10y ?? 0) * 100
+							).toFixed(2)}%</span
+						>
+					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>버튼을 눌러 Dart 채권 가격·듀레이션·볼록도와 Nelson-Siegel 수익률 곡선 분석을 실행하세요. (Dart 서버 :9005 필요)</p>
+				<p>
+					버튼을 눌러 Dart 채권 가격·듀레이션·볼록도와 Nelson-Siegel
+					수익률 곡선 분석을 실행하세요. (Dart 서버 :9005 필요)
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<section class="panel gleam-panel">
+		<h2>Gleam 1.15 · BEAM/Erlang · 함수형 파이프라인 엔진 (:4001)</h2>
+		<button class="gleam-btn" onclick={runGleam} disabled={gleamLoading}>
+			{gleamLoading ? "계산 중..." : "파이프라인 실행"}
+		</button>
+		{#if gleamData}
+			{#if gleamData.error}
+				<div class="error-box">
+					<p style="color:#f87171">{gleamData.error}</p>
+				</div>
+			{:else}
+				<div class="julia-card gleam-card">
+					<span class="label">연간 수익률</span><span class="value"
+						>{((gleamData.annualized_return ?? 0) * 100).toFixed(
+							2,
+						)}%</span
+					>
+				</div>
+				<div class="julia-card gleam-card">
+					<span class="label">연간 변동성</span><span class="value"
+						>{((gleamData.annualized_vol ?? 0) * 100).toFixed(
+							2,
+						)}%</span
+					>
+				</div>
+				<div class="julia-card gleam-card">
+					<span class="label">VaR 95%</span><span class="value"
+						>{((gleamData.var_95 ?? 0) * 100).toFixed(3)}%</span
+					>
+				</div>
+				<div class="julia-card gleam-card">
+					<span class="label">CVaR 95%</span><span class="value"
+						>{((gleamData.cvar_95 ?? 0) * 100).toFixed(3)}%</span
+					>
+				</div>
+				<div class="julia-card gleam-card">
+					<span class="label">Sharpe</span><span class="value"
+						>{(gleamData.sharpe_ratio ?? 0).toFixed(3)}</span
+					>
+				</div>
+				<div class="julia-card gleam-card">
+					<span class="label">MDD</span><span class="value"
+						>{((gleamData.max_drawdown ?? 0) * 100).toFixed(
+							2,
+						)}%</span
+					>
+				</div>
+				<div class="julia-card gleam-card">
+					<span class="label">파이프라인 단계</span><span
+						class="value"
+						>{gleamData.pipeline_steps?.length ?? 0}단계</span
+					>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>
+					버튼을 눌러 GBM 파이프라인을 실행하세요. (Gleam 서버 :4001
+					필요)
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<section class="panel v-panel">
+		<h2>
+			V 0.5.1 · 시스템 언어 · Monte Carlo VaR · 포트폴리오 최적화 (:4002)
+		</h2>
+		<button class="v-btn" onclick={runV} disabled={vLoading}>
+			{vLoading ? "계산 중..." : "VaR 분석"}
+		</button>
+		{#if vData}
+			{#if vData.error}
+				<div class="error-box">
+					<p style="color:#f87171">{vData.error}</p>
+				</div>
+			{:else}
+				<div class="julia-card v-card">
+					<span class="label">연간 수익률</span><span class="value"
+						>{((vData.annualized_return ?? 0) * 100).toFixed(
+							2,
+						)}%</span
+					>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">연간 변동성</span><span class="value"
+						>{((vData.annualized_vol ?? 0) * 100).toFixed(2)}%</span
+					>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">VaR 95%</span><span class="value"
+						>{((vData.var_95 ?? 0) * 100).toFixed(3)}%</span
+					>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">CVaR 95%</span><span class="value"
+						>{((vData.cvar_95 ?? 0) * 100).toFixed(3)}%</span
+					>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">Sharpe</span><span class="value"
+						>{(vData.sharpe_ratio ?? 0).toFixed(3)}</span
+					>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">Kelly f*</span><span class="value"
+						>{(vData.kelly_fraction ?? 0).toFixed(3)}</span
+					>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">MinVar w1/w2</span><span class="value"
+						>{(
+							(vData.portfolio?.min_variance?.w1 ?? 0) * 100
+						).toFixed(1)}% / {(
+							(vData.portfolio?.min_variance?.w2 ?? 0) * 100
+						).toFixed(1)}%</span
+					>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>
+					VaR 분석과 포트폴리오 최적화를 실행하세요. (V 서버 :4002
+					필요)
+				</p>
 			</div>
 		{/if}
 	</section>
@@ -1959,5 +2313,47 @@
 
 	.dart-card {
 		border-color: #0284c7 !important;
+	}
+
+	.gleam-btn {
+		background: linear-gradient(135deg, #ffaff3 0%, #a855f7 100%);
+		color: #1a0030;
+		border: none;
+		padding: 0.6rem 1.4rem;
+		border-radius: 8px;
+		cursor: pointer;
+		font-weight: 700;
+		margin-bottom: 1rem;
+	}
+	.gleam-btn:hover:not(:disabled) {
+		filter: brightness(1.1);
+	}
+	.gleam-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	.gleam-card {
+		border-color: #a855f7 !important;
+	}
+
+	.v-btn {
+		background: linear-gradient(135deg, #5d8dee 0%, #1d4ed8 100%);
+		color: #fff;
+		border: none;
+		padding: 0.6rem 1.4rem;
+		border-radius: 8px;
+		cursor: pointer;
+		font-weight: 700;
+		margin-bottom: 1rem;
+	}
+	.v-btn:hover:not(:disabled) {
+		filter: brightness(1.15);
+	}
+	.v-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	.v-card {
+		border-color: #3b82f6 !important;
 	}
 </style>

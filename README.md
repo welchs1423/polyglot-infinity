@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **20개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **22개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -36,6 +36,8 @@
 [Haskell Pricer · :8006]      ← 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo
 [Ruby Scorer · :9004]         ← 로지스틱 신용 스코어링 · 포트폴리오 요약 통계
 [Dart Engine · :9005]         ← 채구 가격 · 듀레이션 · Nelson-Siegel 수익률 곡선
+[Gleam Hub · :4001]           ← 함수형 파이프라인 · GBM · VaR/CVaR/Sharpe/MDD
+[V Quant · :4002]             ← Monte Carlo VaR · Kelly Criterion · 포트폴리오 왔적화
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -57,6 +59,8 @@
 | **Haskell GHC 8.8.4** | **8006** | **순수 함수형 옵션 프라이서 · Black-Scholes Greeks · GBM Monte Carlo** |
 | **Ruby 3.0.2** | **9004** | **로지스틱 신용 스코어링 · 포트폴리오 통계 (WEBrick stdlib)** |
 | **Dart 3.11** | **9005** | **채구 가격 · Macaulay/Modified Duration · DV01 · Nelson-Siegel 수익률 곡선** |
+| **Gleam 1.15** | **4001** | **함수형 파이프라인 엔진 · GBM 수익률 · VaR/CVaR/Sharpe/MDD (BEAM/Erlang)** |
+| **V 0.5.1** | **4002** | **Monte Carlo VaR/CVaR · Kelly Criterion · 2자산 포트폴리오 최적화 (최소분산)** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -88,6 +92,8 @@
 | **Option Pricer** | **Haskell GHC 8.8.4, Network.Socket — 순수 함수형 Black-Scholes Greeks + GBM Monte Carlo (:8006)** |
 | **Credit Scoring** | **Ruby 3.0.2, WEBrick stdlib — 로지스틱 신용 스코어링 + 포트폴리오 요약 (:9004)** |
 | **Yield Curve** | **Dart 3.11, dart:io HttpServer — 채구 가격 + Nelson-Siegel 수익률 곡선 (:9005)** |
+| **Functional Pipeline** | **Gleam 1.15, BEAM/Erlang, Erlang gen_tcp FFI — GBM 파이프라인 + VaR/CVaR (:4001)** |
+| **Quant/VaR** | **V 0.5.1 — Monte Carlo VaR + Kelly Criterion + 포트폴리오 잔적화 (:4002)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -186,6 +192,22 @@
 | `GET` | `/api/dart/yieldcurve` | Nelson-Siegel 수익률 곡선 · 10Y-2Y 스프레드 · 곡선 형태 (`b0`,`b1`,`b2`,`tau`) |
 | `GET` | `/health` | 헬스체크 |
 
+### Gleam `:4001`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/gleam/pipeline` | GBM 수익률 → 4단계 함수형 파이프라인 (`n`,`mu`,`sigma`) |
+| `GET` | `/api/gleam/risk` | VaR 95% · CVaR · Sharpe Ratio · Max Drawdown (`n`,`mu`,`sigma`) |
+| `GET` | `/health` | 헬스체크 |
+
+### V `:4002`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/v/var` | Monte Carlo GBM VaR/CVaR · Sharpe · Kelly Criterion (`n`,`mu`,`sigma`) |
+| `GET` | `/api/v/portfolio` | 2자산 Equal Weight vs Min Variance 포트폴리오 (`mu1`,`mu2`,`sig1`,`sig2`,`rho`) |
+| `GET` | `/health` | 헬스체크 |
+
 ---
 
 ## 🗄️ DB 스키마
@@ -222,6 +244,18 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **V 0.5.1 쿼트 엔진 추가 (17번째 신규 언어)**
+  - **V 0.5.1** (zip 설치, `~/.local/v/v`) — C 유사 문법 + 빠른 컴파일 + 내장 `net` 모듈
+  - `/api/v/var`: Monte Carlo GBM VaR/CVaR/Sharpe/Kelly Criterion (`:4002`)
+  - `/api/v/portfolio`: 2자산 Equal Weight vs Min Variance 포트폴리오 최적화
+  - Svelte: **V Quant Engine 패널** 추가 (파란 그라디언트)
+- [x] **2026-04-07** — **Gleam 함수형 파이프라인 엔진 추가 (16번째 신규 언어)**
+  - **Gleam 1.15** + Erlang OTP 24 — mist 호환성 이슈 → Erlang gen_tcp FFI로 순수 구현
+  - `hub_gleam/src/hub_gleam.gleam`: 순수 Gleam 금융 로직 (GBM, 파이프라인, 리스크)
+  - `hub_gleam/src/hub_gleam_server.erl`: Erlang gen_tcp HTTP 서버 (Gleam 함수 호출)
+  - `/api/gleam/pipeline`: GBM 수익률 → 4단계 함수형 파이프라인 (`:4001`)
+  - `/api/gleam/risk`: VaR/CVaR/Sharpe/MDD 집계 (`:4001`)
+  - Svelte: **Gleam Functional Pipeline 패널** 추가 (핑크-보라 그라디언트)
 - [x] **2026-04-07** — **Dart 수익률 곡선 엔진 추가 (15번째 신규 언어)**
   - **Dart 3.11** (SDK zip 설치) `dart:io HttpServer` — 외부 패키지 완전 무
   - `/api/dart/bond`: 채구 가격 · Macaulay/Modified Duration · Convexity · DV01 (`:9005`)

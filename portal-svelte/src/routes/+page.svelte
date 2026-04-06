@@ -225,20 +225,56 @@
 		ocamlRisk = null;
 		try {
 			const [riskRes, scoreRes] = await Promise.all([
-				fetch('http://localhost:8004/api/ocaml/risk?debt_ratio=0.75&volatility=0.28&leverage=3.5&credit_score=650'),
-				fetch('http://localhost:8004/api/ocaml/score?income=5000000&debt=2000000&history_years=3&missed_payments=1'),
+				fetch(
+					"http://localhost:8004/api/ocaml/risk?debt_ratio=0.75&volatility=0.28&leverage=3.5&credit_score=650",
+				),
+				fetch(
+					"http://localhost:8004/api/ocaml/score?income=5000000&debt=2000000&history_years=3&missed_payments=1",
+				),
 			]);
 			if (riskRes.ok && scoreRes.ok) {
 				const risk = await riskRes.json();
 				const score = await scoreRes.json();
-				ocamlRisk = { ...risk, credit_grade: score.grade, credit_score_model: score.score, prob_good: score.prob_good };
+				ocamlRisk = {
+					...risk,
+					credit_grade: score.grade,
+					credit_score_model: score.score,
+					prob_good: score.prob_good,
+				};
 			} else {
-				ocamlRisk = { error: 'OCaml 리스크 엔진 오프라인' };
+				ocamlRisk = { error: "OCaml 리스크 엔진 오프라인" };
 			}
 		} catch {
-			ocamlRisk = { error: 'OCaml 엔진 접속 불가 (:8004)' };
+			ocamlRisk = { error: "OCaml 엔진 접속 불가 (:8004)" };
 		} finally {
 			ocamlLoading = false;
+		}
+	}
+
+	/** @type {any | null} */
+	let crystalData = $state(null);
+	/** @type {boolean} */
+	let crystalLoading = $state(false);
+
+	async function runCrystal() {
+		crystalLoading = true;
+		crystalData = null;
+		try {
+			const [pfRes, fxRes] = await Promise.all([
+				fetch('http://localhost:9002/api/crystal/portfolio?mu=0.12&sigma=0.18&days=252'),
+				fetch('http://localhost:9002/api/crystal/fx'),
+			]);
+			if (pfRes.ok && fxRes.ok) {
+				const pf = await pfRes.json();
+				const fx = await fxRes.json();
+				crystalData = { ...pf, weighted_krw: fx.weighted_krw, rates: fx.rates };
+			} else {
+				crystalData = { error: 'Crystal 게이트웨이 오프라인' };
+			}
+		} catch {
+			crystalData = { error: 'Crystal 서버 접속 불가 (:9002)' };
+		} finally {
+			crystalLoading = false;
 		}
 	}
 </script>
@@ -803,28 +839,95 @@
 		<div class="panel-header">
 			<div>
 				<h2>🐪 OCaml (Risk Rule Engine)</h2>
-				<p class="subtitle">OCaml 4.13 · 규칙 기반 리스크 판정 · 신용 스코어링 (:8004)</p>
+				<p class="subtitle">
+					OCaml 4.13 · 규칙 기반 리스크 판정 · 신용 스코어링 (:8004)
+				</p>
 			</div>
-			<button class="ocaml-btn" onclick={runOcamlRisk} disabled={ocamlLoading}>
-				{ocamlLoading ? '분석 중...' : '리스크 분석'}
+			<button
+				class="ocaml-btn"
+				onclick={runOcamlRisk}
+				disabled={ocamlLoading}
+			>
+				{ocamlLoading ? "분석 중..." : "리스크 분석"}
 			</button>
 		</div>
 		{#if ocamlRisk}
 			{#if ocamlRisk.error}
-				<div class="empty-box"><p style="color:#f87171">{ocamlRisk.error}</p></div>
+				<div class="empty-box">
+					<p style="color:#f87171">{ocamlRisk.error}</p>
+				</div>
 			{:else}
 				<div class="julia-grid">
-					<div class="julia-card ocaml-card"><span class="jlabel">Risk Level</span><span class="jval risk-{ocamlRisk.level?.toLowerCase()}">{ocamlRisk.level}</span></div>
-					<div class="julia-card ocaml-card"><span class="jlabel">Risk Score</span><span class="jval">{ocamlRisk.risk_score} / 100</span></div>
-					<div class="julia-card ocaml-card"><span class="jlabel">Credit Score</span><span class="jval">{ocamlRisk.credit_score_model}</span></div>
-					<div class="julia-card ocaml-card"><span class="jlabel">Credit Grade</span><span class="jval">{ocamlRisk.credit_grade}</span></div>
-					<div class="julia-card ocaml-card"><span class="jlabel">Debt Ratio</span><span class="jval">{(ocamlRisk.debt_ratio * 100).toFixed(1)}%</span></div>
-					<div class="julia-card ocaml-card"><span class="jlabel">Volatility</span><span class="jval">{(ocamlRisk.volatility * 100).toFixed(1)}%</span></div>
+					<div class="julia-card ocaml-card">
+						<span class="jlabel">Risk Level</span><span
+							class="jval risk-{ocamlRisk.level?.toLowerCase()}"
+							>{ocamlRisk.level}</span
+						>
+					</div>
+					<div class="julia-card ocaml-card">
+						<span class="jlabel">Risk Score</span><span class="jval"
+							>{ocamlRisk.risk_score} / 100</span
+						>
+					</div>
+					<div class="julia-card ocaml-card">
+						<span class="jlabel">Credit Score</span><span
+							class="jval">{ocamlRisk.credit_score_model}</span
+						>
+					</div>
+					<div class="julia-card ocaml-card">
+						<span class="jlabel">Credit Grade</span><span
+							class="jval">{ocamlRisk.credit_grade}</span
+						>
+					</div>
+					<div class="julia-card ocaml-card">
+						<span class="jlabel">Debt Ratio</span><span class="jval"
+							>{(ocamlRisk.debt_ratio * 100).toFixed(1)}%</span
+						>
+					</div>
+					<div class="julia-card ocaml-card">
+						<span class="jlabel">Volatility</span><span class="jval"
+							>{(ocamlRisk.volatility * 100).toFixed(1)}%</span
+						>
+					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
-				<p>버튼을 눌러 OCaml 규칙 기반 리스크 판정 · 신용 스코어링을 실행하세요. (OCaml 서버 :8004 필요)</p>
+				<p>
+					버튼을 눌러 OCaml 규칙 기반 리스크 판정 · 신용 스코어링을
+					실행하세요. (OCaml 서버 :8004 필요)
+				</p>
+			</div>
+		{/if}
+	</section>
+
+	<!-- Crystal Panel -->
+	<section class="panel">
+		<div class="panel-header">
+			<div>
+				<h2>🔮 Crystal (Portfolio Gateway)</h2>
+				<p class="subtitle">Crystal 1.19 · Ruby 문법 + 네이티브 컴파일 · 포트폴리오 성과 + FX (:9002)</p>
+			</div>
+			<button class="crystal-btn" onclick={runCrystal} disabled={crystalLoading}>
+				{crystalLoading ? '분석 중...' : '포트폴리오 분석'}
+			</button>
+		</div>
+		{#if crystalData}
+			{#if crystalData.error}
+				<div class="empty-box"><p style="color:#f87171">{crystalData.error}</p></div>
+			{:else}
+				<div class="julia-grid">
+					<div class="julia-card crystal-card"><span class="jlabel">Total Return</span><span class="jval">{(crystalData.total_return * 100).toFixed(2)}%</span></div>
+					<div class="julia-card crystal-card"><span class="jlabel">Ann. Volatility</span><span class="jval">{(crystalData.volatility * 100).toFixed(2)}%</span></div>
+					<div class="julia-card crystal-card"><span class="jlabel">Sharpe Ratio</span><span class="jval">{crystalData.sharpe_ratio.toFixed(4)}</span></div>
+					<div class="julia-card crystal-card"><span class="jlabel">Sortino Ratio</span><span class="jval">{crystalData.sortino_ratio.toFixed(4)}</span></div>
+					<div class="julia-card crystal-card"><span class="jlabel">Max Drawdown</span><span class="jval">{(crystalData.max_drawdown * 100).toFixed(2)}%</span></div>
+					<div class="julia-card crystal-card"><span class="jlabel">Weighted KRW</span><span class="jval">₩{crystalData.weighted_krw.toLocaleString()}</span></div>
+				</div>
+			{/if}
+		{:else}
+			<div class="empty-box">
+				<p>버튼을 눌러 Crystal 포트폴리오 수익률 · 샤프 · MDD · FX 가중평균 환율을 분석하세요. (Crystal 서버 :9002 필요)</p>
 			</div>
 		{/if}
 	</section>
@@ -1321,8 +1424,38 @@
 		border-color: #f97316 !important;
 	}
 
-	.risk-low      { color: #4ade80 !important; }
-	.risk-medium   { color: #facc15 !important; }
-	.risk-high     { color: #fb923c !important; }
-	.risk-critical { color: #f87171 !important; }
+	.risk-low {
+		color: #4ade80 !important;
+	}
+	.risk-medium {
+		color: #facc15 !important;
+	}
+	.risk-high {
+		color: #fb923c !important;
+	}
+	.risk-critical {
+		color: #f87171 !important;
+	}
+
+	.crystal-btn {
+		background: linear-gradient(135deg, #a855f7, #7c3aed);
+		color: white;
+		border: none;
+		padding: 0.75rem 1.5rem;
+		border-radius: 8px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.crystal-btn:hover:not(:disabled) {
+		background: linear-gradient(135deg, #9333ea, #6d28d9);
+	}
+	.crystal-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.crystal-card {
+		border-color: #a855f7 !important;
+	}
 </style>

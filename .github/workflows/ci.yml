@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: portal-svelte/package-lock.json
+          cache-dependency-path: portal-svelte/package.json
       - run: npm ci
         working-directory: portal-svelte
       - run: npx svelte-check --threshold error

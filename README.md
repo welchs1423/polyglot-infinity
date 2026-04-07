@@ -28,7 +28,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 18 | **Haskell GHC** | 8006 | Pure functional Black-Scholes Greeks · GBM Monte Carlo |
 | 19 | **Ruby 3.0** | 9004 | `instance_eval` runtime DSL — dynamic rule loading without restart |
 | 20 | **Dart 3.11** | 9005 | Bond pricing · Duration · Nelson-Siegel yield curve |
-| 21 | **Gleam 1.15** | 4001 | `ServiceMessage` ADT · exhaustive pattern match enforced at compile time |
+| 21 | **Gleam 1.15** | 4001 | `wisp` + `mist` HTTP server · `ServiceMessage` ADT · exhaustive pattern match enforced at compile time |
 | 22 | **V 0.5.1** | 4002 | `--gc none` Zero-GC MA crossover strategy backtester |
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
@@ -111,6 +111,7 @@ CREATE TABLE risk_reports (
 
 | Date | Changes |
 |:---|:---|
+| 2026-04-08 | **Gleam hub_gleam**: gen_tcp 기반 Erlang 서버 → `wisp` 2.2.2 + `mist` 6.0.2 순수 Gleam HTTP 서버로 교체 · `/health` "Gleam Hub OK" · `handle_request` wisp 라우터 · `gleam.toml` 의존성 추가 |
 | 2026-04-08 | docker-compose: cpp-core(:8012) · zig-core(:8013) · wasm-zig(:8014) 컨테이너 추가 · 전 서비스 polyglot bridge 네트워크 통합 · nginx wasm MIME 설정 · SSE health stream · WASM Theta/Vega/Rho Greeks · Python multi-stage Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI · Rust base image 1.78 → 1.88 (edition2024 / MSRV) · add openssl-libs-static (fix musl static link) · add portal-svelte package-lock.json (fix npm ci) |
 | 2026-04-07 | Docker Compose 28 services · Go workflow orchestration · circuit breaker · R GARCH/ARIMA · Nim AR(p) · OCaml multi-asset VaR · WASM MC/portfolio · Elixir Redis Pub/Sub · Svelte tabs/notifications/charts/dependency-map panels |
 | 2026-04-06 | SWI-Prolog added (28th) · Lua coroutines · Swift Actor · Clojure STM · Java Loom · Erlang hot-swap · V Zero-GC · Ruby DSL · Gleam ADT · Scala 3 · Nim · Crystal · OCaml · Dart · Haskell · R · F# · WebAssembly |

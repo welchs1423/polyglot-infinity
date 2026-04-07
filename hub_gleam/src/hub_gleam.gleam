@@ -1,17 +1,23 @@
 // ============================================================
 // Gleam 1.15 Functional Pipeline Engine
-// Port: 4001  (HTTP served by hub_gleam_server.erl via gen_tcp)
+// Port: 4001  (HTTP served by wisp + mist)
 // Endpoints:
 //   GET /health
 //   GET /api/gleam/pipeline
 //   GET /api/gleam/risk
+//   GET /api/gleam/validate
+//   GET /api/gleam/contract
 // ============================================================
 
+import gleam/erlang/process
 import gleam/float
 import gleam/int
 import gleam/list
 import gleam/result
 import gleam/string
+import mist
+import wisp.{type Request, type Response}
+import wisp/wisp_mist
 
 // ---------- Math ----------
 
@@ -235,13 +241,93 @@ pub fn risk_json(n: Int, mu: Float, sigma: Float) -> String {
   <> "\"engine\":\"Gleam 1.15 (BEAM/Erlang)\"}"
 }
 
+// ---------- Query parameter helpers ----------
+
+fn query_str(
+  params: List(#(String, String)),
+  key: String,
+  default: String,
+) -> String {
+  list.find(params, fn(p) { p.0 == key })
+  |> result.map(fn(p) { p.1 })
+  |> result.unwrap(default)
+}
+
+fn query_int(
+  params: List(#(String, String)),
+  key: String,
+  default: Int,
+) -> Int {
+  query_str(params, key, "")
+  |> int.parse
+  |> result.unwrap(default)
+}
+
+fn query_float(
+  params: List(#(String, String)),
+  key: String,
+  default: Float,
+) -> Float {
+  query_str(params, key, "")
+  |> float.parse
+  |> result.unwrap(default)
+}
+
+// ---------- HTTP router ----------
+
+fn json_resp(body: String) -> Response {
+  wisp.ok()
+  |> wisp.json_body(body)
+}
+
+pub fn handle_request(req: Request) -> Response {
+  use req <- wisp.handle_head(req)
+  let params = wisp.get_query(req)
+  case wisp.path_segments(req) {
+    ["health"] ->
+      wisp.ok()
+      |> wisp.string_body("Gleam Hub OK")
+    ["api", "gleam", "pipeline"] -> {
+      let n = query_int(params, "n", 252)
+      let mu = query_float(params, "mu", 0.08)
+      let sigma = query_float(params, "sigma", 0.20)
+      json_resp(pipeline_json(n, mu, sigma))
+    }
+    ["api", "gleam", "risk"] -> {
+      let n = query_int(params, "n", 252)
+      let mu = query_float(params, "mu", 0.08)
+      let sigma = query_float(params, "sigma", 0.20)
+      json_resp(risk_json(n, mu, sigma))
+    }
+    ["api", "gleam", "validate"] -> {
+      let score = query_float(params, "score", 500.0)
+      let grade = query_str(params, "grade", "B")
+      json_resp(validate_risk_json(score, grade))
+    }
+    ["api", "gleam", "validate", "option"] -> {
+      let call = query_float(params, "call", 10.0)
+      let delta = query_float(params, "delta", 0.5)
+      json_resp(validate_option_json(call, delta))
+    }
+    ["api", "gleam", "contract"] ->
+      json_resp(contract_json())
+    _ ->
+      wisp.not_found()
+  }
+}
+
 // ---------- Entry point ----------
 
-@external(erlang, "hub_gleam_server", "start")
-fn start_server() -> Nil
-
 pub fn main() {
-  start_server()
+  let secret_key_base = wisp.random_string(64)
+  let assert Ok(_) =
+    handle_request
+    |> wisp_mist.handler(secret_key_base)
+    |> mist.new
+    |> mist.port(4001)
+    |> mist.bind("0.0.0.0")
+    |> mist.start
+  process.sleep_forever()
 }
 
 // ============================================================

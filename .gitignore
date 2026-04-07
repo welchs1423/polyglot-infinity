@@ -24,3 +24,25 @@ pricer-fsharp/obj/
 
 # Julia
 engine-julia/Manifest.toml
+
+# Haskell (컴파일 산출물 — 바이너리, 열람/버전관리 불필요)
+pricer-haskell/server
+pricer-haskell/*.hi
+pricer-haskell/*.o
+
+# Crystal (컴파일 산출물)
+gateway-crystal/server
+
+# Nim (컴파일 산출물)
+analytics-nim/server
+
+# OCaml (컴파일 산출물)
+risk-ocaml/server
+risk-ocaml/*.cmi
+risk-ocaml/*.cmx
+
+# V (컴파일 산출물)
+quant-v/server
+
+# Quant-V (컴파일 산출물)
+quant-v/v_

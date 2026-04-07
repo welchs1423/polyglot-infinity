@@ -100,8 +100,9 @@
     <!-- 파라미터 입력 -->
     <div class="prolog-params">
         <div class="param-group">
-            <label>부채비율</label>
+            <label for="pr-debt">부체비율</label>
             <input
+                id="pr-debt"
                 type="range"
                 min="0.1"
                 max="0.9"
@@ -111,8 +112,9 @@
             <span>{debtRatio.toFixed(2)}</span>
         </div>
         <div class="param-group">
-            <label>변동성</label>
+            <label for="pr-vol">변동성</label>
             <input
+                id="pr-vol"
                 type="range"
                 min="0.05"
                 max="0.5"
@@ -122,8 +124,9 @@
             <span>{volatility.toFixed(2)}</span>
         </div>
         <div class="param-group">
-            <label>연체 횟수</label>
+            <label for="pr-def">연체 횟수</label>
             <input
+                id="pr-def"
                 type="range"
                 min="0"
                 max="5"
@@ -136,16 +139,17 @@
 
     <div class="prolog-params">
         <div class="param-group">
-            <label>포트폴리오 타입</label>
-            <select bind:value={portfolioType}>
+            <label for="pr-ptype">포트폴리오 타입</label>
+            <select id="pr-ptype" bind:value={portfolioType}>
                 <option value="aggressive">Aggressive (공격형)</option>
                 <option value="balanced">Balanced (균형형)</option>
                 <option value="conservative">Conservative (안정형)</option>
             </select>
         </div>
         <div class="param-group">
-            <label>최대 리스크</label>
+            <label for="pr-rmax">최대 리스크</label>
             <input
+                id="pr-rmax"
                 type="range"
                 min="6"
                 max="20"

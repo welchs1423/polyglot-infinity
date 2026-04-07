@@ -80,8 +80,9 @@
 
     <div class="param-grid">
         <div class="param-row">
-            <label>부채비율</label>
+            <label for="rb-debt">부체비율</label>
             <input
+                id="rb-debt"
                 type="range"
                 min="0.1"
                 max="1.0"
@@ -91,8 +92,9 @@
             <span class="param-val">{debtRatio.toFixed(2)}</span>
         </div>
         <div class="param-row">
-            <label>LTV</label>
+            <label for="rb-ltv">LTV</label>
             <input
+                id="rb-ltv"
                 type="range"
                 min="0.1"
                 max="1.5"
@@ -102,8 +104,9 @@
             <span class="param-val">{ltv.toFixed(2)}</span>
         </div>
         <div class="param-row">
-            <label>연체 횟수</label>
+            <label for="rb-def">연체 횟수</label>
             <input
+                id="rb-def"
                 type="range"
                 min="0"
                 max="5"
@@ -113,8 +116,9 @@
             <span class="param-val">{numDefaults}회</span>
         </div>
         <div class="param-row">
-            <label>연소득 (만$)</label>
+            <label for="rb-income">연소득 (만$)</label>
             <input
+                id="rb-income"
                 type="range"
                 min="20"
                 max="300"

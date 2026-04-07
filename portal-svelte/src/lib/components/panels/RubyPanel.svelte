@@ -3,6 +3,13 @@
     let rubyData = $state(null);
     /** @type {boolean} */
     let rubyLoading = $state(false);
+    /** @type {any | null} */
+    let rulesResult = $state(null);
+    /** @type {boolean} */
+    let rulesLoading = $state(false);
+    let customRule = $state(
+        `rule(:low_income_penalty) do\n  condition { annual_income_k < 50 }\n  action     { score - 40 }\nend`,
+    );
 
     async function runRuby() {
         rubyLoading = true;
@@ -29,6 +36,26 @@
             rubyData = { error: "Ruby 서버 접속 불가 (:9004)" };
         } finally {
             rubyLoading = false;
+        }
+    }
+
+    async function loadCustomRule() {
+        rulesLoading = true;
+        rulesResult = null;
+        try {
+            const res = await fetch("http://localhost:9004/api/ruby/rules", {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: customRule,
+            });
+            rulesResult = await res.json();
+            if (rulesResult?.loaded) {
+                await runRuby();
+            }
+        } catch {
+            rulesResult = { loaded: false, error: "Ruby 서버 접속 불가 (:9004)" };
+        } finally {
+            rulesLoading = false;
         }
     }
 </script>
@@ -99,6 +126,33 @@
             </p>
         </div>
     {/if}
+
+    <div class="dsl-section">
+        <p class="dsl-label">커스텀 DSL 룰 동적 로드</p>
+        <textarea
+            class="dsl-input"
+            rows="5"
+            bind:value={customRule}
+            placeholder="rule(:name) do ... end"
+        ></textarea>
+        <div class="dsl-row">
+            <button class="ruby-btn dsl-btn" onclick={loadCustomRule} disabled={rulesLoading}>
+                {rulesLoading ? "로딩 중..." : "룰 로드"}
+            </button>
+            {#if rulesResult}
+                {#if rulesResult.loaded}
+                    <span class="dsl-result ok">
+                        ✅ 로드 완료 · {rulesResult.rules_before}개 →
+                        {rulesResult.rules_after}개
+                    </span>
+                {:else}
+                    <span class="dsl-result err">
+                        ❌ {rulesResult.error ?? "로드 실패"}
+                    </span>
+                {/if}
+            {/if}
+        </div>
+    </div>
 </section>
 
 <style>
@@ -121,5 +175,54 @@
     }
     .ruby-card {
         border-color: #dc2626 !important;
+    }
+    .dsl-section {
+        margin-top: 1.5rem;
+        border-top: 1px solid rgba(220, 38, 38, 0.25);
+        padding-top: 1rem;
+    }
+    .dsl-label {
+        font-size: 0.75rem;
+        color: #dc2626;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    .dsl-input {
+        width: 100%;
+        background: rgba(220, 38, 38, 0.06);
+        border: 1px solid rgba(220, 38, 38, 0.35);
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-family: monospace;
+        font-size: 0.82rem;
+        padding: 0.5rem 0.7rem;
+        resize: vertical;
+        box-sizing: border-box;
+    }
+    .dsl-input:focus {
+        outline: none;
+        border-color: #dc2626;
+    }
+    .dsl-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 0.5rem;
+    }
+    .dsl-btn {
+        padding: 0.5rem 1.2rem;
+        font-size: 0.85rem;
+    }
+    .dsl-result {
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .dsl-result.ok {
+        color: #34d399;
+    }
+    .dsl-result.err {
+        color: #f87171;
     }
 </style>

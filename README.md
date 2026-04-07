@@ -328,6 +328,17 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ## 🚀 마일스톤 (최신순)
 
 ### 2026-04-07
+- [x] **전 언어 패널 인터랙티브 파라미터 슬라이더 강화**
+  - **Ruby**: 부채비율 · LTV · 연체횟수 · 연소득 range 슬라이더 → `/api/ruby/score` 동적 파라미터
+  - **V**: Ticks · Fast MA · Slow MA · Seed 슬라이더 → `/api/v/backtest` 전략 파라미터
+  - **Haskell**: Spot(S) · Strike(K) · σ · T · r · MC Paths 슬라이더 → BS Greeks 실시간 재계산
+  - **Julia**: paths · days · vol · mu 슬라이더 → GBM 시뮬레이션 파라미터
+  - **Nim**: μ · σ · n 슬라이더 → 시계열 기술통계 + 모멘텀 지표
+  - **F#**: S · K · r · σ · T 직접 입력 폼 → Option Greeks 재계산
+  - **Scala**: μ · σ · α · β 슬라이더 → Holt 이중지수평활 파라미터
+  - **R**: n (샘플 수) 슬라이더 → MLE 분포 피팅
+  - **Gleam**: n · μ · σ 슬라이더 → pipeline/risk 파라미터
+  - **Crystal**: μ · σ · days 슬라이더 → 포트폴리오 시뮬레이션 파라미터
 - [x] **탭 시스템 · SSE 스트리밍 · 통합 리포트 · 전 언어 패널 기능 강화**
   - **탭 시스템 (7탭)**: 전체 패널을 Core · Pipeline · Functional · Actor&STM · Logic&DSL · Charts · System 탭으로 분류
   - **SSE 스트리밍** `GET /api/aggregate/stream`: 28개 서비스 상태를 Server-Sent Events로 실시간 브로드캐스트 (Go → EventSource)

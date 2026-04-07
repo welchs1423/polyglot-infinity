@@ -53,10 +53,16 @@
             sseSource = null;
             sseConnected = false;
         } else {
-            sseSource = new EventSource("http://localhost:8080/api/aggregate/stream");
+            sseSource = new EventSource(
+                "http://localhost:8080/api/aggregate/stream",
+            );
             sseConnected = true;
             sseSource.onmessage = (e) => {
-                try { aggregateData = JSON.parse(e.data); } catch { /* ignore */ }
+                try {
+                    aggregateData = JSON.parse(e.data);
+                } catch {
+                    /* ignore */
+                }
             };
             sseSource.onerror = () => {
                 sseConnected = false;
@@ -369,8 +375,10 @@
         {:else}
             <div class="agg-header">
                 <span
-                    >{sseConnected ? "🟢 실시간 스트림" : "🔍 전체 백엔드 헬스체크"} — <strong style="color:#34d399"
-                        >{aggregateData.online}</strong
+                    >{sseConnected
+                        ? "🟢 실시간 스트림"
+                        : "🔍 전체 백엔드 헬스체크"} —
+                    <strong style="color:#34d399">{aggregateData.online}</strong
                     >
                     / {aggregateData.total} online</span
                 >

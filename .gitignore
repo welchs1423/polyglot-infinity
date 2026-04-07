@@ -50,3 +50,8 @@ quant-v/server
 
 # Quant-V (컴파일 산출물)
 quant-v/v_
+tree.txt
+
+# Go (컴파일 산출물)
+server-go/server
+server-go/main

@@ -1,4 +1,4 @@
-# Polyglot Infinity — 28-Language Microservices Platform
+# Polyglot Infinity — 27-Language Microservices Platform
 # Usage: docker compose up -d
 # Prerequisites: Docker 24+, 16GB RAM recommended
 #
@@ -11,6 +11,10 @@
 #   8009 Clojure-STM    8010 Java-Loom      8011 Prolog-Solver
 #   4000 Elixir-Hub     4001 Gleam-Hub      4002 V-Quant
 #   4003 Erlang-Hot     9000 Kotlin-Sched   5173 Svelte-Portal
+#   8012 Cpp-Core       8013 Zig-Core       8014 Wasm-Zig (nginx:80)
+#
+# Network: all containers share the "polyglot" bridge network.
+# Inter-service calls: http://<service-name>:<internal-port>/...
 
 services:
   # ── Infrastructure ─────────────────────────────────────────────────────────
@@ -27,6 +31,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks: [polyglot]
 
   redis:
     image: redis:7-alpine
@@ -36,6 +41,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [polyglot]
 
   # ── Go Hub / Gateway (:8080) ────────────────────────────────────────────────
   go-hub:
@@ -49,6 +55,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    networks: [polyglot]
 
   # ── Python Brain (:8000) ────────────────────────────────────────────────────
   python-brain:
@@ -59,6 +66,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    networks: [polyglot]
 
   # ── Rust Pipeline (:8081) ───────────────────────────────────────────────────
   rust-pipeline:
@@ -72,6 +80,7 @@ services:
     environment:
       DATABASE_URL: postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
       REDIS_URL: redis://redis:6379
+    networks: [polyglot]
 
   # ── Julia Engine (:8002) ────────────────────────────────────────────────────
   julia-engine:
@@ -81,6 +90,7 @@ services:
     ports: ["8002:8002"]
     volumes:
       - ./engine-julia:/app:ro
+    networks: [polyglot]
 
   # ── R Stats (:8003) ─────────────────────────────────────────────────────────
   r-stats:
@@ -90,6 +100,7 @@ services:
     ports: ["8003:8003"]
     volumes:
       - ./engine-r:/app:ro
+    networks: [polyglot]
 
   # ── F# Pricer (:9001) ───────────────────────────────────────────────────────
   fsharp-pricer:
@@ -100,6 +111,7 @@ services:
     volumes:
       - ./pricer-fsharp:/app:ro
       - fsharp_nuget:/root/.nuget
+    networks: [polyglot]
 
   # ── OCaml Risk (:8004) — pre-compiled binary ────────────────────────────────
   ocaml-risk:
@@ -109,6 +121,7 @@ services:
     ports: ["8004:8004"]
     volumes:
       - ./risk-ocaml:/app:ro
+    networks: [polyglot]
 
   # ── Crystal Gateway (:9002) — pre-compiled binary ───────────────────────────
   crystal-gateway:
@@ -118,6 +131,7 @@ services:
     ports: ["9002:9002"]
     volumes:
       - ./gateway-crystal:/app:ro
+    networks: [polyglot]
 
   # ── Nim Analytics (:8005) — pre-compiled binary ─────────────────────────────
   nim-analytics:
@@ -127,6 +141,7 @@ services:
     ports: ["8005:8005"]
     volumes:
       - ./analytics-nim:/app:ro
+    networks: [polyglot]
 
   # ── Scala Streamer (:9003) ──────────────────────────────────────────────────
   scala-streamer:
@@ -137,6 +152,7 @@ services:
     volumes:
       - ./streamer-scala:/app:ro
       - scala_coursier:/root/.cache/coursier
+    networks: [polyglot]
 
   # ── Haskell Pricer (:8006) — pre-compiled binary ────────────────────────────
   haskell-pricer:
@@ -146,6 +162,7 @@ services:
     ports: ["8006:8006"]
     volumes:
       - ./pricer-haskell:/app:ro
+    networks: [polyglot]
 
   # ── Ruby Scorer (:9004) ─────────────────────────────────────────────────────
   ruby-scorer:
@@ -155,6 +172,7 @@ services:
     ports: ["9004:9004"]
     volumes:
       - ./scorer-ruby:/app:ro
+    networks: [polyglot]
 
   # ── Dart Engine (:9005) ─────────────────────────────────────────────────────
   dart-engine:
@@ -165,6 +183,7 @@ services:
     volumes:
       - ./engine-dart:/app:ro
       - dart_pub:/root/.pub-cache
+    networks: [polyglot]
 
   # ── Gleam Hub (:4001) ───────────────────────────────────────────────────────
   gleam-hub:
@@ -174,6 +193,7 @@ services:
     ports: ["4001:4001"]
     volumes:
       - ./hub_gleam:/app:ro
+    networks: [polyglot]
 
   # ── V Quant (:4002) — pre-compiled binary ───────────────────────────────────
   v-quant:
@@ -183,6 +203,7 @@ services:
     ports: ["4002:4002"]
     volumes:
       - ./quant-v:/app:ro
+    networks: [polyglot]
 
   # ── Erlang Hot (:4003) ──────────────────────────────────────────────────────
   erlang-hot:
@@ -192,6 +213,7 @@ services:
     ports: ["4003:4003"]
     volumes:
       - ./hot-erlang:/app:ro
+    networks: [polyglot]
 
   # ── Elixir Hub (:4000) ──────────────────────────────────────────────────────
   elixir-hub:
@@ -207,6 +229,7 @@ services:
       - elixir_mix:/root/.mix
     depends_on:
       redis: { condition: service_healthy }
+    networks: [polyglot]
 
   # ── Clojure STM (:8009) ─────────────────────────────────────────────────────
   clojure-stm:
@@ -217,6 +240,7 @@ services:
     volumes:
       - ./ledger-clojure:/app:ro
       - clojure_m2:/root/.m2
+    networks: [polyglot]
 
   # ── Java Loom (:8010) ───────────────────────────────────────────────────────
   java-loom:
@@ -226,8 +250,9 @@ services:
     ports: ["8010:8010"]
     volumes:
       - ./loom-java:/app:ro
+    networks: [polyglot]
 
-  # ── Prolog Solver (:8011) ────────────────────────────────────────────────────
+  # ── Prolog Solver (:8011) ───────────────────────────────────────────────────
   prolog-solver:
     image: swipl:9.2
     working_dir: /app
@@ -235,6 +260,7 @@ services:
     ports: ["8011:8011"]
     volumes:
       - ./solver-prolog:/app:ro
+    networks: [polyglot]
 
   # ── Lua Stream (:8007) ──────────────────────────────────────────────────────
   lua-stream:
@@ -244,8 +270,9 @@ services:
     ports: ["8007:8007"]
     volumes:
       - ./stream-lua:/app:ro
+    networks: [polyglot]
 
-  # ── Swift Actor (:8008) — pre-compiled binary ────────────────────────────────
+  # ── Swift Actor (:8008) — pre-compiled binary ───────────────────────────────
   swift-actor:
     image: debian:bookworm-slim
     working_dir: /app
@@ -253,8 +280,9 @@ services:
     ports: ["8008:8008"]
     volumes:
       - ./actor-swift:/app:ro
+    networks: [polyglot]
 
-  # ── Kotlin Scheduler (:9000) ─────────────────────────────────────────────────
+  # ── Kotlin Scheduler (:9000) ────────────────────────────────────────────────
   kotlin-scheduler:
     image: eclipse-temurin:21-jdk-alpine
     working_dir: /app
@@ -262,8 +290,64 @@ services:
     ports: ["9000:9000"]
     volumes:
       - ./scheduler-kotlin:/app:ro
+    networks: [polyglot]
 
-  # ── Svelte Portal (:5173) ────────────────────────────────────────────────────
+  # ── C++ Core (:8012) — multi-stage: compile libcore.so, serve via HTTP ──────
+  # Build stage runs g++ inside gcc:14; the resulting libcore.so is copied into
+  # a python:3.12-slim runtime layer that exposes it over http.server so that
+  # other containers (e.g. python-brain via ctypes) can fetch the artifact.
+  cpp-core:
+    build:
+      context: ./core-cpp
+      dockerfile_inline: |
+        FROM gcc:14-bookworm AS builder
+        WORKDIR /build
+        COPY src/calculator.cpp .
+        RUN g++ -O2 -shared -fPIC -o libcore.so calculator.cpp
+
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY --from=builder /build/libcore.so .
+        EXPOSE 8012
+        CMD ["python3", "-m", "http.server", "8012", "--directory", "/app"]
+    ports: ["8012:8012"]
+    networks: [polyglot]
+
+  # ── Zig Core (:8013) — builds libzigcore.so, serves via HTTP ────────────────
+  # zig build compiles src/core.zig as a dynamic library (ReleaseFast);
+  # python3 http.server exposes the artifact for FFI consumers.
+  zig-core:
+    build:
+      context: ./core-zig
+      dockerfile_inline: |
+        FROM ghcr.io/nicowillis/zig:0.13.0 AS builder
+        WORKDIR /build
+        COPY . .
+        RUN zig build -Doptimize=ReleaseFast
+
+        FROM python:3.12-slim
+        WORKDIR /app
+        COPY --from=builder /build/zig-out/lib/ .
+        EXPOSE 8013
+        CMD ["python3", "-m", "http.server", "8013", "--directory", "/app"]
+    ports: ["8013:8013"]
+    networks: [polyglot]
+
+  # ── Wasm Finance (:8014) — nginx static server for finance.wasm ────────────
+  # Serves the pre-compiled Zig WASM module with correct Content-Type so the
+  # Svelte portal can fetch and instantiate it client-side without a round-trip
+  # to any backend service.
+  wasm-zig:
+    image: nginx:1.27-alpine
+    ports: ["8014:80"]
+    volumes:
+      - ./wasm-zig:/usr/share/nginx/html:ro
+    configs:
+      - source: wasm_nginx_conf
+        target: /etc/nginx/conf.d/default.conf
+    networks: [polyglot]
+
+  # ── Svelte Portal (:5173) ───────────────────────────────────────────────────
   svelte-portal:
     image: node:22-alpine
     working_dir: /app
@@ -274,6 +358,31 @@ services:
       - svelte_node_modules:/app/node_modules
     depends_on:
       - go-hub
+    networks: [polyglot]
+
+configs:
+  wasm_nginx_conf:
+    content: |
+      server {
+          listen 80;
+          server_name _;
+          root /usr/share/nginx/html;
+
+          location / {
+              add_header Access-Control-Allow-Origin *;
+              add_header Cache-Control "public, max-age=3600";
+          }
+
+          types {
+              application/wasm  wasm;
+              application/octet-stream  a o;
+              text/plain  zig;
+          }
+      }
+
+networks:
+  polyglot:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -12,9 +12,9 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 2 | **Go** `net/http` | 8080 | API Hub · Redis caching · SSE stream · Circuit breaker |
 | 3 | **Python** FastAPI | 8000 | FX rate collection · C++/Zig FFI · Julia HTTP |
 | 4 | **Rust** Axum + sqlx | 8081 | High-performance bulk insert pipeline |
-| 5 | **C++** | — | `libcore.so` — Python FFI compute acceleration |
-| 6 | **Zig 0.13** | — | `libzigcore.so` — Volatility estimation · VaR (C ABI) |
-| 7 | **WebAssembly** (Zig → WASM32) | Browser | Black-Scholes Greeks · VaR · DCF · MC — runs in browser, no server round-trip |
+| 5 | **C++** | 8012 | `libcore.so` — Python FFI compute acceleration · HTTP artifact server |
+| 6 | **Zig 0.13** | 8013 | `libzigcore.so` — Volatility estimation · VaR (C ABI) · HTTP artifact server |
+| 7 | **WebAssembly** (Zig → WASM32) | 8014 | Black-Scholes Greeks · VaR · DCF · MC — nginx static server, browser-side execution |
 | 8 | **Lua 5.4** | — / 8007 | Redis EVAL atomic cache counter · coroutine 6-feed scheduler |
 | 9 | **Kotlin 2.0** | 9000 | Coroutine 60s risk report scheduler |
 | 10 | **Elixir/Phoenix** | 4000 | OTP Supervisor · GenServer · WebSocket Channel |
@@ -48,8 +48,8 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
       ▼
 [Go Hub :8080] ── Redis :6379 (Lua EVAL cache)
       │
-      ├─ [Python :8000] ── C++ libcore.so
-      │                 ── Zig libzigcore.so
+      ├─ [Python :8000] ── C++ cpp-core :8012 (libcore.so)
+      │                 ── Zig  zig-core :8013 (libzigcore.so)
       │                 ── Julia :8002
       │
       ├─ [Rust :8081] ── PostgreSQL :5433
@@ -60,7 +60,10 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 Standalone services: Kotlin · Elixir · R · F# · OCaml · Crystal · Nim · Scala · Haskell
                      Ruby · Dart · Gleam · V · Erlang · Lua · Swift · Clojure · Java · Prolog
 
-[WebAssembly] — runs directly in browser (no server round-trip)
+[Wasm-Zig :8014] — nginx serves finance.wasm; browser fetches and instantiates (no server round-trip)
+
+All 29 containers share the "polyglot" bridge network.
+Inter-service DNS: http://<service-name>:<port>/ (e.g. http://risk-ocaml:8004)
 ```
 
 ---
@@ -108,7 +111,7 @@ CREATE TABLE risk_reports (
 
 | Date | Changes |
 |:---|:---|
-| 2026-04-08 | SSE health stream · WASM Theta/Vega/Rho Greeks · Python multi-stage Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI · Rust base image 1.78 → 1.88 (edition2024 / MSRV) · add openssl-libs-static (fix musl static link) · add portal-svelte package-lock.json (fix npm ci) |
+| 2026-04-08 | docker-compose: cpp-core(:8012) · zig-core(:8013) · wasm-zig(:8014) 컨테이너 추가 · 전 서비스 polyglot bridge 네트워크 통합 · nginx wasm MIME 설정 · SSE health stream · WASM Theta/Vega/Rho Greeks · Python multi-stage Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI · Rust base image 1.78 → 1.88 (edition2024 / MSRV) · add openssl-libs-static (fix musl static link) · add portal-svelte package-lock.json (fix npm ci) |
 | 2026-04-07 | Docker Compose 28 services · Go workflow orchestration · circuit breaker · R GARCH/ARIMA · Nim AR(p) · OCaml multi-asset VaR · WASM MC/portfolio · Elixir Redis Pub/Sub · Svelte tabs/notifications/charts/dependency-map panels |
 | 2026-04-06 | SWI-Prolog added (28th) · Lua coroutines · Swift Actor · Clojure STM · Java Loom · Erlang hot-swap · V Zero-GC · Ruby DSL · Gleam ADT · Scala 3 · Nim · Crystal · OCaml · Dart · Haskell · R · F# · WebAssembly |
 | 2026-03-18 | Rust pipeline · Docker PostgreSQL integration |

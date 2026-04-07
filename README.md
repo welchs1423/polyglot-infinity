@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **22개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **23개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V · Erlang**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---

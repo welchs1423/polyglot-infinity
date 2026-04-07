@@ -16,9 +16,15 @@
         loading = true;
         try {
             const [status, infer, portfolio] = await Promise.all([
-                fetch("http://localhost:8011/api/prolog/status").then(x => x.json()),
-                fetch(`http://localhost:8011/api/prolog/infer?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`).then(x => x.json()),
-                fetch(`http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`).then(x => x.json()),
+                fetch("http://localhost:8011/api/prolog/status").then((x) =>
+                    x.json(),
+                ),
+                fetch(
+                    `http://localhost:8011/api/prolog/infer?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
+                ).then((x) => x.json()),
+                fetch(
+                    `http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
+                ).then((x) => x.json()),
             ]);
             statusData = status;
             inferData = infer;
@@ -34,8 +40,8 @@
         loading = true;
         try {
             portfolioData = await fetch(
-                `http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`
-            ).then(x => x.json());
+                `http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
+            ).then((x) => x.json());
         } catch {
             portfolioData = { error: "포트폴리오 탐색 실패" };
         } finally {
@@ -46,35 +52,63 @@
     const gradeColor = /** @param {string} g */ (g) => {
         if (!g) return "#94a3b8";
         /** @type {Record<string, string>} */
-        const m = { low: "#22c55e", medium: "#f59e0b", high: "#f97316", critical: "#ef4444" };
+        const m = {
+            low: "#22c55e",
+            medium: "#f59e0b",
+            high: "#f97316",
+            critical: "#ef4444",
+        };
         return m[g.toLowerCase()] ?? "#94a3b8";
     };
 
     /** @type {Record<string, string>} */
-    const typeColors = { aggressive: "#ef4444", balanced: "#3b82f6", conservative: "#22c55e" };
+    const typeColors = {
+        aggressive: "#ef4444",
+        balanced: "#3b82f6",
+        conservative: "#22c55e",
+    };
 </script>
 
 <section class="panel prolog-panel">
     <h2>🟣 SWI-Prolog 8.4 · 논리 추론 + 제약 백트래킹 (:8011)</h2>
     <p class="subtitle">
-        선언적 규칙 → 자동 백트래킹 탐색 · 제약 충족 포트폴리오 · 신용 리스크 논리 추론 체인
+        선언적 규칙 → 자동 백트래킹 탐색 · 제약 충족 포트폴리오 · 신용 리스크
+        논리 추론 체인
     </p>
 
     <!-- 파라미터 입력 -->
     <div class="prolog-params">
         <div class="param-group">
             <label>부채비율</label>
-            <input type="range" min="0.1" max="0.9" step="0.05" bind:value={debtRatio} />
+            <input
+                type="range"
+                min="0.1"
+                max="0.9"
+                step="0.05"
+                bind:value={debtRatio}
+            />
             <span>{debtRatio.toFixed(2)}</span>
         </div>
         <div class="param-group">
             <label>변동성</label>
-            <input type="range" min="0.05" max="0.5" step="0.05" bind:value={volatility} />
+            <input
+                type="range"
+                min="0.05"
+                max="0.5"
+                step="0.05"
+                bind:value={volatility}
+            />
             <span>{volatility.toFixed(2)}</span>
         </div>
         <div class="param-group">
             <label>연체 횟수</label>
-            <input type="range" min="0" max="5" step="1" bind:value={defaults} />
+            <input
+                type="range"
+                min="0"
+                max="5"
+                step="1"
+                bind:value={defaults}
+            />
             <span>{defaults}</span>
         </div>
     </div>
@@ -90,7 +124,13 @@
         </div>
         <div class="param-group">
             <label>최대 리스크</label>
-            <input type="range" min="6" max="20" step="1" bind:value={riskMax} />
+            <input
+                type="range"
+                min="6"
+                max="20"
+                step="1"
+                bind:value={riskMax}
+            />
             <span>{riskMax}</span>
         </div>
     </div>
@@ -108,15 +148,28 @@
             <!-- 엔진 정보 -->
             {#if statusData}
                 <div class="prolog-info-bar">
-                    <span class="prolog-badge">SWI-Prolog {statusData.version?.replace("SWI-Prolog ", "") ?? ""}</span>
-                    <span class="prolog-badge" style="background:#4b5563">{statusData.paradigm}</span>
+                    <span class="prolog-badge"
+                        >SWI-Prolog {statusData.version?.replace(
+                            "SWI-Prolog ",
+                            "",
+                        ) ?? ""}</span
+                    >
+                    <span class="prolog-badge" style="background:#4b5563"
+                        >{statusData.paradigm}</span
+                    >
                 </div>
             {/if}
 
             <!-- 신용 추론 결과 -->
             <h3 class="section-title">🔍 신용 리스크 논리 추론</h3>
-            <div class="prolog-result-box" style="border-color: {gradeColor(inferData.grade)}">
-                <div class="prolog-grade" style="color: {gradeColor(inferData.grade)}">
+            <div
+                class="prolog-result-box"
+                style="border-color: {gradeColor(inferData.grade)}"
+            >
+                <div
+                    class="prolog-grade"
+                    style="color: {gradeColor(inferData.grade)}"
+                >
                     {(inferData.grade ?? "").toUpperCase()}
                 </div>
                 <div class="prolog-reason">{inferData.reason}</div>
@@ -126,11 +179,15 @@
             <div class="card-grid" style="margin-top:0.75rem">
                 <div class="julia-card" style="border-color:#6366f1">
                     <span class="label">부채비율</span>
-                    <span class="value">{(inferData.debt_ratio * 100).toFixed(0)}%</span>
+                    <span class="value"
+                        >{(inferData.debt_ratio * 100).toFixed(0)}%</span
+                    >
                 </div>
                 <div class="julia-card" style="border-color:#6366f1">
                     <span class="label">변동성</span>
-                    <span class="value">{(inferData.volatility * 100).toFixed(0)}%</span>
+                    <span class="value"
+                        >{(inferData.volatility * 100).toFixed(0)}%</span
+                    >
                 </div>
                 <div class="julia-card" style="border-color:#6366f1">
                     <span class="label">연체 횟수</span>
@@ -155,40 +212,68 @@
 
     <!-- 포트폴리오 탐색 -->
     {#if portfolioData}
-        <h3 class="section-title" style="margin-top:1.2rem">📦 제약 충족 포트폴리오 (백트래킹 탐색)</h3>
+        <h3 class="section-title" style="margin-top:1.2rem">
+            📦 제약 충족 포트폴리오 (백트래킹 탐색)
+        </h3>
         {#if portfolioData.error}
             <p style="color:#f87171">{portfolioData.error}</p>
         {:else if portfolioData.found}
-            <div class="prolog-portfolio-box" style="border-color: {typeColors[portfolioData.portfolio_type] ?? '#6366f1'}">
-                <div class="portfolio-type-badge" style="background: {typeColors[portfolioData.portfolio_type] ?? '#6366f1'}">
+            <div
+                class="prolog-portfolio-box"
+                style="border-color: {typeColors[
+                    portfolioData.portfolio_type
+                ] ?? '#6366f1'}"
+            >
+                <div
+                    class="portfolio-type-badge"
+                    style="background: {typeColors[
+                        portfolioData.portfolio_type
+                    ] ?? '#6366f1'}"
+                >
                     {portfolioData.portfolio_type?.toUpperCase()}
                 </div>
                 <div class="portfolio-alloc">
                     <div class="alloc-bar-wrap">
                         <span class="alloc-label">주식 (Equity)</span>
                         <div class="alloc-bar">
-                            <div class="alloc-fill equity" style="width:{portfolioData.equity_pct}%"></div>
+                            <div
+                                class="alloc-fill equity"
+                                style="width:{portfolioData.equity_pct}%"
+                            ></div>
                         </div>
-                        <span class="alloc-pct">{portfolioData.equity_pct}%</span>
+                        <span class="alloc-pct"
+                            >{portfolioData.equity_pct}%</span
+                        >
                     </div>
                     <div class="alloc-bar-wrap">
                         <span class="alloc-label">채권 (Bond)</span>
                         <div class="alloc-bar">
-                            <div class="alloc-fill bond" style="width:{portfolioData.bond_pct}%"></div>
+                            <div
+                                class="alloc-fill bond"
+                                style="width:{portfolioData.bond_pct}%"
+                            ></div>
                         </div>
                         <span class="alloc-pct">{portfolioData.bond_pct}%</span>
                     </div>
                     <div class="alloc-bar-wrap">
                         <span class="alloc-label">대안 (Alternative)</span>
                         <div class="alloc-bar">
-                            <div class="alloc-fill alt" style="width:{portfolioData.alternative_pct}%"></div>
+                            <div
+                                class="alloc-fill alt"
+                                style="width:{portfolioData.alternative_pct}%"
+                            ></div>
                         </div>
-                        <span class="alloc-pct">{portfolioData.alternative_pct}%</span>
+                        <span class="alloc-pct"
+                            >{portfolioData.alternative_pct}%</span
+                        >
                     </div>
                     <div class="alloc-bar-wrap">
                         <span class="alloc-label">현금 (Cash)</span>
                         <div class="alloc-bar">
-                            <div class="alloc-fill cash" style="width:{portfolioData.cash_pct}%"></div>
+                            <div
+                                class="alloc-fill cash"
+                                style="width:{portfolioData.cash_pct}%"
+                            ></div>
                         </div>
                         <span class="alloc-pct">{portfolioData.cash_pct}%</span>
                     </div>
@@ -196,17 +281,25 @@
                 <div class="card-grid" style="margin-top:0.75rem">
                     <div class="julia-card" style="border-color:#8b5cf6">
                         <span class="label">기대수익률</span>
-                        <span class="value" style="color:#a78bfa">{portfolioData.expected_return?.toFixed(2)}%</span>
+                        <span class="value" style="color:#a78bfa"
+                            >{portfolioData.expected_return?.toFixed(2)}%</span
+                        >
                     </div>
                     <div class="julia-card" style="border-color:#8b5cf6">
                         <span class="label">포트폴리오 리스크</span>
-                        <span class="value" style="color:#f59e0b">{portfolioData.portfolio_risk?.toFixed(2)}</span>
+                        <span class="value" style="color:#f59e0b"
+                            >{portfolioData.portfolio_risk?.toFixed(2)}</span
+                        >
                     </div>
                 </div>
-                <div class="prolog-method" style="margin-top:0.5rem">{portfolioData.method}</div>
+                <div class="prolog-method" style="margin-top:0.5rem">
+                    {portfolioData.method}
+                </div>
             </div>
         {:else}
-            <p style="color:#f87171">해당 제약을 만족하는 포트폴리오를 찾을 수 없습니다.</p>
+            <p style="color:#f87171">
+                해당 제약을 만족하는 포트폴리오를 찾을 수 없습니다.
+            </p>
         {/if}
     {/if}
 </section>
@@ -230,8 +323,13 @@
         margin-bottom: 1rem;
     }
 
-    .prolog-btn:hover:not(:disabled) { opacity: 0.85; }
-    .prolog-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .prolog-btn:hover:not(:disabled) {
+        opacity: 0.85;
+    }
+    .prolog-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
 
     .prolog-params {
         display: flex;
@@ -250,8 +348,14 @@
         min-width: 160px;
     }
 
-    .param-group label { white-space: nowrap; color: #cbd5e1; }
-    .param-group input[type=range] { flex: 1; accent-color: #7c3aed; }
+    .param-group label {
+        white-space: nowrap;
+        color: #cbd5e1;
+    }
+    .param-group input[type="range"] {
+        flex: 1;
+        accent-color: #7c3aed;
+    }
     .param-group select {
         flex: 1;
         background: #1e293b;
@@ -261,7 +365,12 @@
         padding: 0.2rem 0.4rem;
         font-size: 0.82rem;
     }
-    .param-group span { min-width: 2.5rem; text-align: right; color: #a78bfa; font-weight: bold; }
+    .param-group span {
+        min-width: 2.5rem;
+        text-align: right;
+        color: #a78bfa;
+        font-weight: bold;
+    }
 
     .prolog-info-bar {
         display: flex;
@@ -316,7 +425,10 @@
         align-items: center;
     }
 
-    .flags-label { font-size: 0.8rem; color: #94a3b8; }
+    .flags-label {
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
 
     .flag-chip {
         background: #7f1d1d;
@@ -343,7 +455,11 @@
         margin-bottom: 0.75rem;
     }
 
-    .portfolio-alloc { display: flex; flex-direction: column; gap: 0.4rem; }
+    .portfolio-alloc {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
 
     .alloc-bar-wrap {
         display: flex;
@@ -352,7 +468,11 @@
         font-size: 0.82rem;
     }
 
-    .alloc-label { width: 110px; color: #94a3b8; flex-shrink: 0; }
+    .alloc-label {
+        width: 110px;
+        color: #94a3b8;
+        flex-shrink: 0;
+    }
 
     .alloc-bar {
         flex: 1;
@@ -362,15 +482,35 @@
         overflow: hidden;
     }
 
-    .alloc-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
-    .alloc-fill.equity  { background: #ef4444; }
-    .alloc-fill.bond    { background: #3b82f6; }
-    .alloc-fill.alt     { background: #f59e0b; }
-    .alloc-fill.cash    { background: #22c55e; }
+    .alloc-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.4s;
+    }
+    .alloc-fill.equity {
+        background: #ef4444;
+    }
+    .alloc-fill.bond {
+        background: #3b82f6;
+    }
+    .alloc-fill.alt {
+        background: #f59e0b;
+    }
+    .alloc-fill.cash {
+        background: #22c55e;
+    }
 
-    .alloc-pct { width: 2.5rem; text-align: right; color: #e2e8f0; font-weight: bold; font-size: 0.82rem; }
+    .alloc-pct {
+        width: 2.5rem;
+        text-align: right;
+        color: #e2e8f0;
+        font-weight: bold;
+        font-size: 0.82rem;
+    }
 
-    .error-box { margin-top: 0.5rem; }
+    .error-box {
+        margin-top: 0.5rem;
+    }
 
     .julia-card {
         background: #0f172a;
@@ -382,6 +522,13 @@
         gap: 0.3rem;
     }
 
-    .label { font-size: 0.8rem; color: #94a3b8; }
-    .value { font-size: 1.1rem; font-weight: bold; color: #f8fafc; }
+    .label {
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+    .value {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #f8fafc;
+    }
 </style>

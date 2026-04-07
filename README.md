@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **27개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V · Erlang · Lua(코루틴) · Swift · Clojure · Java**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **28개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V · Erlang · Lua(코루틴) · Swift · Clojure · Java · Prolog**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -43,6 +43,7 @@
 [Swift Actor · :8008]         ← ★ actor 키워드 — 컴파일 타임 data race 차단 · await 없이 접근 불가
 [Clojure STM · :8009]         ← ★ ref + dosync — 잠금 없는 원자적 이체 · 합계 불변성 보존
 [Java 21 Loom · :8010]        ← ★ Thread.ofVirtual() — 5만 virtual thread · platform 대비 ~6x
+[SWI-Prolog · :8011]          ← ★ 선언적 제약 규칙 → 백트래킹 자동 탐색 · 논리 추론 체인
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -71,6 +72,7 @@
 | **Swift 6.1** | **8008** | **★ `actor` 키워드 — 컴파일 타임 data race 원천 차단 · 외부 접근 시 `await` 강제** |
 | **Clojure 1.10** | **8009** | **★ `ref` + `dosync` STM — 잠금 없는 원자적 이체 · 합계 불변성 보존 (300 동시 트랜잭션)** |
 | **Java 21 (Project Loom)** | **8010** | **★ `Thread.ofVirtual()` — 5만 virtual thread · platform 대비 ~6x · OS 스레드 수 무관** |
+| **SWI-Prolog 8.4** | **8011** | **★ 선언적 제약 규칙 → 백트래킹 자동 탐색 · 신용 리스크 논리 추론 체인** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -109,6 +111,7 @@
 | **Actor Concurrency** | **Swift 6.1 — `actor` 컴파일 타임 격리 · `await` 없이 접근 불가 · data race 원천 차단 (:8008)** |
 | **STM Ledger** | **Clojure 1.10, `ref`/`dosync` STM — 잠금 없는 원자적 이체 · 트랜잭션 충돌 시 자동 재시도 (:8009)** |
 | **Virtual Threads** | **Java 21, Project Loom `Thread.ofVirtual()` — 5만 경량 스레드 · OS 스레드 수 독립 (:8010)** |
+| **Logic Solver** | **SWI-Prolog 8.4, library(http) — 선언적 제약 규칙 → 백트래킹 포트폴리오 탐색 + 논리 추론 체인 (:8011)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -214,6 +217,15 @@
 | `GET` | `/api/java/compare?n=500` | **★ virtual vs platform thread 생성 시간 비교** — speedup 배율 |
 | `GET` | `/health` | 헬스체크 |
 
+### SWI-Prolog `:8011`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/prolog/portfolio?type=balanced&risk_max=12.0` | **★ 제약 충족 포트폴리오 백트래킹 탐색** — 비중 합=100%, 포트폴리오 타입, 리스크 ≤ risk_max 만족하는 첫 번째 해 |
+| `GET` | `/api/prolog/infer?debt=0.72&vol=0.38&defaults=1` | **★ 신용 리스크 논리 추론 체인** — 플래그 발화 → 규칙 매칭 → 등급(critical/high/medium/low) + 발화 규칙 목록 |
+| `GET` | `/api/prolog/status` | SWI-Prolog 버전 · 패러다임 정보 |
+| `GET` | `/health` | 헬스체크 |
+
 ### Scala `:9003`
 
 | Method | Endpoint | 설명 |
@@ -312,6 +324,14 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+### 2026-04-08
+- [x] **SWI-Prolog 8.4 제약 추론 솔버 추가 — 28번째 언어**
+  - `solver-prolog/server.pl` — 포트 8011, 선언적 제약 규칙 + 백트래킹 자동 탐색 + 논리 추론 체인
+  - `/api/prolog/portfolio` — 주식/채권/대안/현금 비중 합=100%, 포트폴리오 타입 범위, 리스크 ≤ risk_max 만족하는 해를 백트래킹으로 탐색
+  - `/api/prolog/infer` — 부채비율/변동성/연체 → 플래그 발화 → 규칙 매칭 → grade + 발화 규칙 목록 (논리 추론 체인)
+  - **Prolog 강점**: 탐색 로직을 직접 작성하지 않아도 됨 — "이런 포트폴리오가 유효하다" 규칙만 선언하면 Prolog 엔진이 백트래킹으로 해 탐색
+  - Fix: SWI-Prolog 8.4에서 `if-then-else` 내 변수와 `maplist` 람다 변수 충돌 → 변수명 분리(`R1`, `G2-R2`)
+
 ### 2026-04-07
 - [x] **Prolog 패널 · 금융 차트 · 서비스 의존성 맵 추가**
   - **PrologPanel**: SWI-Prolog :8011 연결 — 신용 리스크 논리 추론 + 백트래킹 포트폴리오 탐색 (범위 슬라이더 파라미터 입력, 자산 배분 바 차트)
@@ -319,7 +339,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
     - Monte Carlo GBM 200경로 시각화 + VaR95% 수평선 (Julia :8002)
     - Volatility Smile IV 곡선 + ATM 마커 (F# :9001)
     - VaR 분포 히스토그램 + p95/avg 수직선 (Rust :8081 risk_logs)
-  - **DependencyMapPanel**: SVG 노드 그래프 — 27개 서비스 · 2개 DB · 호출 관계 시각화 (hover 인터랙션)
+  - **DependencyMapPanel**: SVG 노드 그래프 — 28개 서비스 · 2개 DB · 호출 관계 시각화 (hover 인터랙션)
 - [x] **4개 언어 추가 (Lua 코루틴 · Swift Actor · Clojure STM · Java Virtual Threads) — 27번째까지**
   - **Lua 5.4** `:8007` — `coroutine.create/yield/resume` 단일 OS 스레드 6-피드 협력적 스케줄러 · OS 스레드·락·콜백 없음
   - **Swift 6.1** `:8008` — `actor` 키워드로 컴파일 타임 data race 원천 차단 · 200 동시 Task 검증

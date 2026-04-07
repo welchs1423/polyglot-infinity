@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -120,7 +121,10 @@ type SystemLog struct {
 
 func main() {
 	var err error
-	connStr := "postgres://dev:polyglot@localhost/polyglot_db?sslmode=disable"
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "postgres://dev:polyglot@localhost/polyglot_db?sslmode=disable"
+	}
 	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		log.Fatal(err)
@@ -132,8 +136,12 @@ func main() {
 	}
 	fmt.Println("🐘 PostgreSQL 연결 성공!")
 
+	redisAddr := os.Getenv("REDIS_URL")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
 	rdb = redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: redisAddr,
 	})
 
 	if err := rdb.Ping(ctx).Err(); err != nil {

@@ -66,8 +66,8 @@
         <div>
             <h2>🔀 워크플로 파이프라인 (Go 오케스트레이션)</h2>
             <p class="subtitle">
-                Python → Rust → Kotlin 엔드-투-엔드 리스크 파이프라인 · 서킷
-                브레이커 모니터링 · Redis Pub/Sub 이벤트 (:8080)
+                Python → Rust → Kotlin → Nim 엔드-투-엔드 리스크 파이프라인 ·
+                서킷 브레이커 모니터링 · Redis Pub/Sub 이벤트 (:8080) · 5단계
             </p>
         </div>
         <div class="btn-group">
@@ -126,6 +126,14 @@
                                 {/if}
                             {:else if step.data.rows_inserted !== undefined}
                                 {step.data.rows_inserted}건 삽입
+                            {:else if step.data.persistence !== undefined}
+                                α+β={step.data.persistence?.toFixed(4)} · 반감기={step.data.half_life_days?.toFixed(
+                                    1,
+                                )}일 · 현재σ={step.data.current_vol_ann != null
+                                    ? (step.data.current_vol_ann * 100).toFixed(
+                                          2,
+                                      ) + "%"
+                                    : "N/A"}
                             {:else if step.data.var_95 !== undefined}
                                 VaR95={step.data.var_95}
                                 {#if step.data.count !== undefined}

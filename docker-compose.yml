@@ -1,0 +1,285 @@
+# Polyglot Infinity — 28-Language Microservices Platform
+# Usage: docker compose up -d
+# Prerequisites: Docker 24+, 16GB RAM recommended
+#
+# Service port map:
+#   8080 Go-Hub         8000 Python-Brain   8081 Rust-Pipeline
+#   8002 Julia-Engine   8003 R-Stats        9001 FSharp-Pricer
+#   8004 OCaml-Risk     9002 Crystal-GW     8005 Nim-Analytics
+#   9003 Scala-Stream   8006 Haskell-Pricer 9004 Ruby-Scorer
+#   9005 Dart-Engine    8007 Lua-Stream     8008 Swift-Actor
+#   8009 Clojure-STM    8010 Java-Loom      8011 Prolog-Solver
+#   4000 Elixir-Hub     4001 Gleam-Hub      4002 V-Quant
+#   4003 Erlang-Hot     9000 Kotlin-Sched   5173 Svelte-Portal
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: polyglot
+      POSTGRES_DB: polyglot_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d polyglot_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Go Hub / Gateway (:8080) ────────────────────────────────────────────────
+  go-hub:
+    build:
+      context: ./server-go
+      dockerfile: Dockerfile
+    ports: ["8080:8080"]
+    environment:
+      DATABASE_URL: postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
+      REDIS_URL: redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # ── Python Brain (:8000) ────────────────────────────────────────────────────
+  python-brain:
+    build:
+      context: ./brain-python
+      dockerfile: Dockerfile
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # ── Rust Pipeline (:8081) ───────────────────────────────────────────────────
+  rust-pipeline:
+    build:
+      context: ./pipeline-rust
+      dockerfile: Dockerfile
+    ports: ["8081:8081"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
+      REDIS_URL: redis://redis:6379
+
+  # ── Julia Engine (:8002) ────────────────────────────────────────────────────
+  julia-engine:
+    image: julia:1.10-bookworm
+    working_dir: /app
+    command: julia server.jl
+    ports: ["8002:8002"]
+    volumes:
+      - ./engine-julia:/app:ro
+
+  # ── R Stats (:8003) ─────────────────────────────────────────────────────────
+  r-stats:
+    image: r-base:4.3.3
+    working_dir: /app
+    command: Rscript run.R
+    ports: ["8003:8003"]
+    volumes:
+      - ./engine-r:/app:ro
+
+  # ── F# Pricer (:9001) ───────────────────────────────────────────────────────
+  fsharp-pricer:
+    image: mcr.microsoft.com/dotnet/sdk:8.0-alpine
+    working_dir: /app
+    command: dotnet run --configuration Release
+    ports: ["9001:9001"]
+    volumes:
+      - ./pricer-fsharp:/app:ro
+      - fsharp_nuget:/root/.nuget
+
+  # ── OCaml Risk (:8004) — pre-compiled binary ────────────────────────────────
+  ocaml-risk:
+    image: debian:bookworm-slim
+    working_dir: /app
+    command: ./server
+    ports: ["8004:8004"]
+    volumes:
+      - ./risk-ocaml:/app:ro
+
+  # ── Crystal Gateway (:9002) — pre-compiled binary ───────────────────────────
+  crystal-gateway:
+    image: debian:bookworm-slim
+    working_dir: /app
+    command: ./server
+    ports: ["9002:9002"]
+    volumes:
+      - ./gateway-crystal:/app:ro
+
+  # ── Nim Analytics (:8005) — pre-compiled binary ─────────────────────────────
+  nim-analytics:
+    image: debian:bookworm-slim
+    working_dir: /app
+    command: ./server
+    ports: ["8005:8005"]
+    volumes:
+      - ./analytics-nim:/app:ro
+
+  # ── Scala Streamer (:9003) ──────────────────────────────────────────────────
+  scala-streamer:
+    image: eclipse-temurin:21-jdk-alpine
+    working_dir: /app
+    command: sh run.sh
+    ports: ["9003:9003"]
+    volumes:
+      - ./streamer-scala:/app:ro
+      - scala_coursier:/root/.cache/coursier
+
+  # ── Haskell Pricer (:8006) — pre-compiled binary ────────────────────────────
+  haskell-pricer:
+    image: debian:bookworm-slim
+    working_dir: /app
+    command: ./server
+    ports: ["8006:8006"]
+    volumes:
+      - ./pricer-haskell:/app:ro
+
+  # ── Ruby Scorer (:9004) ─────────────────────────────────────────────────────
+  ruby-scorer:
+    image: ruby:3.3-slim
+    working_dir: /app
+    command: ruby server.rb
+    ports: ["9004:9004"]
+    volumes:
+      - ./scorer-ruby:/app:ro
+
+  # ── Dart Engine (:9005) ─────────────────────────────────────────────────────
+  dart-engine:
+    image: dart:stable
+    working_dir: /app
+    command: dart run bin/server.dart
+    ports: ["9005:9005"]
+    volumes:
+      - ./engine-dart:/app:ro
+      - dart_pub:/root/.pub-cache
+
+  # ── Gleam Hub (:4001) ───────────────────────────────────────────────────────
+  gleam-hub:
+    image: ghcr.io/gleam-lang/gleam:v1.2.1-erlang-alpine
+    working_dir: /app
+    command: gleam run
+    ports: ["4001:4001"]
+    volumes:
+      - ./hub_gleam:/app:ro
+
+  # ── V Quant (:4002) — pre-compiled binary ───────────────────────────────────
+  v-quant:
+    image: debian:bookworm-slim
+    working_dir: /app
+    command: ./server
+    ports: ["4002:4002"]
+    volumes:
+      - ./quant-v:/app:ro
+
+  # ── Erlang Hot (:4003) ──────────────────────────────────────────────────────
+  erlang-hot:
+    image: erlang:27-alpine
+    working_dir: /app
+    command: erl -noshell -s server start
+    ports: ["4003:4003"]
+    volumes:
+      - ./hot-erlang:/app:ro
+
+  # ── Elixir Hub (:4000) ──────────────────────────────────────────────────────
+  elixir-hub:
+    image: elixir:1.18-alpine
+    working_dir: /app
+    command: sh -c "mix deps.get && mix run --no-halt"
+    ports: ["4000:4000"]
+    environment:
+      MIX_ENV: prod
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./hub-elixir:/app:ro
+      - elixir_mix:/root/.mix
+    depends_on:
+      redis: { condition: service_healthy }
+
+  # ── Clojure STM (:8009) ─────────────────────────────────────────────────────
+  clojure-stm:
+    image: clojure:temurin-21-tools-deps-alpine
+    working_dir: /app
+    command: clojure -M server.clj
+    ports: ["8009:8009"]
+    volumes:
+      - ./ledger-clojure:/app:ro
+      - clojure_m2:/root/.m2
+
+  # ── Java Loom (:8010) ───────────────────────────────────────────────────────
+  java-loom:
+    image: eclipse-temurin:21-jdk-alpine
+    working_dir: /app
+    command: sh run.sh
+    ports: ["8010:8010"]
+    volumes:
+      - ./loom-java:/app:ro
+
+  # ── Prolog Solver (:8011) ────────────────────────────────────────────────────
+  prolog-solver:
+    image: swipl:9.2
+    working_dir: /app
+    command: swipl server.pl
+    ports: ["8011:8011"]
+    volumes:
+      - ./solver-prolog:/app:ro
+
+  # ── Lua Stream (:8007) ──────────────────────────────────────────────────────
+  lua-stream:
+    image: nickblah/lua:5.4-luarocks-alpine
+    working_dir: /app
+    command: lua5.4 server.lua
+    ports: ["8007:8007"]
+    volumes:
+      - ./stream-lua:/app:ro
+
+  # ── Swift Actor (:8008) — pre-compiled binary ────────────────────────────────
+  swift-actor:
+    image: debian:bookworm-slim
+    working_dir: /app
+    command: ./server
+    ports: ["8008:8008"]
+    volumes:
+      - ./actor-swift:/app:ro
+
+  # ── Kotlin Scheduler (:9000) ─────────────────────────────────────────────────
+  kotlin-scheduler:
+    image: eclipse-temurin:21-jdk-alpine
+    working_dir: /app
+    command: sh run.sh
+    ports: ["9000:9000"]
+    volumes:
+      - ./scheduler-kotlin:/app:ro
+
+  # ── Svelte Portal (:5173) ────────────────────────────────────────────────────
+  svelte-portal:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports: ["5173:5173"]
+    volumes:
+      - ./portal-svelte:/app
+      - svelte_node_modules:/app/node_modules
+    depends_on:
+      - go-hub
+
+volumes:
+  postgres_data:
+  fsharp_nuget:
+  scala_coursier:
+  dart_pub:
+  elixir_mix:
+  clojure_m2:
+  svelte_node_modules:

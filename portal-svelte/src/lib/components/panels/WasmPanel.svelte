@@ -26,6 +26,15 @@
     let portMu1 = $state(0.1);
     let portMu2 = $state(0.07);
 
+    // DCF 파라미터
+    let dcfFcf = $state(1_000_000);
+    let dcfGrowth = $state(0.10);
+    let dcfTerminal = $state(0.03);
+    let dcfWacc = $state(0.08);
+    let dcfYears = $state(5);
+    /** @type {any | null} */
+    let wasmDcfResult = $state(null);
+
     async function loadWasm() {
         if (!wasmExports) {
             const res = await fetch("/finance.wasm");
@@ -125,6 +134,38 @@
             };
         } catch (e) {
             wasmPortResult = { error: String(e) };
+        } finally {
+            wasmLoading = false;
+        }
+    }
+
+    async function runDcf() {
+        wasmLoading = true;
+        try {
+            const exp = await loadWasm();
+            const value = exp.dcfValue(dcfFcf, dcfGrowth, dcfTerminal, dcfWacc, dcfYears);
+            // 1단계별 PV 수동 계산 (시각화용)
+            const steps = [];
+            let cf = dcfFcf;
+            let cumPv = 0;
+            for (let y = 1; y <= dcfYears; y++) {
+                cf *= (1 + dcfGrowth);
+                const pv = cf / Math.pow(1 + dcfWacc, y);
+                cumPv += pv;
+                steps.push({ year: y, cf: Math.round(cf), pv: Math.round(pv) });
+            }
+            const lastCf = dcfFcf * Math.pow(1 + dcfGrowth, dcfYears);
+            const tv = lastCf * (1 + dcfTerminal) / (dcfWacc - dcfTerminal);
+            const tvPv = tv / Math.pow(1 + dcfWacc, dcfYears);
+            wasmDcfResult = {
+                intrinsic_value: Math.round(value),
+                terminal_value_pv: Math.round(tvPv),
+                operating_pv: Math.round(cumPv),
+                steps,
+                tv_pct: ((tvPv / value) * 100).toFixed(1),
+            };
+        } catch (e) {
+            wasmDcfResult = { error: String(e) };
         } finally {
             wasmLoading = false;
         }
@@ -364,7 +405,80 @@
             <p class="wasm-hint">✓ 해석적 최솟값 공식 · 서버 왕복 없음</p>
         {/if}
     {/if}
-</section>
+    <!-- DCF 내재가치 계산기 -->
+    <div class="section-divider">🏢 DCF 내재가치 (WASM)</div>
+    <div class="param-grid">
+        <div class="param-row">
+            <label for="wasm-fcf">FCF (연간)</label>
+            <input id="wasm-fcf" type="range" min="100000" max="10000000" step="100000"
+                bind:value={dcfFcf} />
+            <span class="param-val">₩{dcfFcf.toLocaleString()}</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-growth">성장률 g</label>
+            <input id="wasm-growth" type="range" min="0.00" max="0.30" step="0.01"
+                bind:value={dcfGrowth} />
+            <span class="param-val">{(dcfGrowth * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-terminal">잡리성장 g∞</label>
+            <input id="wasm-terminal" type="range" min="0.01" max="0.05" step="0.005"
+                bind:value={dcfTerminal} />
+            <span class="param-val">{(dcfTerminal * 100).toFixed(1)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-wacc">WACC</label>
+            <input id="wasm-wacc" type="range" min="0.03" max="0.20" step="0.005"
+                bind:value={dcfWacc} />
+            <span class="param-val">{(dcfWacc * 100).toFixed(1)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-years">예측기간</label>
+            <input id="wasm-years" type="range" min="3" max="15" step="1"
+                bind:value={dcfYears} />
+            <span class="param-val">{dcfYears}년</span>
+        </div>
+    </div>
+    <button class="wasm-btn" onclick={runDcf} disabled={wasmLoading} style="margin-top:0.5rem">
+        DCF 계산
+    </button>
+    {#if wasmDcfResult}
+        {#if wasmDcfResult.error}
+            <p style="color:#f87171">{wasmDcfResult.error}</p>
+        {:else}
+            <div class="julia-grid" style="margin-top:0.75rem">
+                <div class="julia-card wasm-card" style="border-color:#f59e0b">
+                    <span class="jlabel">내재가치 (DCF)</span>
+                    <span class="jval" style="color:#f59e0b">₩{wasmDcfResult.intrinsic_value?.toLocaleString()}</span>
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">영업현금흐름 PV</span>
+                    <span class="jval">₩{wasmDcfResult.operating_pv?.toLocaleString()}</span>
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">쟑리치 PV</span>
+                    <span class="jval">₩{wasmDcfResult.terminal_value_pv?.toLocaleString()}</span>
+                </div>
+                <div class="julia-card wasm-card" style="border-color:#a78bfa">
+                    <span class="jlabel">쟑리치 비중</span>
+                    <span class="jval" style="color:#a78bfa">{wasmDcfResult.tv_pct}%</span>
+                </div>
+            </div>
+            <div class="dcf-table">
+                <div class="dcf-row dcf-head">
+                    <span>연도</span><span>FCF</span><span>PV</span>
+                </div>
+                {#each wasmDcfResult.steps ?? [] as s}
+                    <div class="dcf-row">
+                        <span class="dcf-yr">Y{s.year}</span>
+                        <span>₩{s.cf.toLocaleString()}</span>
+                        <span style="color:#67e8f9">₩{s.pv.toLocaleString()}</span>
+                    </div>
+                {/each}
+            </div>
+            <p class="wasm-hint">✓ 연도별 FCF 할인 · 쟑리수식 · 순수 WASM</p>
+        {/if}
+    {/if}</section>
 
 <style>
     .wasm-btn {
@@ -426,5 +540,29 @@
         text-align: right;
         color: #e2e8f0;
         font-size: 0.82rem;
+    }
+    .dcf-table {
+        margin-top: 0.6rem;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 0.78rem;
+        font-family: monospace;
+    }
+    .dcf-row {
+        display: grid;
+        grid-template-columns: 36px 1fr 1fr;
+        gap: 0.5rem;
+        padding: 0.2rem 0.4rem;
+        background: #0f172a;
+        border-radius: 4px;
+    }
+    .dcf-head {
+        color: #64748b;
+        font-weight: 600;
+        background: transparent;
+    }
+    .dcf-yr {
+        color: #06b6d4;
     }
 </style>

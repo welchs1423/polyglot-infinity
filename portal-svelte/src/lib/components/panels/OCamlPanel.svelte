@@ -257,28 +257,50 @@
             <div class="julia-grid">
                 <div class="julia-card ocaml-card">
                     <span class="jlabel">연율 변동성</span>
-                    <span class="jval">{portfolioData.ann_vol != null ? (portfolioData.ann_vol * 100).toFixed(2) + '%' : 'N/A'}</span>
+                    <span class="jval"
+                        >{portfolioData.ann_vol != null
+                            ? (portfolioData.ann_vol * 100).toFixed(2) + "%"
+                            : "N/A"}</span
+                    >
                 </div>
                 <div class="julia-card ocaml-card">
                     <span class="jlabel">VaR 95%</span>
-                    <span class="jval">{portfolioData.var_95 != null ? (portfolioData.var_95 * 100).toFixed(3) + '%' : 'N/A'}</span>
+                    <span class="jval"
+                        >{portfolioData.var_95 != null
+                            ? (portfolioData.var_95 * 100).toFixed(3) + "%"
+                            : "N/A"}</span
+                    >
                 </div>
                 <div class="julia-card ocaml-card">
                     <span class="jlabel">CVaR 95%</span>
-                    <span class="jval">{portfolioData.cvar_95 != null ? (portfolioData.cvar_95 * 100).toFixed(3) + '%' : 'N/A'}</span>
+                    <span class="jval"
+                        >{portfolioData.cvar_95 != null
+                            ? (portfolioData.cvar_95 * 100).toFixed(3) + "%"
+                            : "N/A"}</span
+                    >
                 </div>
                 <div class="julia-card ocaml-card">
                     <span class="jlabel">포트폴리오 일별 VaR</span>
-                    <span class="jval">{portfolioData.port_var != null ? (portfolioData.port_var * 100).toFixed(3) + '%' : 'N/A'}</span>
+                    <span class="jval"
+                        >{portfolioData.port_var != null
+                            ? (portfolioData.port_var * 100).toFixed(3) + "%"
+                            : "N/A"}</span
+                    >
                 </div>
             </div>
             {#if portfolioData.assets?.length && portfolioData.mcvar_list?.length}
-                <div class="mcvar-header">🔎 Marginal VaR (자산별 한계 기여)</div>
+                <div class="mcvar-header">
+                    🔎 Marginal VaR (자산별 한계 기여)
+                </div>
                 <div class="mcvar-list">
                     {#each portfolioData.assets as asset, i}
                         <div class="mcvar-item">
                             <span class="mcvar-name">{asset}</span>
-                            <span class="mcvar-val">{((portfolioData.mcvar_list[i] ?? 0) * 100).toFixed(4)}%</span>
+                            <span class="mcvar-val"
+                                >{(
+                                    (portfolioData.mcvar_list[i] ?? 0) * 100
+                                ).toFixed(4)}%</span
+                            >
                         </div>
                     {/each}
                 </div>

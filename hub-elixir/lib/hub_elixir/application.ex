@@ -10,8 +10,13 @@ defmodule HubElixir.Application do
       HubElixir.Poller,
       # Redis Pub/Sub 구독자 — Go 워크플로 완료 이벤트 수신 → Phoenix Channel 브로드캐스트
       HubElixir.RedisSubscriber,
-      # Bandit HTTP + WebSocket 서버
-      {Bandit, plug: HubElixir.Router, port: 4000}
+      # Bandit HTTP + WebSocket 서버 (Phoenix.Socket via websock_adapter)
+      {Bandit,
+       plug: HubElixir.Router,
+       port: 4000,
+       websocket_options: [
+         enabled: true
+       ]}
     ]
 
     opts = [strategy: :one_for_one, name: HubElixir.Supervisor]

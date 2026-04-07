@@ -33,9 +33,4 @@ defmodule HubElixir.Router do
     pipe_through :api
     get "/hub/status", StatusController, :index
   end
-
-  # WebSocket 업그레이드 엔드포인트
-  socket "/socket", HubElixir.UserSocket,
-    websocket: true,
-    longpoll: false
 end

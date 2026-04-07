@@ -328,6 +328,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ## 🚀 마일스톤 (최신순)
 
 ### 2026-04-07
+- [x] **VPanel.svelte a11y 접근성 수정** — `<label>` 4개에 `for` 속성 추가, 대응 `<input>`에 `id` 추가 (`v-ticks`, `v-fast-ma`, `v-slow-ma`, `v-seed`) → `a11y_label_has_associated_control` 경고 제거
 - [x] **전 언어 패널 인터랙티브 파라미터 슬라이더 강화**
   - **Ruby**: 부채비율 · LTV · 연체횟수 · 연소득 range 슬라이더 → `/api/ruby/score` 동적 파라미터
   - **V**: Ticks · Fast MA · Slow MA · Seed 슬라이더 → `/api/v/backtest` 전략 파라미터

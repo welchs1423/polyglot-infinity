@@ -2,16 +2,20 @@
     /** @type {any} */
     let vData = $state(null);
     let vLoading = $state(false);
+    let ticks = $state(100000);
+    let fastPeriod = $state(20);
+    let slowPeriod = $state(50);
+    let seed = $state(42);
 
     async function runV() {
         vLoading = true;
         try {
             const [bt, st] = await Promise.all([
                 fetch(
-                    "http://localhost:4002/api/v/backtest?ticks=100000&fast=20&slow=50&seed=42",
+                    `http://localhost:4002/api/v/backtest?ticks=${ticks}&fast=${fastPeriod}&slow=${slowPeriod}&seed=${seed}`,
                 ).then((x) => x.json()),
                 fetch(
-                    "http://localhost:4002/api/v/stress?ticks=150000&seed=42",
+                    `http://localhost:4002/api/v/stress?ticks=${Math.round(ticks * 1.5)}&seed=${seed}`,
                 ).then((x) => x.json()),
             ]);
             vData = { ...bt, stress: st };
@@ -31,6 +35,58 @@
     <button class="v-btn" onclick={runV} disabled={vLoading}>
         {vLoading ? "백테스트 중..." : "전략 백테스트"}
     </button>
+
+    <div class="param-grid">
+        <div class="param-row">
+            <label for="v-ticks">Ticks</label>
+            <input
+                id="v-ticks"
+                type="range"
+                min="10000"
+                max="500000"
+                step="10000"
+                bind:value={ticks}
+            />
+            <span class="param-val">{(ticks / 1000).toFixed(0)}k</span>
+        </div>
+        <div class="param-row">
+            <label for="v-fast-ma">Fast MA</label>
+            <input
+                id="v-fast-ma"
+                type="range"
+                min="3"
+                max="50"
+                step="1"
+                bind:value={fastPeriod}
+            />
+            <span class="param-val">{fastPeriod}</span>
+        </div>
+        <div class="param-row">
+            <label for="v-slow-ma">Slow MA</label>
+            <input
+                id="v-slow-ma"
+                type="range"
+                min="10"
+                max="200"
+                step="5"
+                bind:value={slowPeriod}
+            />
+            <span class="param-val">{slowPeriod}</span>
+        </div>
+        <div class="param-row">
+            <label for="v-seed">Seed</label>
+            <input
+                id="v-seed"
+                type="range"
+                min="1"
+                max="99"
+                step="1"
+                bind:value={seed}
+            />
+            <span class="param-val">{seed}</span>
+        </div>
+    </div>
+
     {#if vData}
         {#if vData.error}
             <div class="error-box">
@@ -107,5 +163,33 @@
     }
     .v-card {
         border-color: #3b82f6 !important;
+    }
+    .param-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.4rem 1rem;
+        margin-bottom: 0.75rem;
+    }
+    .param-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+    .param-row label {
+        min-width: 60px;
+        flex-shrink: 0;
+    }
+    .param-row input[type="range"] {
+        flex: 1;
+        accent-color: #3b82f6;
+    }
+    .param-val {
+        min-width: 38px;
+        text-align: right;
+        color: #e2e8f0;
+        font-family: monospace;
+        font-size: 0.78rem;
     }
 </style>

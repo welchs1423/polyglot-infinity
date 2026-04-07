@@ -121,6 +121,7 @@ json_response(_Request, Dict) :-
 :- http_handler(root('api/prolog/status'),handle_status,    []).
 :- http_handler(root('api/prolog/portfolio'), handle_portfolio, []).
 :- http_handler(root('api/prolog/infer'), handle_infer,     []).
+:- http_handler(root('api/prolog/explain'), handle_explain, []).
 
 handle_health(_Request) :-
     reply_json_dict(_{status: ok, lang: prolog, port: 8011}).
@@ -215,6 +216,66 @@ handle_infer(Request) :-
         rules_matched: RuleCount,
         all_matches:   MatchStrings,
         method: "logical inference chain — Prolog matched facts against rules via unification"
+    }).
+
+% ── /api/prolog/explain: Why? 역추적 설명 ─────────────────────────
+% 각 임계값 체크를 텍스트로 설명하고, 발화된 규칙과 최종 결론을 반환합니다.
+handle_explain(Request) :-
+    http_parameters(Request, [
+        debt(DebtStr, [default('0.55')]),
+        vol(VolStr,   [default('0.28')]),
+        defaults(DefaultsStr, [default('0')])
+    ]),
+    atom_number(DebtStr,     Debt),
+    atom_number(VolStr,      Vol),
+    atom_number(DefaultsStr, Defaults),
+    set_risk_flags(Debt, Vol, Defaults),
+
+    % Evidence: 각 임계값 비교 설명
+    (Debt > 0.7
+     -> E1 = "부채비율 {Debt} > 0.70 → excessive_debt 발화"
+     ;  E1 = "부채비율 {Debt} ≤ 0.70 → excessive_debt 미발화"),
+    format(string(Ev1), "부채비율 ~2f ~w 0.70 → excessive_debt ~w",
+           [Debt, (Debt > 0.7 -> '>' ; '≤'), (Debt > 0.7 -> '발화' ; '미발화')]),
+    (Vol > 0.35
+     -> format(string(Ev2), "변동성 ~2f > 0.35 → high_volatility 발화", [Vol])
+     ;  format(string(Ev2), "변동성 ~2f ≤ 0.35 → high_volatility 미발화", [Vol])),
+    (Vol > 0.25
+     -> format(string(Ev3), "변동성 ~2f > 0.25 → elevated_volatility 발화", [Vol])
+     ;  format(string(Ev3), "변동성 ~2f ≤ 0.25 → elevated_volatility 미발화", [Vol])),
+    (Defaults > 0
+     -> format(string(Ev4), "연체횟수 ~0f > 0 → has_defaults 발화", [Defaults])
+     ;  format(string(Ev4), "연체횟수 ~0f = 0 → has_defaults 미발화", [Defaults])),
+    _ = E1,  % suppress warning
+
+    % 발화된 플래그 수집
+    findall(F, risk_flag(F), Flags),
+    maplist([F, S]>>(atom_string(F, S)), Flags, FlagStrings),
+
+    % 매칭된 규칙 수집
+    findall(GR-RS, risk_grade(GR, RS), GradeReasons),
+    maplist([G2-R2, S2]>>(format(string(S2), "~w: ~w", [G2, R2])),
+            GradeReasons, MatchStrings),
+
+    % 최종 등급 결정
+    (   member(critical-FinalReason, GradeReasons) -> FinalGrade = critical
+    ;   member(high-FinalReason,     GradeReasons) -> FinalGrade = high
+    ;   member(medium-FinalReason,   GradeReasons) -> FinalGrade = medium
+    ;   FinalGrade = low, FinalReason = "LOW: 모든 지표 정상 범위"
+    ),
+
+    format(string(Conclusion),
+           "최종 판정: ~w — ~w", [FinalGrade, FinalReason]),
+
+    reply_json_dict(_{
+        lang: prolog,
+        inputs: _{debt: Debt, vol: Vol, defaults: Defaults},
+        evidence: [Ev1, Ev2, Ev3, Ev4],
+        flags_fired: FlagStrings,
+        rules_matched: MatchStrings,
+        conclusion: Conclusion,
+        final_grade: FinalGrade,
+        method: "Why? backward chaining — Prolog traced each clause head against asserted facts"
     }).
 
 % ── 서버 시작 ─────────────────────────────────────────────────────

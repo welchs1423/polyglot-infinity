@@ -33,7 +33,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
-| 26 | **Java 21** Project Loom | 8010 | `Thread.ofVirtual()` 50k virtual threads (~6x vs platform threads) |
+| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · Async event queue (16 virtual thread workers) · Virtual vs Platform Thread benchmark |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
@@ -111,6 +111,11 @@ Reverse proxy routes registered on Go Hub (:8080):
 | ANY | `/api/analytics/*` | Role alias → `nim-analytics:8005` |
 | ANY | `/api/ledger/*` | Role alias → `clojure-stm:8009` |
 | ANY | `/api/scheduler/*` | Role alias → `kotlin-scheduler:9000` |
+| POST | `/api/java/order?id=<id>` | 주문 생성 (상태: ORDERED) |
+| PUT | `/api/java/order?id=<id>&event=<evt>` | 주문 상태 전이 — `PAY`, `PROCESS`, `SHIP`, `DELIVER`, `CANCEL`, `REFUND` (비동기 이벤트 큐 경유) |
+| GET | `/api/java/order?id=<id>` | 주문 단건 조회 (상태 히스토리 포함) |
+| GET | `/api/java/orders` | 전체 주문 목록 |
+| GET | `/api/java/benchmark?n=<N>&mode=virtual\|platform\|both` | Virtual Thread vs Platform Thread 처리 성능 비교 |
 
 ---
 
@@ -142,6 +147,7 @@ CREATE TABLE risk_reports (
 
 | Date | Changes |
 |:---|:---|
+| 2026-04-08 | **Java 21 Loom**: `VirtualServer.java` 전면 재작성 — `OrderStatus` enum 상태머신 (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `OrderEvent` 기반 전이 검증 · `LinkedBlockingQueue` + Virtual Thread 워커 16개 비동기 이벤트 처리 · `ReentrantLock`으로 Virtual Thread pinning 방지 · Virtual vs Platform Thread 벤치마크 메서드 · REST 엔드포인트 추가 (`POST/PUT/GET /api/java/order`, `GET /api/java/benchmark`) |
 | 2026-04-08 | **Go reverse proxy**: `server-go/main.go` — 22개 canonical 언어 라우트 + 5개 role alias (총 27개) `httputil.ReverseProxy` 등록 · `resolveBackend` env-override + localhost fallback · `withCORS` preflight 처리 · 공유 `proxyTransport` (30s header timeout) |
 | 2026-04-08 | **.gitignore**: `tree.txt` · `server-go/server` (Go 컴파일 바이너리) 추가 |
 | 2026-04-08 | **Gleam hub_gleam**: gen_tcp 기반 Erlang 서버 → `wisp` 2.2.2 + `mist` 6.0.2 순수 Gleam HTTP 서버로 교체 · `/health` "Gleam Hub OK" · `handle_request` wisp 라우터 · `gleam.toml` 의존성 추가 |

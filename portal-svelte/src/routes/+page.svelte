@@ -24,6 +24,9 @@
 	import SwiftActorPanel from "$lib/components/panels/SwiftActorPanel.svelte";
 	import ClojureSTMPanel from "$lib/components/panels/ClojureSTMPanel.svelte";
 	import JavaLoomPanel from "$lib/components/panels/JavaLoomPanel.svelte";
+	import PrologPanel from "$lib/components/panels/PrologPanel.svelte";
+	import ChartsPanel from "$lib/components/panels/ChartsPanel.svelte";
+	import DependencyMapPanel from "$lib/components/panels/DependencyMapPanel.svelte";
 	import LogsPanel from "$lib/components/panels/LogsPanel.svelte";
 
 	/** @type {any[]} */
@@ -70,5 +73,8 @@
 	<SwiftActorPanel />
 	<ClojureSTMPanel />
 	<JavaLoomPanel />
+	<PrologPanel />
+	<ChartsPanel />
+	<DependencyMapPanel />
 	<LogsPanel {logs} />
 </main>

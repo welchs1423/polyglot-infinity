@@ -49,7 +49,11 @@
             <button class="r-btn" onclick={runRFit} disabled={rLoading}>
                 {rLoading ? "분석 중..." : "분포 피팅"}
             </button>
-            <button class="r-btn corr-btn" onclick={runRCorr} disabled={corrLoading}>
+            <button
+                class="r-btn corr-btn"
+                onclick={runRCorr}
+                disabled={corrLoading}
+            >
                 {corrLoading ? "분석 중..." : "상관 분석"}
             </button>
         </div>
@@ -103,7 +107,10 @@
             <div class="error-box"><p>⚠️ {rCorr.error}</p></div>
         {:else}
             <div class="corr-header">
-                🔗 4-Asset 상관행렬 — 등가중 포트폴리오 연율 변동성: <strong style="color:#1d6fa5">{(rCorr.portfolio_vol_ann * 100).toFixed(4)}%</strong>
+                🔗 4-Asset 상관행렬 — 등가중 포트폴리오 연율 변동성: <strong
+                    style="color:#1d6fa5"
+                    >{(rCorr.portfolio_vol_ann * 100).toFixed(4)}%</strong
+                >
             </div>
             <div class="corr-table">
                 <div class="corr-row header">
@@ -116,11 +123,21 @@
                     <div class="corr-row">
                         <span class="corr-asset">{rowAsset}</span>
                         {#each rCorr.assets ?? [] as colAsset, ci}
-                            {@const val = rCorr.correlation?.[rowAsset]?.[colAsset] ?? 0}
+                            {@const val =
+                                rCorr.correlation?.[rowAsset]?.[colAsset] ?? 0}
                             {@const abs = Math.abs(val)}
                             <span
                                 class="corr-cell"
-                                style="background:rgba(29,111,165,{ri===ci?0:abs*0.5});color:{ri===ci?'#94a3b8':val>0.5?'#34d399':val<-0.3?'#f87171':'#e2e8f0'}">
+                                style="background:rgba(29,111,165,{ri === ci
+                                    ? 0
+                                    : abs * 0.5});color:{ri === ci
+                                    ? '#94a3b8'
+                                    : val > 0.5
+                                      ? '#34d399'
+                                      : val < -0.3
+                                        ? '#f87171'
+                                        : '#e2e8f0'}"
+                            >
                                 {ri === ci ? "1.000" : val.toFixed(3)}
                             </span>
                         {/each}
@@ -152,9 +169,17 @@
     .r-card {
         border-color: #1d6fa5 !important;
     }
-    .rbtn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .corr-btn { background: #0e7490; }
-    .corr-btn:hover:not(:disabled) { background: #155e75; }
+    .rbtn-group {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .corr-btn {
+        background: #0e7490;
+    }
+    .corr-btn:hover:not(:disabled) {
+        background: #155e75;
+    }
     .corr-header {
         font-size: 0.8rem;
         color: #94a3b8;
@@ -172,7 +197,10 @@
         grid-template-columns: 60px repeat(4, 1fr);
         gap: 2px;
     }
-    .corr-row.header .corr-asset { color: #64748b; text-align: center; }
+    .corr-row.header .corr-asset {
+        color: #64748b;
+        text-align: center;
+    }
     .corr-asset {
         font-size: 0.75rem;
         font-weight: 700;

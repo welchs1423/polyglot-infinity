@@ -313,6 +313,13 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ## 🚀 마일스톤 (최신순)
 
 ### 2026-04-07
+- [x] **Prolog 패널 · 금융 차트 · 서비스 의존성 맵 추가**
+  - **PrologPanel**: SWI-Prolog :8011 연결 — 신용 리스크 논리 추론 + 백트래킹 포트폴리오 탐색 (범위 슬라이더 파라미터 입력, 자산 배분 바 차트)
+  - **ChartsPanel**: Canvas 기반 금융 차트 3종 (외부 라이브러리 없음)
+    - Monte Carlo GBM 200경로 시각화 + VaR95% 수평선 (Julia :8002)
+    - Volatility Smile IV 곡선 + ATM 마커 (F# :9001)
+    - VaR 분포 히스토그램 + p95/avg 수직선 (Rust :8081 risk_logs)
+  - **DependencyMapPanel**: SVG 노드 그래프 — 27개 서비스 · 2개 DB · 호출 관계 시각화 (hover 인터랙션)
 - [x] **4개 언어 추가 (Lua 코루틴 · Swift Actor · Clojure STM · Java Virtual Threads) — 27번째까지**
   - **Lua 5.4** `:8007` — `coroutine.create/yield/resume` 단일 OS 스레드 6-피드 협력적 스케줄러 · OS 스레드·락·콜백 없음
   - **Swift 6.1** `:8008` — `actor` 키워드로 컴파일 타임 data race 원천 차단 · 200 동시 Task 검증

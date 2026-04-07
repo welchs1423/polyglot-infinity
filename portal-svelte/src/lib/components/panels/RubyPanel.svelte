@@ -10,19 +10,20 @@
     let customRule = $state(
         `rule(:low_income_penalty) do\n  condition { annual_income_k < 50 }\n  action     { score - 40 }\nend`,
     );
+    let debtRatio = $state(0.75);
+    let ltv = $state(0.88);
+    let numDefaults = $state(1);
+    let annualIncomeK = $state(60);
 
     async function runRuby() {
         rubyLoading = true;
         rubyData = null;
         try {
+            const q = `debt_ratio=${debtRatio}&ltv=${ltv}&num_defaults=${numDefaults}&annual_income_k=${annualIncomeK}`;
             const [scoreRes, rulesetRes, evalRes] = await Promise.all([
-                fetch(
-                    "http://localhost:9004/api/ruby/score?debt_ratio=0.75&ltv=0.88&num_defaults=1&annual_income_k=60",
-                ),
+                fetch(`http://localhost:9004/api/ruby/score?${q}`),
                 fetch("http://localhost:9004/api/ruby/ruleset"),
-                fetch(
-                    "http://localhost:9004/api/ruby/evaluate?debt_ratio=0.75&ltv=0.88&num_defaults=1&annual_income_k=60",
-                ),
+                fetch(`http://localhost:9004/api/ruby/evaluate?${q}`),
             ]);
             if (scoreRes.ok && rulesetRes.ok && evalRes.ok) {
                 const score = await scoreRes.json();
@@ -76,6 +77,54 @@
             {rubyLoading ? "계산 중..." : "DSL 규칙 평가"}
         </button>
     </div>
+
+    <div class="param-grid">
+        <div class="param-row">
+            <label>부채비율</label>
+            <input
+                type="range"
+                min="0.1"
+                max="1.0"
+                step="0.05"
+                bind:value={debtRatio}
+            />
+            <span class="param-val">{debtRatio.toFixed(2)}</span>
+        </div>
+        <div class="param-row">
+            <label>LTV</label>
+            <input
+                type="range"
+                min="0.1"
+                max="1.5"
+                step="0.05"
+                bind:value={ltv}
+            />
+            <span class="param-val">{ltv.toFixed(2)}</span>
+        </div>
+        <div class="param-row">
+            <label>연체 횟수</label>
+            <input
+                type="range"
+                min="0"
+                max="5"
+                step="1"
+                bind:value={numDefaults}
+            />
+            <span class="param-val">{numDefaults}회</span>
+        </div>
+        <div class="param-row">
+            <label>연소득 (만$)</label>
+            <input
+                type="range"
+                min="20"
+                max="300"
+                step="10"
+                bind:value={annualIncomeK}
+            />
+            <span class="param-val">{annualIncomeK}k</span>
+        </div>
+    </div>
+
     {#if rubyData}
         {#if rubyData.error}
             <div class="empty-box">
@@ -231,5 +280,33 @@
     }
     .dsl-result.err {
         color: #f87171;
+    }
+    .param-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.4rem 1rem;
+        margin-bottom: 0.75rem;
+    }
+    .param-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+    .param-row label {
+        min-width: 80px;
+        flex-shrink: 0;
+    }
+    .param-row input[type="range"] {
+        flex: 1;
+        accent-color: #dc2626;
+    }
+    .param-val {
+        min-width: 40px;
+        text-align: right;
+        color: #e2e8f0;
+        font-family: monospace;
+        font-size: 0.78rem;
     }
 </style>

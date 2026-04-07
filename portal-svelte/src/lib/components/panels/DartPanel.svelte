@@ -43,7 +43,7 @@
         scenarioLoading = true;
         scenarios = null;
         try {
-            const ytmList = [0.03, 0.06, 0.10];
+            const ytmList = [0.03, 0.06, 0.1];
             const labels = ["Bull (YTM 3%)", "Base (YTM 6%)", "Bear (YTM 10%)"];
             const results = await Promise.all(
                 ytmList.map((ytm) =>
@@ -129,13 +129,30 @@
         <div class="scenario-params">
             <label class="sc-field">
                 <span>만기 (년)</span>
-                <input class="sc-input" type="number" bind:value={bondYears} min="1" max="30" />
+                <input
+                    class="sc-input"
+                    type="number"
+                    bind:value={bondYears}
+                    min="1"
+                    max="30"
+                />
             </label>
             <label class="sc-field">
                 <span>쿠폰 (원 리틬)</span>
-                <input class="sc-input" type="number" bind:value={bondCoupon} min="0.001" max="0.20" step="0.005" />
+                <input
+                    class="sc-input"
+                    type="number"
+                    bind:value={bondCoupon}
+                    min="0.001"
+                    max="0.20"
+                    step="0.005"
+                />
             </label>
-            <button class="dart-btn sc-btn" onclick={runScenarios} disabled={scenarioLoading}>
+            <button
+                class="dart-btn sc-btn"
+                onclick={runScenarios}
+                disabled={scenarioLoading}
+            >
                 {scenarioLoading ? "분석 중..." : "시나리오 실행"}
             </button>
         </div>
@@ -154,8 +171,12 @@
                     {#each scenarios as sc}
                         <div class="sc-row">
                             <span class="sc-name">{sc.label}</span>
-                            <span class="sc-price"
-                                  style="color:{sc.price >= 1000 ? '#34d399' : '#f87171'}">
+                            <span
+                                class="sc-price"
+                                style="color:{sc.price >= 1000
+                                    ? '#34d399'
+                                    : '#f87171'}"
+                            >
                                 {sc.price?.toFixed(2)}
                             </span>
                             <span>{sc.modified_duration?.toFixed(3)}</span>
@@ -247,7 +268,9 @@
         padding: 0.35rem 0.6rem;
         border-bottom: 1px solid rgba(2, 132, 199, 0.12);
     }
-    .sc-row:last-child { border-bottom: none; }
+    .sc-row:last-child {
+        border-bottom: none;
+    }
     .sc-header {
         color: #0284c7;
         font-weight: 600;

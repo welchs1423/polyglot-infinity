@@ -205,11 +205,14 @@
     {#if liveSnapshot}
         <div class="live-box">
             <div class="live-header">
-                📡 실시간 스냅숏 (Elixir GenServer 10s 주기 브로드캐스트 · 총 {snapshotCount}회 수신)
+                📡 실시간 스냅숏 (Elixir GenServer 10s 주기 브로드캐스트 · 총 {snapshotCount}회
+                수신)
             </div>
             <div class="stats-row">
                 <div class="stat-box hit">
-                    Elixir Hub<br /><strong>{liveSnapshot.elixir_hub ?? "online"}</strong>
+                    Elixir Hub<br /><strong
+                        >{liveSnapshot.elixir_hub ?? "online"}</strong
+                    >
                 </div>
                 <div class="stat-box engine">
                     Go Status<br /><strong
@@ -233,16 +236,25 @@
             {#if liveSnapshot.engine_analysis?.version}
                 <div class="engine-row">
                     <span class="eng-label">🐍 Python Engine:</span>
-                    <span class="eng-val">{liveSnapshot.engine_analysis.version}</span>
-                    <span class="eng-sub">{liveSnapshot.engine_analysis.recommendation ?? ""}</span>
+                    <span class="eng-val"
+                        >{liveSnapshot.engine_analysis.version}</span
+                    >
+                    <span class="eng-sub"
+                        >{liveSnapshot.engine_analysis.recommendation ??
+                            ""}</span
+                    >
                 </div>
             {/if}
             {#if liveSnapshot.pipeline_node?.status === "online"}
                 <div class="engine-row">
                     <span class="eng-label">🦀 Rust Pipeline:</span>
-                    <span class="eng-val">{liveSnapshot.pipeline_node.module ?? "online"}</span>
+                    <span class="eng-val"
+                        >{liveSnapshot.pipeline_node.module ?? "online"}</span
+                    >
                     {#if liveSnapshot.pipeline_node.total_risk_logs !== undefined}
-                        <span class="eng-sub">logs: {liveSnapshot.pipeline_node.total_risk_logs.toLocaleString()}</span>
+                        <span class="eng-sub"
+                            >logs: {liveSnapshot.pipeline_node.total_risk_logs.toLocaleString()}</span
+                        >
                     {/if}
                 </div>
             {/if}
@@ -329,7 +341,17 @@
         margin-top: 0.4rem;
         font-size: 0.82rem;
     }
-    .eng-label { color: #94a3b8; font-size: 0.78rem; }
-    .eng-val   { color: #e2e8f0; font-weight: 700; }
-    .eng-sub   { color: #64748b; font-family: monospace; font-size: 0.75rem; }
+    .eng-label {
+        color: #94a3b8;
+        font-size: 0.78rem;
+    }
+    .eng-val {
+        color: #e2e8f0;
+        font-weight: 700;
+    }
+    .eng-sub {
+        color: #64748b;
+        font-family: monospace;
+        font-size: 0.75rem;
+    }
 </style>

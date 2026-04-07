@@ -72,36 +72,105 @@
         </div>
     {/if}
     {#if reports && reports.length > 0}
-        <p class="report-count">{reports.length}개 리포트 · 가장 최근: {new Date(reports[0]?.generatedAt).toLocaleString("ko-KR")}</p>
+        <p class="report-count">
+            {reports.length}개 리포트 · 가장 최근: {new Date(
+                reports[0]?.generatedAt,
+            ).toLocaleString("ko-KR")}
+        </p>
         <div class="report-list">
             {#each reports as r}
-                <div class="report-row" onclick={() => expanded = expanded === r.id ? null : r.id}
-                     style="cursor:pointer">
+                <div
+                    class="report-row"
+                    onclick={() => (expanded = expanded === r.id ? null : r.id)}
+                    style="cursor:pointer"
+                >
                     <div class="report-row-main">
                         <span class="rid">#{r.id}</span>
-                        <span class="rtime">{new Date(r.generatedAt).toLocaleString("ko-KR", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
-                        <span class="ravg" style="color:#f59e0b">{r.avgRiskScore?.toFixed(4)}</span>
+                        <span class="rtime"
+                            >{new Date(r.generatedAt).toLocaleString("ko-KR", {
+                                month: "2-digit",
+                                day: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                            })}</span
+                        >
+                        <span class="ravg" style="color:#f59e0b"
+                            >{r.avgRiskScore?.toFixed(4)}</span
+                        >
                         <div class="risk-bar-wrap">
                             <div class="risk-bar-track">
-                                <div class="risk-bar-min" style="left:{pct(r.minRiskScore, r.minRiskScore, r.maxRiskScore)}%"></div>
-                                <div class="risk-bar-fill"
-                                     style="left:{pct(r.minRiskScore, r.minRiskScore, r.maxRiskScore)}%;
-                                            width:{pct(r.maxRiskScore, r.minRiskScore, r.maxRiskScore) - pct(r.minRiskScore, r.minRiskScore, r.maxRiskScore)}%">
-                                </div>
-                                <div class="risk-bar-avg"
-                                     style="left:{pct(r.avgRiskScore, r.minRiskScore, r.maxRiskScore)}%">
-                                </div>
+                                <div
+                                    class="risk-bar-min"
+                                    style="left:{pct(
+                                        r.minRiskScore,
+                                        r.minRiskScore,
+                                        r.maxRiskScore,
+                                    )}%"
+                                ></div>
+                                <div
+                                    class="risk-bar-fill"
+                                    style="left:{pct(
+                                        r.minRiskScore,
+                                        r.minRiskScore,
+                                        r.maxRiskScore,
+                                    )}%;
+                                            width:{pct(
+                                        r.maxRiskScore,
+                                        r.minRiskScore,
+                                        r.maxRiskScore,
+                                    ) -
+                                        pct(
+                                            r.minRiskScore,
+                                            r.minRiskScore,
+                                            r.maxRiskScore,
+                                        )}%"
+                                ></div>
+                                <div
+                                    class="risk-bar-avg"
+                                    style="left:{pct(
+                                        r.avgRiskScore,
+                                        r.minRiskScore,
+                                        r.maxRiskScore,
+                                    )}%"
+                                ></div>
                             </div>
                         </div>
-                        <span class="expand-icon">{expanded === r.id ? '▲' : '▼'}</span>
+                        <span class="expand-icon"
+                            >{expanded === r.id ? "▲" : "▼"}</span
+                        >
                     </div>
                     {#if expanded === r.id}
                         <div class="report-detail">
-                            <div class="rd-item"><span>총 기록</span><strong>{r.totalRecords?.toLocaleString()}</strong></div>
-                            <div class="rd-item"><span>평균 VaR</span><strong style="color:#f59e0b">{r.avgRiskScore?.toFixed(6)}</strong></div>
-                            <div class="rd-item"><span>최대 VaR</span><strong style="color:#f87171">{r.maxRiskScore?.toFixed(6)}</strong></div>
-                            <div class="rd-item"><span>최소 VaR</span><strong style="color:#34d399">{r.minRiskScore?.toFixed(6)}</strong></div>
-                            <div class="rd-item"><span>범위</span><strong>{((r.maxRiskScore - r.minRiskScore)).toFixed(6)}</strong></div>
+                            <div class="rd-item">
+                                <span>총 기록</span><strong
+                                    >{r.totalRecords?.toLocaleString()}</strong
+                                >
+                            </div>
+                            <div class="rd-item">
+                                <span>평균 VaR</span><strong
+                                    style="color:#f59e0b"
+                                    >{r.avgRiskScore?.toFixed(6)}</strong
+                                >
+                            </div>
+                            <div class="rd-item">
+                                <span>최대 VaR</span><strong
+                                    style="color:#f87171"
+                                    >{r.maxRiskScore?.toFixed(6)}</strong
+                                >
+                            </div>
+                            <div class="rd-item">
+                                <span>최소 VaR</span><strong
+                                    style="color:#34d399"
+                                    >{r.minRiskScore?.toFixed(6)}</strong
+                                >
+                            </div>
+                            <div class="rd-item">
+                                <span>범위</span><strong
+                                    >{(r.maxRiskScore - r.minRiskScore).toFixed(
+                                        6,
+                                    )}</strong
+                                >
+                            </div>
                         </div>
                     {/if}
                 </div>

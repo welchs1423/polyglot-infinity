@@ -3,6 +3,12 @@
     let haskellData = $state(null);
     /** @type {boolean} */
     let haskellLoading = $state(false);
+    let bsS = $state(100);     // spot
+    let bsK = $state(100);     // strike
+    let bsR = $state(0.05);    // risk-free rate
+    let bsSigma = $state(0.20); // volatility
+    let bsT = $state(1.0);     // time to expiry
+    let mcN = $state(500);     // MC paths
 
     async function runHaskell() {
         haskellLoading = true;
@@ -10,13 +16,13 @@
         try {
             const [bsRes, mcRes, streamRes] = await Promise.all([
                 fetch(
-                    "http://localhost:8006/api/haskell/blackscholes?s=100&k=100&r=0.05&sigma=0.2&t=1",
+                    `http://localhost:8006/api/haskell/blackscholes?s=${bsS}&k=${bsK}&r=${bsR}&sigma=${bsSigma}&t=${bsT}`,
                 ),
                 fetch(
-                    "http://localhost:8006/api/haskell/montecarlo?s=100&vol=0.2&mu=0.08&n=500&days=252",
+                    `http://localhost:8006/api/haskell/montecarlo?s=${bsS}&vol=${bsSigma}&mu=${bsR + 0.03}&n=${mcN}&days=252`,
                 ),
                 fetch(
-                    "http://localhost:8006/api/haskell/stream?s=100&mu=0.08&sigma=0.2&n=60&seed=42",
+                    `http://localhost:8006/api/haskell/stream?s=${bsS}&mu=${bsR + 0.03}&sigma=${bsSigma}&n=60&seed=42`,
                 ),
             ]);
             if (bsRes.ok && mcRes.ok && streamRes.ok) {
@@ -66,6 +72,40 @@
             {haskellLoading ? "계산 중..." : "파생상품 계산"}
         </button>
     </div>
+
+    <div class="param-grid">
+        <div class="param-row">
+            <label>Spot (S)</label>
+            <input type="range" min="50" max="200" step="5" bind:value={bsS} />
+            <span class="param-val">{bsS}</span>
+        </div>
+        <div class="param-row">
+            <label>Strike (K)</label>
+            <input type="range" min="50" max="200" step="5" bind:value={bsK} />
+            <span class="param-val">{bsK}</span>
+        </div>
+        <div class="param-row">
+            <label>연변동성 σ</label>
+            <input type="range" min="0.05" max="0.80" step="0.05" bind:value={bsSigma} />
+            <span class="param-val">{(bsSigma * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label>T (년)</label>
+            <input type="range" min="0.1" max="5" step="0.1" bind:value={bsT} />
+            <span class="param-val">{bsT.toFixed(1)}y</span>
+        </div>
+        <div class="param-row">
+            <label>r (%)</label>
+            <input type="range" min="0.01" max="0.15" step="0.01" bind:value={bsR} />
+            <span class="param-val">{(bsR * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label>MC Paths</label>
+            <input type="range" min="100" max="2000" step="100" bind:value={mcN} />
+            <span class="param-val">{mcN}</span>
+        </div>
+    </div>
+
     {#if haskellData}
         {#if haskellData.error}
             <div class="empty-box">
@@ -213,5 +253,27 @@
         color: #c4b5fd;
         font-family: monospace;
         word-break: break-all;
+    }
+    .param-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.4rem 1rem;
+        margin-bottom: 0.75rem;
+    }
+    .param-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+    .param-row label { min-width: 80px; flex-shrink: 0; }
+    .param-row input[type=range] { flex: 1; accent-color: #7c3aed; }
+    .param-val {
+        min-width: 38px;
+        text-align: right;
+        color: #e2e8f0;
+        font-family: monospace;
+        font-size: 0.78rem;
     }
 </style>

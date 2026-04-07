@@ -67,8 +67,8 @@
         <div>
             <h2>🔴 Erlang/OTP 24 · Hot Code Swap (:4003)</h2>
             <p class="subtitle">
-                code:load_file/1 — 서버 무중단 로직 교체 · 진행 중 연결은 구버전으로
-                완료 (BEAM 2-version protocol)
+                code:load_file/1 — 서버 무중단 로직 교체 · 진행 중 연결은
+                구버전으로 완료 (BEAM 2-version protocol)
             </p>
         </div>
         <button class="erlang-btn" onclick={runErlang} disabled={erlangLoading}>
@@ -132,17 +132,31 @@
         <div class="risk-params">
             <label class="risk-field">
                 <span>부체비율</span>
-                <input type="range" min="0.1" max="0.99" step="0.01"
-                    bind:value={riskDebt} />
+                <input
+                    type="range"
+                    min="0.1"
+                    max="0.99"
+                    step="0.01"
+                    bind:value={riskDebt}
+                />
                 <span class="pval">{(riskDebt * 100).toFixed(0)}%</span>
             </label>
             <label class="risk-field">
                 <span>변동성</span>
-                <input type="range" min="0.05" max="0.80" step="0.01"
-                    bind:value={riskVol} />
+                <input
+                    type="range"
+                    min="0.05"
+                    max="0.80"
+                    step="0.01"
+                    bind:value={riskVol}
+                />
                 <span class="pval">{(riskVol * 100).toFixed(0)}%</span>
             </label>
-            <button class="erlang-btn risk-btn" onclick={fetchRisk} disabled={riskLoading}>
+            <button
+                class="erlang-btn risk-btn"
+                onclick={fetchRisk}
+                disabled={riskLoading}
+            >
                 {riskLoading ? "계산 중..." : "산정"}
             </button>
         </div>
@@ -151,18 +165,26 @@
                 <p style="color:#f87171">{riskData.error}</p>
             {:else}
                 <div class="julia-grid" style="margin-top:0.5rem">
-                    <div class="julia-card erlang-card"
-                         style="border-color:{gradeColor(riskData.risk_score ?? 0)}">
+                    <div
+                        class="julia-card erlang-card"
+                        style="border-color:{gradeColor(
+                            riskData.risk_score ?? 0,
+                        )}"
+                    >
                         <span class="jlabel">Risk Score</span>
-                        <span class="jval"
-                              style="color:{gradeColor(riskData.risk_score ?? 0)}">
+                        <span
+                            class="jval"
+                            style="color:{gradeColor(riskData.risk_score ?? 0)}"
+                        >
                             {((riskData.risk_score ?? 0) * 100).toFixed(2)}%
                         </span>
                     </div>
                     <div class="julia-card erlang-card">
                         <span class="jlabel">Grade</span>
-                        <span class="jval"
-                              style="color:{gradeColor(riskData.risk_score ?? 0)}">
+                        <span
+                            class="jval"
+                            style="color:{gradeColor(riskData.risk_score ?? 0)}"
+                        >
                             {riskData.grade}
                         </span>
                     </div>
@@ -172,12 +194,15 @@
                     </div>
                     <div class="julia-card erlang-card">
                         <span class="jlabel">로직</span>
-                        <span class="jval" style="font-size:0.7rem">{riskData.logic}</span>
+                        <span class="jval" style="font-size:0.7rem"
+                            >{riskData.logic}</span
+                        >
                     </div>
                 </div>
             {/if}
         {/if}
-    </div></section>
+    </div>
+</section>
 
 <style>
     .erlang-btn {
@@ -205,7 +230,7 @@
     }
     .risk-section {
         margin-top: 1.5rem;
-        border-top: 1px solid rgba(239,68,68,0.25);
+        border-top: 1px solid rgba(239, 68, 68, 0.25);
         padding-top: 1rem;
     }
     .risk-label {

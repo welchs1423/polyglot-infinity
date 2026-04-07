@@ -128,21 +128,49 @@
         <div class="score-form">
             <label class="sf-field">
                 <span>연소득 (원)</span>
-                <input class="sf-input" type="number" bind:value={income} min="100000" step="100000" />
+                <input
+                    class="sf-input"
+                    type="number"
+                    bind:value={income}
+                    min="100000"
+                    step="100000"
+                />
             </label>
             <label class="sf-field">
                 <span>부체 (원)</span>
-                <input class="sf-input" type="number" bind:value={debt} min="0" step="100000" />
+                <input
+                    class="sf-input"
+                    type="number"
+                    bind:value={debt}
+                    min="0"
+                    step="100000"
+                />
             </label>
             <label class="sf-field">
                 <span>신용이력 (년)</span>
-                <input class="sf-input" type="number" bind:value={historyYears} min="0" max="30" />
+                <input
+                    class="sf-input"
+                    type="number"
+                    bind:value={historyYears}
+                    min="0"
+                    max="30"
+                />
             </label>
             <label class="sf-field">
                 <span>연체 횟수</span>
-                <input class="sf-input" type="number" bind:value={missedPayments} min="0" max="20" />
+                <input
+                    class="sf-input"
+                    type="number"
+                    bind:value={missedPayments}
+                    min="0"
+                    max="20"
+                />
             </label>
-            <button class="ocaml-btn score-btn" onclick={fetchScore} disabled={scoreLoading}>
+            <button
+                class="ocaml-btn score-btn"
+                onclick={fetchScore}
+                disabled={scoreLoading}
+            >
                 {scoreLoading ? "산정 중..." : "스코어 산정"}
             </button>
         </div>
@@ -151,21 +179,37 @@
                 <p style="color:#f87171">{scoreData.error}</p>
             {:else}
                 <div class="julia-grid" style="margin-top:0.5rem">
-                    <div class="julia-card ocaml-card" style="border-color:#60a5fa">
+                    <div
+                        class="julia-card ocaml-card"
+                        style="border-color:#60a5fa"
+                    >
                         <span class="jlabel">Credit Score</span>
-                        <span class="jval" style="color:#60a5fa">{scoreData.score}</span>
+                        <span class="jval" style="color:#60a5fa"
+                            >{scoreData.score}</span
+                        >
                     </div>
-                    <div class="julia-card ocaml-card" style="border-color:#60a5fa">
+                    <div
+                        class="julia-card ocaml-card"
+                        style="border-color:#60a5fa"
+                    >
                         <span class="jlabel">Grade</span>
-                        <span class="jval" style="color:#60a5fa">{scoreData.grade}</span>
+                        <span class="jval" style="color:#60a5fa"
+                            >{scoreData.grade}</span
+                        >
                     </div>
                     <div class="julia-card ocaml-card">
                         <span class="jlabel">제거 확률</span>
-                        <span class="jval">{((scoreData.prob_good ?? 0) * 100).toFixed(1)}%</span>
+                        <span class="jval"
+                            >{((scoreData.prob_good ?? 0) * 100).toFixed(
+                                1,
+                            )}%</span
+                        >
                     </div>
                     <div class="julia-card ocaml-card">
                         <span class="jlabel">DTI</span>
-                        <span class="jval">{((scoreData.dti ?? 0) * 100).toFixed(1)}%</span>
+                        <span class="jval"
+                            >{((scoreData.dti ?? 0) * 100).toFixed(1)}%</span
+                        >
                     </div>
                 </div>
             {/if}

@@ -1,10 +1,21 @@
 <script>
+    import { onMount } from "svelte";
+
     /** @type {any | null} */
     let javaData = $state(null);
     let javaLoading = $state(false);
     /** @type {any | null} */
     let pipelineData = $state(null);
     let pipelineLoading = $state(false);
+    /** @type {any | null} */
+    let javaStatus = $state(null);
+
+    onMount(async () => {
+        try {
+            const res = await fetch("http://localhost:8010/api/java/status");
+            if (res.ok) javaStatus = await res.json();
+        } catch { /* offline */ }
+    });
 
     async function runJava() {
         javaLoading = true;
@@ -49,6 +60,15 @@
                 Project Loom · Thread.ofVirtual() — 5만 개 경량 스레드 · OS
                 스레드 수 무관 (:8010)
             </p>
+            {#if javaStatus}
+                <p class="java-info-strip">
+                    <span>Java {javaStatus.version}</span>
+                    <span class="dot">·</span>
+                    <span>{javaStatus.jvm}</span>
+                    <span class="dot">·</span>
+                    <span>CPU {javaStatus.cpu_cores}코어</span>
+                </p>
+            {/if}
         </div>
         <button class="java-btn" onclick={runJava} disabled={javaLoading}>
             {javaLoading ? "실행 중..." : "Loom 실행"}
@@ -257,5 +277,17 @@
         font-style: italic;
         border-top: 1px solid #1e293b;
         padding-top: 0.5rem;
+    }
+    .java-info-strip {
+        display: flex;
+        gap: 0.4rem;
+        align-items: center;
+        font-size: 0.72rem;
+        color: #64748b;
+        margin: 0.2rem 0 0;
+        flex-wrap: wrap;
+    }
+    .java-info-strip .dot {
+        color: #334155;
     }
 </style>

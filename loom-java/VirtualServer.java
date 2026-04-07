@@ -13,6 +13,9 @@
 // GET /api/java/status
 // GET /api/java/vthreads?n=50000      — N개 virtual thread 스폰, 처리량·메모리 측정
 // GET /api/java/compare?n=200         — virtual vs platform thread 생성 시간 비교
+// GET /api/java/pipeline?n=1000&delay=10 — Blocking I/O 시뮬레이션: Thread.sleep() 포함 작업
+//   virtual thread: sleep 중 OS thread 해제 → N개 동시 sleep → ~delay ms 완료
+//   platform thread: pool 상한(200)에 묶임 → ceil(N/200)*delay ms 소요
 
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
@@ -109,6 +112,89 @@ public class VirtualServer {
             Map.entry("avg_call_price",   String.format("%.4f", avgCall)),
             Map.entry("note", "Thread.ofVirtual — OS threads used ≈ " + cpuCores
                     + ", virtual threads spawned = " + n)
+        );
+    }
+
+    // ── Blocking I/O 시뮬레이션 ──────────────────────────────────────
+    // Virtual Thread의 핵심 강점: Thread.sleep()이 포함된 blocking 코드를
+    // 그대로 써도 OS 스레드를 차단하지 않습니다.
+    // - Platform thread pool(200개): N개 작업 중 200개만 동시 sleep 가능
+    //   → 총 소요 = ceil(N/200) * delayMs
+    // - Virtual thread: N개 모두 동시에 sleep (JVM이 OS thread를 재활용)
+    //   → 총 소요 ≈ delayMs (N에 무관!)
+    static Map<String, Object> runPipeline(int n, int delayMs) throws Exception {
+        final int PLATFORM_POOL = 200;
+
+        // Platform thread 측정
+        long t0p = System.nanoTime();
+        CountDownLatch lp = new CountDownLatch(n);
+        AtomicLong sumPlatform = new AtomicLong(0);
+        try (var exec = Executors.newFixedThreadPool(PLATFORM_POOL)) {
+            for (int i = 0; i < n; i++) {
+                final int idx = i;
+                exec.submit(() -> {
+                    try {
+                        Thread.sleep(delayMs); // blocking I/O 시뮬레이션
+                        BSResult r = blackScholes(90 + idx % 40, 100, 0.05, 0.2, 1.0);
+                        long cur, upd;
+                        do {
+                            cur = sumPlatform.get();
+                            upd = Double.doubleToRawLongBits(
+                                Double.longBitsToDouble(cur) + r.call());
+                        } while (!sumPlatform.compareAndSet(cur, upd));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        lp.countDown();
+                    }
+                });
+            }
+            lp.await(120, TimeUnit.SECONDS);
+        }
+        long platformMs = (System.nanoTime() - t0p) / 1_000_000;
+
+        // Virtual thread 측정
+        long t0v = System.nanoTime();
+        CountDownLatch lv = new CountDownLatch(n);
+        AtomicLong sumVirtual = new AtomicLong(0);
+        try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < n; i++) {
+                final int idx = i;
+                exec.submit(() -> {
+                    try {
+                        Thread.sleep(delayMs); // virtual thread는 sleep 중 OS thread 반환
+                        BSResult r = blackScholes(90 + idx % 40, 100, 0.05, 0.2, 1.0);
+                        long cur, upd;
+                        do {
+                            cur = sumVirtual.get();
+                            upd = Double.doubleToRawLongBits(
+                                Double.longBitsToDouble(cur) + r.call());
+                        } while (!sumVirtual.compareAndSet(cur, upd));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        lv.countDown();
+                    }
+                });
+            }
+            lv.await(120, TimeUnit.SECONDS);
+        }
+        long virtualMs = (System.nanoTime() - t0v) / 1_000_000;
+
+        int theoreticalPlatformMs = (int)(Math.ceil((double) n / PLATFORM_POOL) * delayMs);
+
+        return Map.ofEntries(
+            Map.entry("lang",                    "java"),
+            Map.entry("tasks",                   n),
+            Map.entry("delay_ms_per_task",        delayMs),
+            Map.entry("platform_pool_size",       PLATFORM_POOL),
+            Map.entry("platform_total_ms",        platformMs),
+            Map.entry("virtual_total_ms",          virtualMs),
+            Map.entry("theoretical_platform_ms",  theoreticalPlatformMs),
+            Map.entry("speedup",                  String.format("%.1fx", (double) platformMs / Math.max(virtualMs, 1))),
+            Map.entry("virtual_concurrency",       n + " tasks all sleeping simultaneously"),
+            Map.entry("note", "Virtual threads release OS thread during sleep — " +
+                n + " tasks × " + delayMs + "ms blocking completed in ~" + virtualMs + "ms")
         );
     }
 
@@ -245,6 +331,14 @@ public class VirtualServer {
                         yield toJson(compareThreads(n));
                     }
 
+                    case "/api/java/pipeline" -> {
+                        int n = Math.max(10, Math.min(
+                            Integer.parseInt(params.getOrDefault("n", "1000")), 5000));
+                        int delay = Math.max(1, Math.min(
+                            Integer.parseInt(params.getOrDefault("delay", "10")), 100));
+                        yield toJson(runPipeline(n, delay));
+                    }
+
                     default -> "{\"error\":\"not found\"}";
                 };
                 respond(ex, body);
@@ -257,6 +351,7 @@ public class VirtualServer {
         System.out.println("[Java 21 Loom] Virtual Thread Server on :" + port);
         System.out.println("  GET /api/java/vthreads?n=50000");
         System.out.println("  GET /api/java/compare?n=500");
+        System.out.println("  GET /api/java/pipeline?n=1000&delay=10");
 
         // 메인 스레드 유지
         Thread.currentThread().join();

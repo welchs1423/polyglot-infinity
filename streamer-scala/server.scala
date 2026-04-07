@@ -1,10 +1,15 @@
 // Polyglot Infinity — Scala Streaming Aggregator (:9003)
 // Scala 3 + JDK HttpServer (외부 의존 없음)
-// 역할: 스트림 집계 · 이동평균 · 지수평활
+// Scala 3의 핵심 강점:
+//   - enum (ADT): 모든 variant가 case에서 강제 처리 (컴파일 타임 검증)
+//   - LazyList: 무한 스트림을 타입 안전하게 선언
+//   - extension: 도메인 타입에 연산 직접 추가
+//   - given/using: 타입 클래스로 다형성 표현
 //
 // 엔드포인트:
-//   GET /api/scala/aggregate  — 시계열 스트림 집계 통계
-//   GET /api/scala/smooth     — 지수평활(Holt-Winters 단순 버전)
+//   GET /api/scala/aggregate  — 시계열 스트림 집계
+//   GET /api/scala/smooth     — Holt 이중지수평활
+//   GET /api/scala/stream     — Scala 3 ADT 타입 이벤트 스트림
 //   GET /health
 
 import com.sun.net.httpserver.{HttpServer, HttpExchange}
@@ -12,6 +17,86 @@ import java.net.InetSocketAddress
 import java.io.{OutputStream, PrintStream}
 import scala.math.{sqrt, exp, log, sin, cos, Pi, pow}
 import scala.util.Try
+
+// ── Scala 3 enum — ADT (대수적 데이터 타입) ───────────────────
+// 모든 variant가 match에서 강제 처리됩니다.
+// 새 variant 추가 후 match 미수정 시 → 컴파일 경고/에러 (exhaustive check)
+enum RiskEvent:
+  case Tick(price: Double, vol: Double, ts: Long)
+  case Alert(level: AlertLevel, message: String)
+  case Heartbeat(seqNo: Long)
+
+enum AlertLevel:
+  case Info, Warning, Critical
+
+// ── 타입 클래스: Aggregatable ──────────────────────────────────
+// given/using 으로 타입별 집계 로직을 분리합니다
+trait Aggregatable[A]:
+  def toValue(a: A): Option[Double]
+  def severity(a: A): Int
+
+given Aggregatable[RiskEvent] with
+  def toValue(e: RiskEvent): Option[Double] = e match
+    case RiskEvent.Tick(price, _, _)  => Some(price)
+    case RiskEvent.Alert(_, _)        => None
+    case RiskEvent.Heartbeat(_)       => None
+    // 새 RiskEvent variant 추가 시 → 여기 케이스 추가 필수 (컴파일 강제)
+
+  def severity(e: RiskEvent): Int = e match
+    case RiskEvent.Tick(_, vol, _)          => if vol > 0.3 then 2 else 0
+    case RiskEvent.Alert(AlertLevel.Critical, _) => 3
+    case RiskEvent.Alert(AlertLevel.Warning, _)  => 2
+    case RiskEvent.Alert(AlertLevel.Info, _)     => 1
+    case RiskEvent.Heartbeat(_)                  => 0
+
+// ── extension: LazyList[RiskEvent] 에 도메인 연산 추가 ──────────
+extension [A](stream: LazyList[A])
+  def collectValues(using agg: Aggregatable[A]): LazyList[Double] =
+    stream.flatMap(e => agg.toValue(e))
+
+  def maxSeverity(using agg: Aggregatable[A]): Int =
+    stream.map(e => agg.severity(e)).maxOption.getOrElse(0)
+
+// ── 타입 안전 이벤트 스트림 생성 ────────────────────────────────
+def riskEventStream(seed: Int, mu: Double, sigma: Double): LazyList[RiskEvent] =
+  // LazyList.unfold: 무한 스트림을 상태 전이 함수로 선언 (메모리 즉시 생성 없음)
+  LazyList.unfold((seed.toLong, 100.0, 0L)): (s, price, seq) =>
+    val s2   = (1_664_525L * s + 1_013_904_223L) & 0x7FFFFFFFL
+    val s3   = (1_664_525L * s2 + 1_013_904_223L) & 0x7FFFFFFFL
+    val u    = s2.toDouble / 0x7FFFFFFF.toDouble
+    val u2   = s3.toDouble / 0x7FFFFFFF.toDouble
+    val z    = sqrt(-2.0 * log(u + 1e-10)) * cos(2.0 * Pi * u2)
+    val newP = price * exp(mu / 252.0 + sigma / sqrt(252.0) * z)
+    val vol  = sigma * (0.8 + u * 0.4)
+    // 낮은 확률로 Alert, 매우 낮은 확률로 Heartbeat, 나머지는 Tick
+    val event: RiskEvent =
+      if seq % 50 == 0      then RiskEvent.Heartbeat(seq)
+      else if vol > 0.28    then RiskEvent.Alert(AlertLevel.Warning, s"vol=${vol.formatted("%.3f")}")
+      else                       RiskEvent.Tick(newP, vol, seq)
+    Some(event, (s3, newP, seq + 1))
+
+def streamJson(events: Seq[RiskEvent], n: Int)(using agg: Aggregatable[RiskEvent]): String =
+  val ticks     = events.collect { case t: RiskEvent.Tick => t }
+  val alerts    = events.collect { case a: RiskEvent.Alert => a }
+  val heartbeat = events.collect { case h: RiskEvent.Heartbeat => h }
+  val prices    = ticks.map(_.price)
+  val m  = if prices.isEmpty then 0.0 else prices.sum / prices.size
+  val sd = if prices.size < 2 then 0.0 else sqrt(prices.map(p => (p-m)*(p-m)).sum / prices.size)
+  val alertCounts = alerts.groupBy(_.level).map((k, v) => s""""${k}":${v.size}""").mkString(",")
+  val maxSev = events.toLazyList.maxSeverity
+  f"""{
+    "n_total":${events.size},
+    "n_ticks":${ticks.size},
+    "n_alerts":${alerts.size},
+    "n_heartbeats":${heartbeat.size},
+    "alert_breakdown":{$alertCounts},
+    "tick_price_mean":$m%.4f,
+    "tick_price_std":$sd%.4f,
+    "max_severity_score":$maxSev,
+    "adt_types":["Tick","Alert(Info|Warning|Critical)","Heartbeat"],
+    "lazy_stream":true,
+    "engine":"Scala 3 (ADT enum + LazyList.unfold + given/using)"
+  }"""
 
 // ── 수학 헬퍼 (함수형 스타일) ──────────────────────────────
 
@@ -174,6 +259,17 @@ object Main:
       val xs     = pseudoSeries(seed, n, mu, sigma)
       val (smoothed, forecast) = Stats.holtSmooth(xs, alpha, beta)
       respond(ex, 200, smoothJson(smoothed, forecast, alpha, beta))
+    )
+
+    httpSv.createContext("/api/scala/stream", ex =>
+      val params = parseQuery(ex.getRequestURI.getQuery)
+      val mu     = getDouble(params, "mu",    0.08)
+      val sigma  = getDouble(params, "sigma", 0.15)
+      val n      = getInt(params,    "n",     200).min(2000).max(10)
+      val seed   = getInt(params,    "seed",  7)
+      // LazyList.unfold 로 생성된 무한 스트림에서 n개만 구체화
+      val events = riskEventStream(seed, mu, sigma).take(n).toSeq
+      respond(ex, 200, streamJson(events, n))
     )
 
     httpSv.setExecutor(null)

@@ -30,14 +30,14 @@
 [F# ASP.NET Engine · :9001] ← Black-Scholes Greeks · DCF
 [WebAssembly (Zig → WASM32)]  ← 브라우저 직접 실행 · 서버 왕복 없음
 [OCaml Risk Engine · :8004]   ← 규칙 기반 리스크 판정 · 신용 스코어링
-[Crystal Gateway · :9002]     ← 포트폴리오 성과 · Sharpe/MDD · FX 가중평균
-[Nim Analytics · :8005]       ← 시계열 기술통계 · RSI/MACD/볼린저 모멘텀
-[Scala Streamer · :9003]      ← 스트림 집계 · Holt 이중 지수평활 · SMA/percentile
+[Crystal Gateway · :9002]     ← ★ spawn/Channel 파이버 병렬 FX 수집 · ~28ms vs 50ms 순차
+[Nim Analytics · :8005]       ← ★ static: 컴파일타임 EMA α 테이블 · 런타임 나눗셈 0회
+[Scala Streamer · :9003]      ← ★ Scala 3 enum ADT + LazyList.unfold 무한 이벤트 스트림
 [Haskell Pricer · :8006]      ← 순수 함수형 · Black-Scholes Greeks · GBM Monte Carlo
-[Ruby Scorer · :9004]         ← 로지스틱 신용 스코어링 · 포트폴리오 요약 통계
-[Dart Engine · :9005]         ← 채구 가격 · 듀레이션 · Nelson-Siegel 수익률 곡선
-[Gleam Hub · :4001]           ← 함수형 파이프라인 · GBM · VaR/CVaR/Sharpe/MDD
-[V Quant · :4002]             ← Monte Carlo VaR · Kelly Criterion · 포트폴리오 왔적화
+[Ruby Scorer · :9004]         ← ★ instance_eval 런타임 DSL 엔진 · 재시작 없이 규칙 동적 적재
+[Dart Engine · :9005]         ← 채권 가격 · 듀레이션 · Nelson-Siegel 수익률 곡선
+[Gleam Hub · :4001]           ← ★ ServiceMessage ADT · exhaustive pattern match 컴파일 강제
+[V Quant · :4002]             ← ★ --gc none Zero-GC MA 크로스오버 전략 백테스터
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -53,14 +53,14 @@
 | **F# (ASP.NET 8)** | **9001** | **Black-Scholes Greeks · DCF 가치평가** |
 | **WebAssembly (Zig → WASM32)** | **Browser** | **클라이언트 직접 실행 · Black-Scholes/VaR/DCF · 서버 불필요** |
 | **OCaml 4.13** | **8004** | **규칙 기반 리스크 판정 · 신용 스코어링 (로지스틱)** |
-| **Crystal 1.19** | **9002** | **포트폴리오 성과 · Sharpe/Sortino/MDD · FX 가중평균** |
-| **Nim 2.2.8** | **8005** | **시계열 기술통계 · skewness/kurtosis/autocorr · RSI/MACD/볼린저** |
-| **Scala 3.8.3** | **9003** | **스트림 집계 · Holt 이중 지수평활 · SMA/percentile/EWM** |
+| **Crystal 1.19** | **9002** | **★ `spawn`/`Channel` 파이버 병렬 FX 수집 — 4소스 동시 실행 · 가속 배율 ~1.8x** |
+| **Nim 2.2.8** | **8005** | **★ `static:` 컴파일타임 EMA/RSI α 계수 테이블 · `{.noSideEffect.}` — 런타임 나눗셈 0회** |
+| **Scala 3.8.3** | **9003** | **★ Scala 3 `enum` ADT + `LazyList.unfold` 무한 스트림 + `given/using` 타입클래스** |
 | **Haskell GHC 8.8.4** | **8006** | **순수 함수형 옵션 프라이서 · Black-Scholes Greeks · GBM Monte Carlo** |
-| **Ruby 3.0.2** | **9004** | **로지스틱 신용 스코어링 · 포트폴리오 통계 (WEBrick stdlib)** |
-| **Dart 3.11** | **9005** | **채구 가격 · Macaulay/Modified Duration · DV01 · Nelson-Siegel 수익률 곡선** |
-| **Gleam 1.15** | **4001** | **함수형 파이프라인 엔진 · GBM 수익률 · VaR/CVaR/Sharpe/MDD (BEAM/Erlang)** |
-| **V 0.5.1** | **4002** | **Monte Carlo VaR/CVaR · Kelly Criterion · 2자산 포트폴리오 최적화 (최소분산)** |
+| **Ruby 3.0.2** | **9004** | **★ `instance_eval` 런타임 DSL 엔진 · 동적 규칙 적재/평가 · 재시작 없음** |
+| **Dart 3.11** | **9005** | **채권 가격 · Macaulay/Modified Duration · DV01 · Nelson-Siegel 수익률 곡선** |
+| **Gleam 1.15** | **4001** | **★ `ServiceMessage` ADT · exhaustive pattern match 컴파일 강제 · 계약 검증 레이어** |
+| **V 0.5.1** | **4002** | **★ `v -gc none` Zero-GC MA 크로스오버 전략 백테스터 — GC 일시정지 물리적 불가** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -86,14 +86,14 @@
 | **Option Pricing** | **F# (.NET 8), ASP.NET Core — Black-Scholes Greeks · DCF (:9001)** |
 | **WebAssembly** | **Zig 0.13 → WASM32 freestanding — 브라우저 클라이언트 실행 (서버 없음)** |
 | **Risk Rules** | **OCaml 4.13, stdlib Unix HTTP — 규칙 기반 리스크 + 로지스틱 신용점수 (:8004)** |
-| **Portfolio/FX** | **Crystal 1.19, HTTP::Server — 포트폴리오 Sharpe/Sortino/MDD + FX 가중평균 (:9002)** |
-| **Time-series** | **Nim 2.2.8, asynchttpserver — 시계열 기술통계 + RSI/MACD/Bollinger (:8005)** |
-| **Stream Agg** | **Scala 3.8.3, JDK HttpServer — Holt 이중 지수평활 + 스트림 집계 (:9003)** |
+| **FX Concurrent** | **Crystal 1.19, `spawn`/`Channel` 파이버 — 4소스 병렬 FX 수집 · 순차 대비 ~1.8x 가속 (:9002)** |
+| **Time-series** | **Nim 2.2.8, `static:` 컴파일타임 α 테이블 · `{.noSideEffect.}` — 런타임 나눗셈 0회 (:8005)** |
+| **ADT Stream** | **Scala 3.8.3, `enum RiskEvent` ADT + `LazyList.unfold` + `given Aggregatable[RiskEvent]` (:9003)** |
 | **Option Pricer** | **Haskell GHC 8.8.4, Network.Socket — 순수 함수형 Black-Scholes Greeks + GBM Monte Carlo (:8006)** |
-| **Credit Scoring** | **Ruby 3.0.2, WEBrick stdlib — 로지스틱 신용 스코어링 + 포트폴리오 요약 (:9004)** |
-| **Yield Curve** | **Dart 3.11, dart:io HttpServer — 채구 가격 + Nelson-Siegel 수익률 곡선 (:9005)** |
-| **Functional Pipeline** | **Gleam 1.15, BEAM/Erlang, Erlang gen_tcp FFI — GBM 파이프라인 + VaR/CVaR (:4001)** |
-| **Quant/VaR** | **V 0.5.1 — Monte Carlo VaR + Kelly Criterion + 포트폴리오 잔적화 (:4002)** |
+| **DSL Engine** | **Ruby 3.0.2, `instance_eval` 런타임 DSL — `RiskDSL#safe_load` 동적 규칙 적재/평가 (:9004)** |
+| **Yield Curve** | **Dart 3.11, dart:io HttpServer — 채권 가격 + Nelson-Siegel 수익률 곡선 (:9005)** |
+| **Contract Validation** | **Gleam 1.15, BEAM/Erlang — `ServiceMessage` ADT exhaustive match 컴파일 강제 (:4001)** |
+| **Zero-GC Backtest** | **V 0.5.1, `v -gc none` — MA 크로스오버 백테스터 · GC 일시정지 물리적 불가 (:4002)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -166,6 +166,7 @@
 |:---|:---|:---|
 | `GET` | `/api/scala/aggregate` | 의사난수 수익률 집계: mean/std/median/ann\_return/ann\_vol/p5/p95/sma20 (`mu`,`sigma`,`n`) |
 | `GET` | `/api/scala/smooth` | Holt 이중 지수평활 + 1-step 예측 (`mu`,`sigma`,`n`,`alpha`,`beta`) |
+| `GET` | `/api/scala/stream` | ★ `LazyList.unfold` 무한 스트림에서 n개 취급 · Tick/Alert/Heartbeat ADT 분류 (`n`,`mu`,`sigma`,`seed`) |
 | `GET` | `/health` | 헬스체크 |
 
 ### Haskell `:8006`
@@ -180,8 +181,10 @@
 
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
-| `GET` | `/api/ruby/score` | 로지스틱 회귀 신용 스코어(0-1000) · 등급 · PD (`debt_ratio`,`ltv`,`num_defaults`,`annual_income_k`) |
-| `GET` | `/api/ruby/summary` | n개 대출 포트폴리오 요약: 평균/std/백분위수 + 리스크 분포 (`n`,`seed`) |
+| `GET` | `/api/ruby/score` | ★ DSL 규칙 적용 신용 스코어(0-1000) · 등급 · PD · 발화 규칙 목록 (`debt_ratio`,`ltv`,`num_defaults`) |
+| `GET` | `/api/ruby/ruleset` | ★ 현재 등록된 DSL 규칙 목록 조회 |
+| `GET` | `/api/ruby/evaluate` | ★ 모든 규칙 평가 결과 + 발화/미발화 상세 (`debt_ratio`,`ltv` 등) |
+| `POST` | `/api/ruby/rules` | ★ `instance_eval`로 신규 DSL 규칙 동적 등록 (서버 재시작 불필요) |
 | `GET` | `/health` | 헬스체크 |
 
 ### Dart `:9005`
@@ -198,14 +201,16 @@
 |:---|:---|:---|
 | `GET` | `/api/gleam/pipeline` | GBM 수익률 → 4단계 함수형 파이프라인 (`n`,`mu`,`sigma`) |
 | `GET` | `/api/gleam/risk` | VaR 95% · CVaR · Sharpe Ratio · Max Drawdown (`n`,`mu`,`sigma`) |
+| `GET` | `/api/gleam/validate` | ★ `ServiceMessage` exhaustive match 계약 검증 (`service`,`score` 또는 `call`,`delta`) |
+| `GET` | `/api/gleam/contract` | ★ 지원 메시지 타입 목록 · 컴파일 타임 보장 설명 조회 |
 | `GET` | `/health` | 헬스체크 |
 
 ### V `:4002`
 
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
-| `GET` | `/api/v/var` | Monte Carlo GBM VaR/CVaR · Sharpe · Kelly Criterion (`n`,`mu`,`sigma`) |
-| `GET` | `/api/v/portfolio` | 2자산 Equal Weight vs Min Variance 포트폴리오 (`mu1`,`mu2`,`sig1`,`sig2`,`rho`) |
+| `GET` | `/api/v/backtest` | ★ MA 크로스오버 전략 백테스트 · `--gc none` 빌드 (`ticks`,`fast`,`slow`,`seed`) |
+| `GET` | `/api/v/stress` | ★ 3전략 스트레스 테스트 · gc_pauses_ms 항상 0 보장 (`ticks`,`seed`) |
 | `GET` | `/health` | 헬스체크 |
 
 ---
@@ -244,6 +249,14 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **6개 언어 역할 강화 ("이 언어가 꼭 필요해요" 리팩터링)**
+  - **V 0.5.1** — `--gc none` Zero-GC MA 크로스오버 전략 백테스터로 전면 재작성. `gc_pauses_ms: 0` 결정론적 레이턴시 보증
+  - **Ruby 3.0.2** — `instance_eval` 기반 런타임 DSL 엔진으로 전환. `RiskDSL#safe_load`로 서버 재시작 없이 규칙 동적 적재
+  - **Gleam 1.15** — `ServiceMessage` / `ValidationError` ADT 추가. exhaustive pattern match — 케이스 누락 시 컴파일 에러
+  - **Nim 2.2.8** — `static:` 블록으로 `EMA_ALPHA_TABLE[2..200]` / `RSI_SMOOTH_TABLE[2..50]` 컴파일타임 생성. `{.noSideEffect.}` pragma
+  - **Scala 3.8.3** — `enum RiskEvent`, `enum AlertLevel`, `given Aggregatable[RiskEvent]` + `LazyList.unfold` 무한 스트림 추가
+  - **Crystal 1.19** — `spawn`/`Channel` 파이버 기반 4-소스 병렬 FX 수집으로 전환. 순차 대비 ~1.8x 가속
+  - Frontend: 6개 패널 UI 전면 업데이트 (새 엔드포인트, 새 지표 카드)
 - [x] **2026-04-07** — **V 0.5.1 쿼트 엔진 추가 (17번째 신규 언어)**
   - **V 0.5.1** (zip 설치, `~/.local/v/v`) — C 유사 문법 + 빠른 컴파일 + 내장 `net` 모듈
   - `/api/v/var`: Monte Carlo GBM VaR/CVaR/Sharpe/Kelly Criterion (`:4002`)

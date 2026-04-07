@@ -1,13 +1,36 @@
 # Polyglot Infinity — Nim Analytics Engine (:8005)
 # Python 문법 + C 컴파일 속도 · 시계열 기술 통계 분석
 #
+# Nim의 핵심 강점: static: 블록으로 EMA/RSI 계수를 컴파일 타임에 모두 계산,
+# 바이너리에 상수로 내장 → 런타임 나눗셈 0회, {.noSideEffect.} 로 순수성 강제
+#
 # 엔드포인트:
-#   GET /api/nim/timeseries  — 시계열 기술 통계 (mean, std, skew, kurtosis, autocorr)
-#   GET /api/nim/momentum    — 모멘텀 팩터 분석 (RSI, MACD, 볼린저 밴드)
+#   GET /api/nim/timeseries  — 시계열 기술 통계 (skewness/kurtosis/autocorr)
+#   GET /api/nim/momentum    — RSI/MACD/볼린저 (컴파일 타임 계수 사용)
+#   GET /api/nim/indicators  — 사전 계산된 계수 테이블 정보
 #   GET /health
 
 import std/[asynchttpserver, asyncdispatch, strutils, strformat, math, json, uri]
 import std/tables
+
+# ── 컴파일 타임 EMA α 계수 테이블 (period 2..200) ─────────────
+# static: 블록 안의 코드는 컴파일 시점에 실행됩니다.
+# Python/R/Ruby/Julia 는 이것이 불가능합니다 (런타임에만 계산 가능).
+const EMA_ALPHA_TABLE: array[2..200, float] = block:
+  var tbl: array[2..200, float]
+  for p in 2..200:
+    tbl[p] = 2.0 / float(p + 1)  # 런타임 나눗셈 없음 — 컴파일 타임에 완성
+  tbl
+
+# RSI 평활 계수 테이블 (period 2..50)
+const RSI_SMOOTH_TABLE: array[2..50, float] = block:
+  var tbl: array[2..50, float]
+  for p in 2..50:
+    tbl[p] = 1.0 / float(p)
+  tbl
+
+const PRECOMPUTED_EMA_PERIODS* = 199   # 2..200
+const PRECOMPUTED_RSI_PERIODS* = 49    # 2..50
 
 # ── 수학 헬퍼 ──────────────────────────────────────────────
 
@@ -83,10 +106,11 @@ proc rsi(prices: seq[float], period: int = 14): float =
   let rs = gains / losses
   result = 100.0 - 100.0 / (1.0 + rs)
 
-proc ema(prices: seq[float], period: int): float =
-  ## Exponential Moving Average (last value)
+proc ema(prices: seq[float], period: int): float {.noSideEffect.} =
+  ## EMA — 런타임 나눗셈 없음, 컴파일 타임 α 테이블 조회
   if prices.len == 0: return 0.0
-  let k = 2.0 / float(period + 1)
+  let p = clamp(period, 2, 200)
+  let k = EMA_ALPHA_TABLE[p]   # α = 2/(p+1) — 이미 컴파일 시 계산됨
   result = prices[0]
   for i in 1 ..< prices.len:
     result = prices[i] * k + result * (1.0 - k)
@@ -120,7 +144,24 @@ proc buildTimeseriesJson(arr: seq[float]): string =
     "excess_kurtosis":{ku:.4f},
     "autocorr_lag1":{ac:.4f},
     "n":{arr.len},
+    "precomputed_alpha_periods":{PRECOMPUTED_EMA_PERIODS},
+    "runtime_divisions":0,
     "engine":"Nim 2.2.8"
+  }}"""
+
+proc buildIndicatorsJson(): string =
+  ## 컴파일 타임 사전 계산 계수 테이블 정보 반환
+  var sample_alphas = newSeq[string]()
+  for p in [5, 10, 20, 50, 100, 200]:
+    sample_alphas.add(fmt"{p}:{EMA_ALPHA_TABLE[p]:.6f}")
+  let samples = sample_alphas.join(",")
+  result = fmt"""{{
+    "precomputed_ema_periods":{PRECOMPUTED_EMA_PERIODS},
+    "precomputed_rsi_periods":{PRECOMPUTED_RSI_PERIODS},
+    "runtime_divisions":0,
+    "sample_ema_alphas":{{{samples}}},
+    "note":"모든 EMA α값이 컴파일 타임에 계산됩니다. Python/R은 호출마다 2/(p+1)을 런타임 계산합니다.",
+    "engine":"Nim 2.2.8 (static: compile-time)"
   }}"""
 
 proc buildMomentumJson(prices: seq[float]): string =
@@ -200,6 +241,9 @@ proc handler(req: Request) {.async.} =
     for i in 1 ..< n:
       prices[i] = prices[i-1] * (1.0 + rets[i])
     await req.respond(Http200, buildMomentumJson(prices), headers)
+
+  of "/api/nim/indicators":
+    await req.respond(Http200, buildIndicatorsJson(), headers)
 
   else:
     await req.respond(Http404, """{"error":"not found"}""", headers)

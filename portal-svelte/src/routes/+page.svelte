@@ -269,11 +269,7 @@
 			if (pfRes.ok && fxRes.ok) {
 				const pf = await pfRes.json();
 				const fx = await fxRes.json();
-				crystalData = {
-					...pf,
-					weighted_krw: fx.weighted_krw,
-					rates: fx.rates,
-				};
+				crystalData = { ...pf, fx };
 			} else {
 				crystalData = { error: "Crystal 게이트웨이 오프라인" };
 			}
@@ -293,23 +289,27 @@
 		nimLoading = true;
 		nimData = null;
 		try {
-			const [tsRes, momRes] = await Promise.all([
+			const [tsRes, momRes, indRes] = await Promise.all([
 				fetch(
 					"http://localhost:8005/api/nim/timeseries?mu=0.10&sigma=0.20&n=252",
 				),
 				fetch(
 					"http://localhost:8005/api/nim/momentum?mu=0.10&sigma=0.20&n=252",
 				),
+				fetch("http://localhost:8005/api/nim/indicators"),
 			]);
-			if (tsRes.ok && momRes.ok) {
+			if (tsRes.ok && momRes.ok && indRes.ok) {
 				const ts = await tsRes.json();
 				const mom = await momRes.json();
+				const ind = await indRes.json();
 				nimData = {
 					...ts,
 					rsi_14: mom.rsi_14,
 					macd: mom.macd,
 					bb_width: mom.bb_width,
 					bb_position: mom.bb_position,
+					precomputed_alpha_periods: ind.precomputed_ema_periods,
+					runtime_divisions: ind.runtime_divisions,
 				};
 			} else {
 				nimData = { error: "Nim 엔진 오프라인" };
@@ -330,22 +330,27 @@
 		scalaLoading = true;
 		scalaData = null;
 		try {
-			const [aggRes, smRes] = await Promise.all([
+			const [aggRes, smRes, streamRes] = await Promise.all([
 				fetch(
 					"http://localhost:9003/api/scala/aggregate?mu=0.08&sigma=0.15&n=252",
 				),
 				fetch(
 					"http://localhost:9003/api/scala/smooth?mu=0.08&sigma=0.15&n=252&alpha=0.3&beta=0.1",
 				),
+				fetch(
+					"http://localhost:9003/api/scala/stream?mu=0.08&sigma=0.22&n=300&seed=7",
+				),
 			]);
-			if (aggRes.ok && smRes.ok) {
+			if (aggRes.ok && smRes.ok && streamRes.ok) {
 				const agg = await aggRes.json();
 				const sm = await smRes.json();
+				const stream = await streamRes.json();
 				scalaData = {
 					...agg,
 					forecast_next: sm.forecast_next,
 					alpha: sm.alpha,
 					beta: sm.beta,
+					stream,
 				};
 			} else {
 				scalaData = { error: "Scala 스트리머 오프라인" };
@@ -415,18 +420,22 @@
 		rubyLoading = true;
 		rubyData = null;
 		try {
-			const [scoreRes, summaryRes] = await Promise.all([
+			const [scoreRes, rulesetRes, evalRes] = await Promise.all([
 				fetch(
-					"http://localhost:9004/api/ruby/score?debt_ratio=0.4&ltv=0.6&num_defaults=1&annual_income_k=60",
+					"http://localhost:9004/api/ruby/score?debt_ratio=0.75&ltv=0.88&num_defaults=1&annual_income_k=60",
 				),
-				fetch("http://localhost:9004/api/ruby/summary?n=300&seed=42"),
+				fetch("http://localhost:9004/api/ruby/ruleset"),
+				fetch(
+					"http://localhost:9004/api/ruby/evaluate?debt_ratio=0.75&ltv=0.88&num_defaults=1&annual_income_k=60",
+				),
 			]);
-			if (scoreRes.ok && summaryRes.ok) {
+			if (scoreRes.ok && rulesetRes.ok && evalRes.ok) {
 				const score = await scoreRes.json();
-				const summary = await summaryRes.json();
-				rubyData = { ...score, summary };
+				const ruleset = await rulesetRes.json();
+				const evalResult = await evalRes.json();
+				rubyData = { ...score, ruleset, evalResult };
 			} else {
-				rubyData = { error: "Ruby 스코어러 오프라인" };
+				rubyData = { error: "Ruby DSL 엔진 오프라인" };
 			}
 		} catch {
 			rubyData = { error: "Ruby 서버 접속 불가 (:9004)" };
@@ -476,15 +485,18 @@
 	async function runGleam() {
 		gleamLoading = true;
 		try {
-			const [p, r] = await Promise.all([
+			const [valid_ok, valid_err, contract] = await Promise.all([
 				fetch(
-					"http://localhost:4001/api/gleam/pipeline?n=252&mu=0.08&sigma=0.2",
+					"http://localhost:4001/api/gleam/validate?service=risk&score=750&grade=A",
 				).then((x) => x.json()),
 				fetch(
-					"http://localhost:4001/api/gleam/risk?n=252&mu=0.08&sigma=0.2",
+					"http://localhost:4001/api/gleam/validate?service=risk&score=1500&grade=X",
 				).then((x) => x.json()),
+				fetch("http://localhost:4001/api/gleam/contract").then((x) =>
+					x.json(),
+				),
 			]);
-			gleamData = { ...p, ...r };
+			gleamData = { valid_ok, valid_err, contract };
 		} catch {
 			gleamData = { error: "Gleam 서버 접속 불가 (:4001)" };
 		} finally {
@@ -498,15 +510,15 @@
 	async function runV() {
 		vLoading = true;
 		try {
-			const [r, p] = await Promise.all([
+			const [bt, st] = await Promise.all([
 				fetch(
-					"http://localhost:4002/api/v/var?n=252&mu=0.08&sigma=0.2",
+					"http://localhost:4002/api/v/backtest?ticks=100000&fast=20&slow=50&seed=42",
 				).then((x) => x.json()),
 				fetch(
-					"http://localhost:4002/api/v/portfolio?mu1=0.10&mu2=0.06&sig1=0.20&sig2=0.12&rho=0.3",
+					"http://localhost:4002/api/v/stress?ticks=150000&seed=42",
 				).then((x) => x.json()),
 			]);
-			vData = { ...r, portfolio: p };
+			vData = { ...bt, stress: st };
 		} catch {
 			vData = { error: "V 서버 접속 불가 (:4002)" };
 		} finally {
@@ -1163,52 +1175,64 @@
 			{:else}
 				<div class="julia-grid">
 					<div class="julia-card crystal-card">
-						<span class="jlabel">Total Return</span><span
-							class="jval"
+						<span class="jlabel">Total Return</span>
+						<span class="jval"
 							>{(crystalData.total_return * 100).toFixed(
 								2,
 							)}%</span
 						>
 					</div>
 					<div class="julia-card crystal-card">
-						<span class="jlabel">Ann. Volatility</span><span
-							class="jval"
-							>{(crystalData.volatility * 100).toFixed(2)}%</span
+						<span class="jlabel">Sharpe Ratio</span>
+						<span class="jval"
+							>{crystalData.sharpe_ratio?.toFixed(4)}</span
 						>
 					</div>
-					<div class="julia-card crystal-card">
-						<span class="jlabel">Sharpe Ratio</span><span
-							class="jval"
-							>{crystalData.sharpe_ratio.toFixed(4)}</span
+					{#if crystalData.fx}
+						<div
+							class="julia-card crystal-card"
+							style="border-color:#34d399"
 						>
-					</div>
-					<div class="julia-card crystal-card">
-						<span class="jlabel">Sortino Ratio</span><span
-							class="jval"
-							>{crystalData.sortino_ratio.toFixed(4)}</span
+							<span class="jlabel">파이버 수집 시간</span>
+							<span class="jval" style="color:#34d399"
+								>{crystalData.fx.concurrent_total_ms}ms</span
+							>
+						</div>
+						<div
+							class="julia-card crystal-card"
+							style="border-color:#34d399"
 						>
-					</div>
-					<div class="julia-card crystal-card">
-						<span class="jlabel">Max Drawdown</span><span
-							class="jval"
-							>{(crystalData.max_drawdown * 100).toFixed(
-								2,
-							)}%</span
+							<span class="jlabel">순차 시 예상</span>
+							<span class="jval"
+								>{crystalData.fx.sequential_would_be_ms}ms</span
+							>
+						</div>
+						<div
+							class="julia-card crystal-card"
+							style="border-color:#34d399"
 						>
-					</div>
-					<div class="julia-card crystal-card">
-						<span class="jlabel">Weighted KRW</span><span
-							class="jval"
-							>₩{crystalData.weighted_krw.toLocaleString()}</span
+							<span class="jlabel">병렬 가속 배율</span>
+							<span class="jval" style="color:#34d399"
+								>{crystalData.fx.speedup_factor}x</span
+							>
+						</div>
+						<div
+							class="julia-card crystal-card"
+							style="border-color:#34d399"
 						>
-					</div>
+							<span class="jlabel">가중 평균 환율</span>
+							<span class="jval"
+								>₩{crystalData.fx.weighted_krw?.toLocaleString()}</span
+							>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
 				<p>
-					버튼을 눌러 Crystal 포트폴리오 수익률 · 샤프 · MDD · FX
-					가중평균 환율을 분석하세요. (Crystal 서버 :9002 필요)
+					버튼을 눌러 Crystal spawn/Channel 파이버 병렬 FX 수집을
+					확인하세요. (Crystal 서버 :9002 필요)
 				</p>
 			</div>
 		{/if}
@@ -1236,40 +1260,45 @@
 			{:else}
 				<div class="julia-grid">
 					<div class="julia-card nim-card">
-						<span class="jlabel">Ann. Return</span><span
-							class="jval"
+						<span class="jlabel">Ann. Return</span>
+						<span class="jval"
 							>{(nimData.annualized_return * 100).toFixed(
 								2,
 							)}%</span
 						>
 					</div>
 					<div class="julia-card nim-card">
-						<span class="jlabel">Ann. Volatility</span><span
-							class="jval"
-							>{(nimData.annualized_volatility * 100).toFixed(
-								2,
-							)}%</span
+						<span class="jlabel">Skewness / Kurtosis</span>
+						<span class="jval"
+							>{nimData.skewness?.toFixed(3)} / {nimData.excess_kurtosis?.toFixed(
+								3,
+							)}</span
 						>
 					</div>
 					<div class="julia-card nim-card">
-						<span class="jlabel">Skewness</span><span class="jval"
-							>{nimData.skewness.toFixed(4)}</span
-						>
+						<span class="jlabel">RSI (14)</span>
+						<span class="jval">{nimData.rsi_14?.toFixed(2)}</span>
 					</div>
 					<div class="julia-card nim-card">
-						<span class="jlabel">Excess Kurtosis</span><span
-							class="jval"
-							>{nimData.excess_kurtosis.toFixed(4)}</span
+						<span class="jlabel">MACD</span>
+						<span class="jval">{nimData.macd?.toFixed(4)}</span>
+					</div>
+					<div
+						class="julia-card nim-card"
+						style="border-color:#22d3ee"
+					>
+						<span class="jlabel">사전계산 α 계수</span>
+						<span class="jval" style="color:#22d3ee"
+							>{nimData.precomputed_alpha_periods ?? 199}개</span
 						>
 					</div>
-					<div class="julia-card nim-card">
-						<span class="jlabel">RSI (14)</span><span class="jval"
-							>{nimData.rsi_14.toFixed(2)}</span
-						>
-					</div>
-					<div class="julia-card nim-card">
-						<span class="jlabel">MACD</span><span class="jval"
-							>{nimData.macd.toFixed(4)}</span
+					<div
+						class="julia-card nim-card"
+						style="border-color:#22d3ee"
+					>
+						<span class="jlabel">런타임 나눗셈</span>
+						<span class="jval" style="color:#22d3ee"
+							>{nimData.runtime_divisions ?? 0}회</span
 						>
 					</div>
 				</div>
@@ -1277,9 +1306,8 @@
 		{:else}
 			<div class="empty-box">
 				<p>
-					버튼을 눌러 Nim 시계열 기술통계 (skewness/kurtosis/autocorr)
-					+ 모멘텀 지표 (RSI/MACD/볼린저)를 분석하세요. (Nim 서버
-					:8005 필요)
+					버튼을 눌러 Nim 기술통계 + 컴파일타임 EMA 계수 테이블 정보를
+					확인하세요. (Nim 서버 :8005 필요)
 				</p>
 			</div>
 		{/if}
@@ -1311,53 +1339,66 @@
 			{:else}
 				<div class="julia-grid">
 					<div class="julia-card scala-card">
-						<span class="jlabel">Ann. Return</span><span
-							class="jval"
+						<span class="jlabel">Ann. Return</span>
+						<span class="jval"
 							>{(scalaData.annualized_return * 100).toFixed(
 								2,
 							)}%</span
 						>
 					</div>
 					<div class="julia-card scala-card">
-						<span class="jlabel">Ann. Volatility</span><span
-							class="jval"
-							>{(scalaData.annualized_volatility * 100).toFixed(
-								2,
-							)}%</span
-						>
-					</div>
-					<div class="julia-card scala-card">
-						<span class="jlabel">Median Daily</span><span
-							class="jval"
-							>{(scalaData.median_daily * 100).toFixed(4)}%</span
-						>
-					</div>
-					<div class="julia-card scala-card">
-						<span class="jlabel">P5 / P95</span><span class="jval"
-							>{(scalaData.p5 * 100).toFixed(2)}% / {(
-								scalaData.p95 * 100
-							).toFixed(2)}%</span
-						>
-					</div>
-					<div class="julia-card scala-card">
-						<span class="jlabel">SMA-20 (last)</span><span
-							class="jval"
-							>{(scalaData.sma_20_last * 100).toFixed(4)}%</span
-						>
-					</div>
-					<div class="julia-card scala-card">
-						<span class="jlabel">Holt Forecast</span><span
-							class="jval"
+						<span class="jlabel">Holt Forecast</span>
+						<span class="jval"
 							>{(scalaData.forecast_next * 100).toFixed(4)}%</span
 						>
 					</div>
+					{#if scalaData.stream}
+						<div
+							class="julia-card scala-card"
+							style="border-color:#a78bfa"
+						>
+							<span class="jlabel">ADT Tick 이벤트</span>
+							<span class="jval" style="color:#a78bfa"
+								>{scalaData.stream.n_ticks}</span
+							>
+						</div>
+						<div
+							class="julia-card scala-card"
+							style="border-color:#a78bfa"
+						>
+							<span class="jlabel">ADT Alert 이벤트</span>
+							<span class="jval" style="color:#f87171"
+								>{scalaData.stream.n_alerts}</span
+							>
+						</div>
+						<div
+							class="julia-card scala-card"
+							style="border-color:#a78bfa"
+						>
+							<span class="jlabel">최대 심각도</span>
+							<span class="jval"
+								>{scalaData.stream.max_severity_score}</span
+							>
+						</div>
+						<div
+							class="julia-card scala-card"
+							style="border-color:#a78bfa"
+						>
+							<span class="jlabel">LazyList 스트림</span>
+							<span class="jval" style="color:#a78bfa"
+								>{scalaData.stream.lazy_stream
+									? "∞ unfold"
+									: "N/A"}</span
+							>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
 				<p>
-					버튼을 눌러 Scala 스트림 집계 (SMA/EWM/백분위수) + Holt
-					이중지수평활 예측을 실행하세요. (Scala 서버 :9003 필요)
+					버튼을 눌러 Scala 3 enum ADT 이벤트 스트림 (LazyList.unfold
+					+ given/using) 을 실행하세요. (Scala 서버 :9003 필요)
 				</p>
 			</div>
 		{/if}
@@ -1498,14 +1539,14 @@
 	<section class="panel">
 		<div class="panel-header">
 			<div>
-				<h2>💎 Ruby (Credit Scorer)</h2>
+				<h2>💎 Ruby (Runtime DSL Engine)</h2>
 				<p class="subtitle">
-					Ruby 3.0 · WEBrick stdlib · 신용 스코어링 · 포트폴리오 요약
-					(:9004)
+					Ruby 3.0 · instance_eval 런타임 규칙 동적 적재 · 서버 재시작
+					없음 (:9004)
 				</p>
 			</div>
 			<button class="ruby-btn" onclick={runRuby} disabled={rubyLoading}>
-				{rubyLoading ? "계산 중..." : "신용 평가"}
+				{rubyLoading ? "계산 중..." : "DSL 규칙 평가"}
 			</button>
 		</div>
 		{#if rubyData}
@@ -1516,50 +1557,55 @@
 			{:else}
 				<div class="julia-grid">
 					<div class="julia-card ruby-card">
-						<span class="jlabel">Credit Score</span><span
-							class="jval">{rubyData.score}</span
+						<span class="jlabel">Credit Score</span>
+						<span class="jval">{rubyData.score}</span>
+					</div>
+					<div class="julia-card ruby-card">
+						<span class="jlabel">Grade / PD</span>
+						<span class="jval"
+							>{rubyData.grade} / {(
+								(rubyData.pd ?? 0) * 100
+							).toFixed(1)}%</span
+						>
+					</div>
+					<div
+						class="julia-card ruby-card"
+						style="border-color:#f59e0b"
+					>
+						<span class="jlabel">발화 규칙 수</span>
+						<span class="jval" style="color:#f59e0b"
+							>{rubyData.evalResult?.fired_count ?? 0} / {rubyData
+								.evalResult?.total_rules ?? 0}</span
+						>
+					</div>
+					<div
+						class="julia-card ruby-card"
+						style="border-color:#f59e0b"
+					>
+						<span class="jlabel">발화된 규칙</span>
+						<span class="jval"
+							>{(rubyData.evalResult?.fired_rules ?? []).join(
+								", ",
+							) || "없음"}</span
 						>
 					</div>
 					<div class="julia-card ruby-card">
-						<span class="jlabel">Grade / Risk</span><span
-							class="jval"
-							>{rubyData.grade} / {rubyData.risk_tier}</span
+						<span class="jlabel">등록 규칙 수</span>
+						<span class="jval"
+							>{rubyData.ruleset?.total_rules ?? 0}개</span
 						>
 					</div>
 					<div class="julia-card ruby-card">
-						<span class="jlabel">PD (prob. default)</span><span
-							class="jval"
-							>{((rubyData.pd ?? 0) * 100).toFixed(1)}%</span
-						>
-					</div>
-					<div class="julia-card ruby-card">
-						<span class="jlabel">Portfolio Mean Score</span><span
-							class="jval"
-							>{rubyData.summary?.mean_score?.toFixed(1)}</span
-						>
-					</div>
-					<div class="julia-card ruby-card">
-						<span class="jlabel">Portfolio Mean PD</span><span
-							class="jval"
-							>{((rubyData.summary?.mean_pd ?? 0) * 100).toFixed(
-								1,
-							)}%</span
-						>
-					</div>
-					<div class="julia-card ruby-card">
-						<span class="jlabel">P50 / P90 Score</span><span
-							class="jval"
-							>{rubyData.summary?.p50_score} / {rubyData.summary
-								?.p90_score}</span
-						>
+						<span class="jlabel">인터프리터</span>
+						<span class="jval">instance_eval</span>
 					</div>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
 				<p>
-					버튼을 눌러 Ruby 로지스틱 신용 스코어링과 포트폴리오 요약
-					통계를 실행하세요. (Ruby 서버 :9004 필요)
+					버튼을 눌러 Ruby instance_eval DSL 동적 규칙 평가를
+					실행하세요. (Ruby 서버 :9004 필요)
 				</p>
 			</div>
 		{/if}
@@ -1636,9 +1682,12 @@
 	</section>
 
 	<section class="panel gleam-panel">
-		<h2>Gleam 1.15 · BEAM/Erlang · 함수형 파이프라인 엔진 (:4001)</h2>
+		<h2>Gleam 1.15 · BEAM/Erlang · 서비스 계약 검증 레이어 (:4001)</h2>
+		<p class="subtitle">
+			ServiceMessage 모든 variant — exhaustive case 컴파일 강제
+		</p>
 		<button class="gleam-btn" onclick={runGleam} disabled={gleamLoading}>
-			{gleamLoading ? "계산 중..." : "파이프라인 실행"}
+			{gleamLoading ? "검증 중..." : "계약 검증 실행"}
 		</button>
 		{#if gleamData}
 			{#if gleamData.error}
@@ -1647,64 +1696,48 @@
 				</div>
 			{:else}
 				<div class="julia-card gleam-card">
-					<span class="label">연간 수익률</span><span class="value"
-						>{((gleamData.annualized_return ?? 0) * 100).toFixed(
-							2,
-						)}%</span
+					<span class="label">✅ 정상 검증 (score=750)</span>
+					<span class="value" style="color:#34d399"
+						>{gleamData.valid_ok?.ok ? "OK" : "FAIL"}</span
 					>
 				</div>
 				<div class="julia-card gleam-card">
-					<span class="label">연간 변동성</span><span class="value"
-						>{((gleamData.annualized_vol ?? 0) * 100).toFixed(
-							2,
-						)}%</span
+					<span class="label">❌ 오류 검증 (score=1500)</span>
+					<span class="value" style="color:#f87171"
+						>{gleamData.valid_err?.error ?? "?"}</span
 					>
 				</div>
 				<div class="julia-card gleam-card">
-					<span class="label">VaR 95%</span><span class="value"
-						>{((gleamData.var_95 ?? 0) * 100).toFixed(3)}%</span
+					<span class="label">메시지 타입 수</span>
+					<span class="value"
+						>{gleamData.contract?.message_types?.length ??
+							0}개</span
 					>
 				</div>
 				<div class="julia-card gleam-card">
-					<span class="label">CVaR 95%</span><span class="value"
-						>{((gleamData.cvar_95 ?? 0) * 100).toFixed(3)}%</span
-					>
-				</div>
-				<div class="julia-card gleam-card">
-					<span class="label">Sharpe</span><span class="value"
-						>{(gleamData.sharpe_ratio ?? 0).toFixed(3)}</span
-					>
-				</div>
-				<div class="julia-card gleam-card">
-					<span class="label">MDD</span><span class="value"
-						>{((gleamData.max_drawdown ?? 0) * 100).toFixed(
-							2,
-						)}%</span
-					>
-				</div>
-				<div class="julia-card gleam-card">
-					<span class="label">파이프라인 단계</span><span
-						class="value"
-						>{gleamData.pipeline_steps?.length ?? 0}단계</span
+					<span class="label">보장</span>
+					<span class="value"
+						>{gleamData.contract?.guarantee ?? "?"}</span
 					>
 				</div>
 			{/if}
 		{:else}
 			<div class="empty-box">
 				<p>
-					버튼을 눌러 GBM 파이프라인을 실행하세요. (Gleam 서버 :4001
-					필요)
+					버튼을 눌러 Gleam 서비스 계약 검증을 실행하세요. (Gleam 서버
+					:4001 필요)
 				</p>
 			</div>
 		{/if}
 	</section>
 
 	<section class="panel v-panel">
-		<h2>
-			V 0.5.1 · 시스템 언어 · Monte Carlo VaR · 포트폴리오 최적화 (:4002)
-		</h2>
+		<h2>V 0.5.1 · Zero-GC 전략 백테스터 (:4002)</h2>
+		<p class="subtitle">
+			v -gc none 컴파일 → GC 일시정지 물리적 불가 → 결정론적 레이턴시
+		</p>
 		<button class="v-btn" onclick={runV} disabled={vLoading}>
-			{vLoading ? "계산 중..." : "VaR 분석"}
+			{vLoading ? "백테스트 중..." : "전략 백테스트"}
 		</button>
 		{#if vData}
 			{#if vData.error}
@@ -1713,52 +1746,52 @@
 				</div>
 			{:else}
 				<div class="julia-card v-card">
-					<span class="label">연간 수익률</span><span class="value"
-						>{((vData.annualized_return ?? 0) * 100).toFixed(
-							2,
-						)}%</span
+					<span class="label">전략</span>
+					<span class="value">{vData.strategy}</span>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">틱 수</span>
+					<span class="value">{vData.ticks?.toLocaleString()}</span>
+				</div>
+				<div class="julia-card v-card">
+					<span class="label">승률</span>
+					<span class="value"
+						>{((vData.win_rate ?? 0) * 100).toFixed(1)}%</span
 					>
 				</div>
 				<div class="julia-card v-card">
-					<span class="label">연간 변동성</span><span class="value"
-						>{((vData.annualized_vol ?? 0) * 100).toFixed(2)}%</span
+					<span class="label">총수익률</span>
+					<span class="value"
+						>{((vData.total_return ?? 0) * 100).toFixed(2)}%</span
 					>
 				</div>
 				<div class="julia-card v-card">
-					<span class="label">VaR 95%</span><span class="value"
-						>{((vData.var_95 ?? 0) * 100).toFixed(3)}%</span
-					>
-				</div>
-				<div class="julia-card v-card">
-					<span class="label">CVaR 95%</span><span class="value"
-						>{((vData.cvar_95 ?? 0) * 100).toFixed(3)}%</span
-					>
-				</div>
-				<div class="julia-card v-card">
-					<span class="label">Sharpe</span><span class="value"
+					<span class="label">Sharpe</span>
+					<span class="value"
 						>{(vData.sharpe_ratio ?? 0).toFixed(3)}</span
 					>
 				</div>
-				<div class="julia-card v-card">
-					<span class="label">Kelly f*</span><span class="value"
-						>{(vData.kelly_fraction ?? 0).toFixed(3)}</span
+				<div class="julia-card v-card" style="border-color:#22d3ee">
+					<span class="label">GC 일시정지</span>
+					<span class="value" style="color:#22d3ee"
+						>{vData.gc_pauses_ms}ms</span
 					>
 				</div>
-				<div class="julia-card v-card">
-					<span class="label">MinVar w1/w2</span><span class="value"
-						>{(
-							(vData.portfolio?.min_variance?.w1 ?? 0) * 100
-						).toFixed(1)}% / {(
-							(vData.portfolio?.min_variance?.w2 ?? 0) * 100
-						).toFixed(1)}%</span
-					>
-				</div>
+				{#if vData.stress}
+					<div class="julia-card v-card">
+						<span class="label"
+							>스트레스 ({vData.stress.total_ticks?.toLocaleString()}
+							틱)</span
+						>
+						<span class="value">{vData.stress.elapsed_ms}ms</span>
+					</div>
+				{/if}
 			{/if}
 		{:else}
 			<div class="empty-box">
 				<p>
-					VaR 분석과 포트폴리오 최적화를 실행하세요. (V 서버 :4002
-					필요)
+					MA 크로스오버 전략 백테스트를 실행하세요. (V 서버 :4002
+					필요, v -gc none 컴파일)
 				</p>
 			</div>
 		{/if}

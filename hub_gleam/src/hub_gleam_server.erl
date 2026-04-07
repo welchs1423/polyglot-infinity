@@ -67,6 +67,27 @@ route(Path, Query) ->
             Sigma = get_float(Params, "sigma", 0.20),
             Result = hub_gleam:risk_json(N, Mu, Sigma),
             {Result, 200};
+        "/api/gleam/validate" ->
+            Params = parse_query(Query),
+            Service = get_str(Params, "service", "risk"),
+            case Service of
+                "risk" ->
+                    Score = get_float(Params, "score", 500.0),
+                    Grade = get_str(Params, "grade", "B"),
+                    Result = hub_gleam:validate_risk_json(Score, Grade),
+                    {Result, 200};
+                "option" ->
+                    Call  = get_float(Params, "call", 10.0),
+                    Delta = get_float(Params, "delta", 0.5),
+                    Result = hub_gleam:validate_option_json(Call, Delta),
+                    {Result, 200};
+                _ ->
+                    Result = hub_gleam:validate_risk_json(500.0, "B"),
+                    {Result, 200}
+            end;
+        "/api/gleam/contract" ->
+            Result = hub_gleam:contract_json(),
+            {Result, 200};
         _ ->
             {<<"{\"error\":\"not found\"}">>, 404}
     end,
@@ -119,4 +140,10 @@ get_float(Params, Key, Default) ->
                 end
             end;
         false -> Default
+    end.
+
+get_str(Params, Key, Default) ->
+    case lists:keyfind(Key, 1, Params) of
+        {_, V} -> V;
+        false  -> Default
     end.

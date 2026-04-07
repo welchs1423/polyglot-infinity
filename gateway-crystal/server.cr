@@ -1,17 +1,89 @@
 # Polyglot Infinity — Crystal API Gateway (:9002)
-# Ruby 문법 + 네이티브 컴파일 · 타입 안전 · 멀티스레드 HTTP
-# 역할: 포트폴리오 성과 분석 + 환율 가중평균 계산
+# Crystal의 핵심 강점: spawn + Channel 으로 Go의 goroutine 모델을
+# Ruby 문법으로 사용 — OS 스레드가 아닌 경량 Fiber, GC 없는 C 속도
 #
 # 엔드포인트:
-#   GET /api/crystal/portfolio  — 포트폴리오 수익률 · 샤프 지수 · MDD
-#   GET /api/crystal/fx         — 다중 통화 가중평균 환율
+#   GET /api/crystal/portfolio     — 포트폴리오 성과 분석
+#   GET /api/crystal/fx            — 파이버 병렬 FX 수집 (4개 소스 동시)
+#   GET /api/crystal/concurrent    — 파이버 동시성 명시적 데모
 #   GET /health
 
 require "http/server"
 require "json"
 require "math"
 
-# ── 통계 헬퍼 ──────────────────────────────────────────────
+# ── FX 소스 정의 (각각 다른 지연시간 시뮬레이션) ────────────────
+
+struct FxSource
+  property name : String
+  property latency_ms : Int32   # 시뮬레이션된 네트워크 지연
+  property rate : Float64        # KRW 기준 환율
+  property weight : Float64
+
+  def initialize(@name, @latency_ms, @rate, @weight); end
+end
+
+struct FxResult
+  property source : String
+  property rate : Float64
+  property elapsed_ms : Int32
+  property ok : Bool
+
+  def initialize(@source, @rate, @elapsed_ms, @ok); end
+end
+
+FX_SOURCES = [
+  FxSource.new("Bloomberg-Sim",   12, 1385.50_f64, 0.40_f64),
+  FxSource.new("Reuters-Sim",     28, 1384.20_f64, 0.30_f64),
+  FxSource.new("ExchangeRate-API", 8, 1386.00_f64, 0.20_f64),
+  FxSource.new("FallbackCache",    2, 1383.00_f64, 0.10_f64),
+]
+
+# spawn + Channel: 4개 파이버가 동시에 FX 소스를 조회
+# OS 스레드가 아닌 Fiber — Ruby의 Thread/Mutex 불필요
+def fetch_fx_concurrent(sources : Array(FxSource)) : Array(FxResult)
+  channel = Channel(FxResult).new(sources.size)
+
+  sources.each do |src|
+    spawn do
+      t0 = Time.monotonic
+      # sleep은 Crystal의 fiber scheduler를 통해 실행 — 다른 파이버 차단 없음
+      sleep(src.latency_ms.milliseconds)
+      elapsed = ((Time.monotonic - t0).total_milliseconds).to_i32
+      channel.send(FxResult.new(src.name, src.rate, elapsed, true))
+    end
+  end
+
+  # 4개 파이버 결과 수집 (순서는 완료 순)
+  sources.size.times.map { channel.receive }.to_a
+end
+
+def build_concurrent_json(results : Array(FxResult), total_ms : Int32) : String
+  individual_ms = results.sum(&.elapsed_ms)
+  weighted_rate = begin
+    total_w = FX_SOURCES.sum(&.weight)
+    results.sum { |r|
+      src = FX_SOURCES.find { |s| s.name == r.source }
+      (src ? src.weight : 0.0_f64) * r.rate
+    } / total_w
+  end
+
+  String.build do |s|
+    s << %[{"concurrent_total_ms":#{total_ms},]
+    s << %["sequential_would_be_ms":#{individual_ms},]
+    s << %["speedup_factor":#{(individual_ms.to_f / total_ms.to_f).round(2)},]
+    s << %["weighted_krw":#{weighted_rate.round(2)},]
+    s << %["fiber_model":"spawn/Channel (OS thread 불필요)",]
+    s << %["sources":[]}
+    results.each_with_index do |r, i|
+      s << "," if i > 0
+      s << %[{"source":"#{r.source}","rate":#{r.rate},"elapsed_ms":#{r.elapsed_ms}}]
+    end
+    s << %[],"engine":"Crystal 1.19"}]
+  end
+end
+
+# ── 기존 코드 유지 ─────────────────────────────────────────
 
 def mean(arr : Array(Float64)) : Float64
   arr.sum / arr.size
@@ -179,15 +251,18 @@ server = HTTP::Server.new do |ctx|
     ctx.response.print build_portfolio_json(total_ret, ann_ret, vol, sharpe, sortino, mdd, days)
 
   when "/api/crystal/fx"
-    # 기본 환율 (KRW 기준)
-    rates = [
-      FxRate.new("USD", get_float(params, "usd", 1380.0), get_float(params, "w_usd", 0.50)),
-      FxRate.new("EUR", get_float(params, "eur", 1510.0), get_float(params, "w_eur", 0.25)),
-      FxRate.new("JPY", get_float(params, "jpy",    9.2), get_float(params, "w_jpy", 0.15)),
-      FxRate.new("CNY", get_float(params, "cny",  191.0), get_float(params, "w_cny", 0.10)),
-    ]
-    weighted = weighted_fx(rates)
-    ctx.response.print build_fx_json(rates, weighted)
+    # 4개 파이버 동시 수집 — total ≈ max(latencies), not sum
+    t0 = Time.monotonic
+    results = fetch_fx_concurrent(FX_SOURCES.dup)
+    total_ms = ((Time.monotonic - t0).total_milliseconds).to_i32
+    ctx.response.print build_concurrent_json(results, total_ms)
+
+  when "/api/crystal/concurrent"
+    # 파이버 동시성 명시적 데모
+    t0 = Time.monotonic
+    results = fetch_fx_concurrent(FX_SOURCES.dup)
+    total_ms = ((Time.monotonic - t0).total_milliseconds).to_i32
+    ctx.response.print build_concurrent_json(results, total_ms)
 
   else
     ctx.response.status = HTTP::Status::NOT_FOUND

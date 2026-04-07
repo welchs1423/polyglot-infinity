@@ -243,3 +243,107 @@ fn start_server() -> Nil
 pub fn main() {
   start_server()
 }
+
+// ============================================================
+// 서비스 계약 검증 레이어 — Gleam의 존재 이유
+// ============================================================
+// ServiceMessage 의 모든 variant를 case 표현식에서 반드시 처리해야 합니다.
+// 새 variant를 추가하고 case를 수정하지 않으면 gleam build 가 실패합니다.
+// Elixir(같은 BEAM)는 이 보장을 컴파일 타임에 제공하지 않습니다.
+
+pub type ServiceMessage {
+  RiskScore(score: Float, grade: String, user_id: Int)
+  OptionPrice(call: Float, put: Float, delta: Float)
+  VolatilityData(vol: Float, var_95: Float, cvar_95: Float)
+  StreamBatch(count: Int, window: Int)
+  Unknown(raw: String)
+}
+
+pub type ValidationError {
+  ScoreOutOfRange(score: Float)
+  NegativePremium(got: Float)
+  DeltaOutOfRange(delta: Float)
+  NegativeVolatility(vol: Float)
+  EmptyBatch
+  UnknownService(name: String)
+}
+
+// validate_message: ServiceMessage의 모든 variant를 처리해야 컴파일 성공
+// Unknown 케이스를 제거하면 → "Non-exhaustive patterns" 컴파일 에러
+fn validate_message(msg: ServiceMessage) -> Result(String, ValidationError) {
+  case msg {
+    RiskScore(score, grade, _) ->
+      case score >=. 0.0 && score <=. 1000.0 {
+        True  -> Ok("valid: score=" <> fmt_f(score) <> " grade=" <> grade)
+        False -> Error(ScoreOutOfRange(score))
+      }
+    OptionPrice(call, _, delta) ->
+      case call >=. 0.0 {
+        False -> Error(NegativePremium(call))
+        True  ->
+          case delta >=. 0.0 && delta <=. 1.0 {
+            True  -> Ok("valid: call=" <> fmt_f(call) <> " delta=" <> fmt_f(delta))
+            False -> Error(DeltaOutOfRange(delta))
+          }
+      }
+    VolatilityData(vol, var_95, _) ->
+      case vol >=. 0.0 && var_95 <=. 0.0 {
+        True  -> Ok("valid: vol=" <> fmt_f(vol))
+        False -> Error(NegativeVolatility(vol))
+      }
+    StreamBatch(count, _) ->
+      case count > 0 {
+        False -> Error(EmptyBatch)
+        True  -> Ok("valid: batch count=" <> int.to_string(count))
+      }
+    Unknown(raw) -> Error(UnknownService(raw))
+    // 새 ServiceMessage variant 추가 시 여기에 케이스 추가 필수
+    // 누락 시: "Non-exhaustive patterns in case expression" 컴파일 에러
+  }
+}
+
+fn error_to_string(e: ValidationError) -> String {
+  case e {
+    ScoreOutOfRange(s)    -> "score_out_of_range:" <> fmt_f(s) <> " (valid:0-1000)"
+    NegativePremium(v)    -> "negative_premium:" <> fmt_f(v)
+    DeltaOutOfRange(d)    -> "delta_out_of_range:" <> fmt_f(d) <> " (valid:0-1)"
+    NegativeVolatility(v) -> "negative_volatility:" <> fmt_f(v)
+    EmptyBatch            -> "empty_batch"
+    UnknownService(n)     -> "unknown_service:" <> n
+  }
+}
+
+// Erlang에서 호출되는 공개 함수: 리스크 스코어 검증
+pub fn validate_risk_json(score: Float, grade: String) -> String {
+  let msg = RiskScore(score: score, grade: grade, user_id: 0)
+  case validate_message(msg) {
+    Ok(ok_msg) ->
+      "{\"ok\":true,\"message\":\"" <> ok_msg
+      <> "\",\"service\":\"risk\",\"exhaustive\":true,\"engine\":\"Gleam 1.15\"}"
+    Error(e) ->
+      "{\"ok\":false,\"error\":\"" <> error_to_string(e)
+      <> "\",\"service\":\"risk\",\"exhaustive\":true,\"engine\":\"Gleam 1.15\"}"
+  }
+}
+
+// 옵션 가격 검증
+pub fn validate_option_json(call: Float, delta: Float) -> String {
+  let msg = OptionPrice(call: call, put: 0.0, delta: delta)
+  case validate_message(msg) {
+    Ok(ok_msg) ->
+      "{\"ok\":true,\"message\":\"" <> ok_msg
+      <> "\",\"service\":\"option\",\"exhaustive\":true,\"engine\":\"Gleam 1.15\"}"
+    Error(e) ->
+      "{\"ok\":false,\"error\":\"" <> error_to_string(e)
+      <> "\",\"service\":\"option\",\"exhaustive\":true,\"engine\":\"Gleam 1.15\"}"
+  }
+}
+
+// 서비스 계약 목록 반환
+pub fn contract_json() -> String {
+  "{\"services\":[\"risk\",\"option\",\"volatility\",\"stream\"],"
+  <> "\"message_types\":[\"RiskScore\",\"OptionPrice\",\"VolatilityData\",\"StreamBatch\",\"Unknown\"],"
+  <> "\"guarantee\":\"exhaustive_pattern_match\","
+  <> "\"note\":\"모든 ServiceMessage variant가 case에서 강제 처리됩니다. 누락 시 컴파일 에러.\","
+  <> "\"engine\":\"Gleam 1.15 (BEAM/Erlang)\"}"
+}

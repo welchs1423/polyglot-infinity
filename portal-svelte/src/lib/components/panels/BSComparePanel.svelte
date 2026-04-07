@@ -74,12 +74,26 @@
     <div class="param-grid">
         <div class="param-row">
             <label for="bs-s">Spot (S)</label>
-            <input id="bs-s" type="range" min="50" max="200" step="5" bind:value={bsS} />
+            <input
+                id="bs-s"
+                type="range"
+                min="50"
+                max="200"
+                step="5"
+                bind:value={bsS}
+            />
             <span class="param-val">{bsS}</span>
         </div>
         <div class="param-row">
             <label for="bs-k">Strike (K)</label>
-            <input id="bs-k" type="range" min="50" max="200" step="5" bind:value={bsK} />
+            <input
+                id="bs-k"
+                type="range"
+                min="50"
+                max="200"
+                step="5"
+                bind:value={bsK}
+            />
             <span class="param-val">{bsK}</span>
         </div>
         <div class="param-row">

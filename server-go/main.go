@@ -571,7 +571,7 @@ func reportHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── workflowRiskFullHandler — /api/workflow/risk-full ───────────────────────
-// Python 분석 → Rust 저장 → Kotlin 리포트 엔드-투-엔드 파이프라인
+// Python 분석 → Rust 저장 → Rust VaR → Kotlin 리포트 → Nim GARCH 파이프라인
 // 각 단계는 순차적으로 실행되며, 이전 단계 결과가 다음 단계에 전달된다.
 func workflowRiskFullHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -645,6 +645,22 @@ func workflowRiskFullHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	steps = append(steps, step4)
 
+	// Step 5: Nim GARCH 변동성 추정
+	step5 := map[string]interface{}{"step": 5, "service": "Nim-Analytics", "action": "garch"}
+	var nimData map[string]interface{}
+	resp5, err := cbGet("Nim-Analytics", "http://localhost:8005/api/nim/garch?omega=0.000001&alpha=0.1&beta=0.85&n=252")
+	if err == nil {
+		defer resp5.Body.Close()
+		json.NewDecoder(resp5.Body).Decode(&nimData)
+		step5["status"] = "ok"
+		step5["data"] = nimData
+	} else {
+		step5["status"] = "error"
+		step5["error"] = err.Error()
+		overallStatus = "partial"
+	}
+	steps = append(steps, step5)
+
 	elapsed := time.Since(t0).Milliseconds()
 
 	// Redis Pub/Sub 이벤트 발행 — Elixir가 구독해서 Phoenix Channel로 브로드캐스트
@@ -664,7 +680,7 @@ func workflowRiskFullHandler(w http.ResponseWriter, r *http.Request) {
 		"status":       overallStatus,
 		"elapsed_ms":   elapsed,
 		"steps":        steps,
-		"engine":       "Go-Workflow-v1",
+		"engine":       "Go-Workflow-v2",
 		"completed_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

@@ -56,6 +56,26 @@
             scoreLoading = false;
         }
     }
+
+    /** @type {any | null} */
+    let portfolioData = $state(null);
+    let portfolioLoading = $state(false);
+
+    async function runPortfolio() {
+        portfolioLoading = true;
+        portfolioData = null;
+        try {
+            const res = await fetch(
+                "http://localhost:8004/api/ocaml/portfolio",
+            );
+            if (res.ok) portfolioData = await res.json();
+            else portfolioData = { error: "OCaml portfolio offline" };
+        } catch {
+            portfolioData = { error: "OCaml 엔진 접속 불가 (:8004)" };
+        } finally {
+            portfolioLoading = false;
+        }
+    }
 </script>
 
 <section class="panel">
@@ -66,13 +86,22 @@
                 OCaml 4.13 · 규칙 기반 리스크 판정 · 신용 스코어링 (:8004)
             </p>
         </div>
-        <button
-            class="ocaml-btn"
-            onclick={runOcamlRisk}
-            disabled={ocamlLoading}
-        >
-            {ocamlLoading ? "분석 중..." : "리스크 분석"}
-        </button>
+        <div class="ocaml-btn-group">
+            <button
+                class="ocaml-btn"
+                onclick={runOcamlRisk}
+                disabled={ocamlLoading}
+            >
+                {ocamlLoading ? "분석 중..." : "리스크 분석"}
+            </button>
+            <button
+                class="ocaml-btn ocaml-port-btn"
+                onclick={runPortfolio}
+                disabled={portfolioLoading}
+            >
+                {portfolioLoading ? "분석 중..." : "포트폴리오"}
+            </button>
+        </div>
     </div>
     {#if ocamlRisk}
         {#if ocamlRisk.error}
@@ -217,6 +246,47 @@
     </div>
 </section>
 
+{#if portfolioData || portfolioLoading}
+    <section class="panel ocaml-port-section">
+        <h3 class="section-title">💼 OCaml 다자산 포트폴리오 VaR</h3>
+        {#if portfolioLoading}
+            <div class="empty-box"><p>포트폴리오 분석 중…</p></div>
+        {:else if portfolioData?.error}
+            <div class="error-box"><p>⚠️ {portfolioData.error}</p></div>
+        {:else if portfolioData}
+            <div class="julia-grid">
+                <div class="julia-card ocaml-card">
+                    <span class="jlabel">연율 변동성</span>
+                    <span class="jval">{portfolioData.ann_vol != null ? (portfolioData.ann_vol * 100).toFixed(2) + '%' : 'N/A'}</span>
+                </div>
+                <div class="julia-card ocaml-card">
+                    <span class="jlabel">VaR 95%</span>
+                    <span class="jval">{portfolioData.var_95 != null ? (portfolioData.var_95 * 100).toFixed(3) + '%' : 'N/A'}</span>
+                </div>
+                <div class="julia-card ocaml-card">
+                    <span class="jlabel">CVaR 95%</span>
+                    <span class="jval">{portfolioData.cvar_95 != null ? (portfolioData.cvar_95 * 100).toFixed(3) + '%' : 'N/A'}</span>
+                </div>
+                <div class="julia-card ocaml-card">
+                    <span class="jlabel">포트폴리오 일별 VaR</span>
+                    <span class="jval">{portfolioData.port_var != null ? (portfolioData.port_var * 100).toFixed(3) + '%' : 'N/A'}</span>
+                </div>
+            </div>
+            {#if portfolioData.assets?.length && portfolioData.mcvar_list?.length}
+                <div class="mcvar-header">🔎 Marginal VaR (자산별 한계 기여)</div>
+                <div class="mcvar-list">
+                    {#each portfolioData.assets as asset, i}
+                        <div class="mcvar-item">
+                            <span class="mcvar-name">{asset}</span>
+                            <span class="mcvar-val">{((portfolioData.mcvar_list[i] ?? 0) * 100).toFixed(4)}%</span>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        {/if}
+    </section>
+{/if}
+
 <style>
     .ocaml-btn {
         background: linear-gradient(135deg, #f97316, #c2410c);
@@ -295,5 +365,48 @@
     .score-btn {
         padding: 0.5rem 1.1rem;
         font-size: 0.82rem;
+    }
+    .ocaml-btn-group {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .ocaml-port-btn {
+        background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    }
+    .ocaml-port-btn:hover:not(:disabled) {
+        background: linear-gradient(135deg, #0284c7, #0369a1);
+    }
+    .ocaml-port-section {
+        margin-top: 0.75rem;
+    }
+    .mcvar-header {
+        font-size: 0.78rem;
+        color: #94a3b8;
+        margin: 0.6rem 0 0.3rem;
+        font-weight: 600;
+    }
+    .mcvar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .mcvar-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.8rem;
+        font-family: monospace;
+        padding: 0.25rem 0.5rem;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 5px;
+    }
+    .mcvar-name {
+        color: #f97316;
+        min-width: 80px;
+    }
+    .mcvar-val {
+        color: #38bdf8;
     }
 </style>

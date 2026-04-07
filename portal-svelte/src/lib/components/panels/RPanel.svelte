@@ -35,6 +35,45 @@
             corrLoading = false;
         }
     }
+
+    /** @type {any | null} */
+    let rGarch = $state(null);
+    let garchLoading = $state(false);
+    /** @type {any | null} */
+    let rArima = $state(null);
+    let arimaLoading = $state(false);
+
+    async function runRGarch() {
+        garchLoading = true;
+        rGarch = null;
+        try {
+            const res = await fetch(
+                "http://localhost:8003/api/r/garch?omega=0.00001&alpha=0.1&beta=0.85&n=500",
+            );
+            if (res.ok) rGarch = await res.json();
+            else rGarch = { error: "R GARCH offline" };
+        } catch {
+            rGarch = { error: "R engine unreachable" };
+        } finally {
+            garchLoading = false;
+        }
+    }
+
+    async function runRArima() {
+        arimaLoading = true;
+        rArima = null;
+        try {
+            const res = await fetch(
+                "http://localhost:8003/api/r/arima?n=200&order_p=1&order_d=0&order_q=1",
+            );
+            if (res.ok) rArima = await res.json();
+            else rArima = { error: "R ARIMA offline" };
+        } catch {
+            rArima = { error: "R engine unreachable" };
+        } finally {
+            arimaLoading = false;
+        }
+    }
 </script>
 
 <section class="panel">
@@ -55,6 +94,20 @@
                 disabled={corrLoading}
             >
                 {corrLoading ? "분석 중..." : "상관 분석"}
+            </button>
+            <button
+                class="r-btn garch-btn"
+                onclick={runRGarch}
+                disabled={garchLoading}
+            >
+                {garchLoading ? "추정 중..." : "GARCH(1,1)"}
+            </button>
+            <button
+                class="r-btn arima-btn"
+                onclick={runRArima}
+                disabled={arimaLoading}
+            >
+                {arimaLoading ? "예측 중..." : "ARIMA 예측"}
             </button>
         </div>
     </div>
@@ -148,6 +201,102 @@
     {/if}
 </section>
 
+<!-- GARCH(1,1) 결과 -->
+{#if rGarch || garchLoading}
+    <section class="panel-section garch-section">
+        <h3 class="section-title">📈 R GARCH(1,1) 변동성 모델</h3>
+        {#if garchLoading}
+            <div class="empty-box"><p>GARCH 추정 중…</p></div>
+        {:else if rGarch?.error}
+            <div class="error-box"><p>⚠️ {rGarch.error}</p></div>
+        {:else if rGarch}
+            <div class="julia-grid">
+                <div class="julia-card r-card">
+                    <span class="jlabel">지속성 (α+β)</span><span class="jval"
+                        >{rGarch.persistence?.toFixed(4) ?? "N/A"}</span
+                    >
+                </div>
+                <div class="julia-card r-card">
+                    <span class="jlabel">반감기 (일)</span><span class="jval"
+                        >{rGarch.half_life_days?.toFixed(1) ?? "N/A"}</span
+                    >
+                </div>
+                <div class="julia-card r-card">
+                    <span class="jlabel">평균 연율 변동성</span><span
+                        class="jval"
+                        >{rGarch.ann_vol_avg != null
+                            ? (rGarch.ann_vol_avg * 100).toFixed(2) + "%"
+                            : "N/A"}</span
+                    >
+                </div>
+                <div class="julia-card r-card">
+                    <span class="jlabel">현재 연율 변동성</span><span
+                        class="jval"
+                        >{rGarch.current_vol_ann != null
+                            ? (rGarch.current_vol_ann * 100).toFixed(2) + "%"
+                            : "N/A"}</span
+                    >
+                </div>
+                <div class="julia-card r-card">
+                    <span class="jlabel">오늘 VaR (95%)</span><span class="jval"
+                        >{rGarch.var_95_today != null
+                            ? (rGarch.var_95_today * 100).toFixed(3) + "%"
+                            : "N/A"}</span
+                    >
+                </div>
+            </div>
+            {#if rGarch.last_10_vols?.length}
+                <div class="vol-strip">
+                    <span class="vstrip-label">최근 10일 변동성:</span>
+                    {#each rGarch.last_10_vols as v, i}
+                        <span class="vstrip-cell">{(v * 100).toFixed(2)}%</span>
+                    {/each}
+                </div>
+            {/if}
+        {/if}
+    </section>
+{/if}
+
+<!-- ARIMA 예측 결과 -->
+{#if rArima || arimaLoading}
+    <section class="panel-section arima-section">
+        <h3 class="section-title">📊 R ARIMA(p,d,q) 3-Step 예측</h3>
+        {#if arimaLoading}
+            <div class="empty-box"><p>ARIMA 예측 중…</p></div>
+        {:else if rArima?.error}
+            <div class="error-box"><p>⚠️ {rArima.error}</p></div>
+        {:else if rArima}
+            <div class="julia-grid">
+                <div class="julia-card r-card">
+                    <span class="jlabel">AIC</span><span class="jval"
+                        >{rArima.aic?.toFixed(2) ?? "N/A"}</span
+                    >
+                </div>
+                {#each rArima.forecast ?? [] as fc, i}
+                    <div class="julia-card r-card">
+                        <span class="jlabel">예측 t+{i + 1}</span>
+                        <span class="jval">{(fc * 100).toFixed(4)}%</span>
+                    </div>
+                {/each}
+            </div>
+            {#if rArima.ci_lower_95 && rArima.ci_upper_95}
+                <div class="ci-strip">
+                    {#each rArima.ci_lower_95 as lo, i}
+                        <div class="ci-row">
+                            <span class="ci-label">t+{i + 1} 95% CI</span>
+                            <span class="ci-range"
+                                >[{(lo * 100).toFixed(3)}%, {(
+                                    rArima.ci_upper_95[i] * 100
+                                ).toFixed(3)}%]</span
+                            >
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        {/if}
+    </section>
+{/if}
+
 <style>
     .r-btn {
         background: #1d6fa5;
@@ -214,5 +363,63 @@
         text-align: center;
         padding: 0.3rem 0;
         border-radius: 4px;
+    }
+    .garch-btn {
+        background: #7c3aed;
+    }
+    .garch-btn:hover:not(:disabled) {
+        background: #6d28d9;
+    }
+    .arima-btn {
+        background: #b45309;
+    }
+    .arima-btn:hover:not(:disabled) {
+        background: #92400e;
+    }
+    .garch-section,
+    .arima-section {
+        margin-top: 1rem;
+        border-top: 1px solid #1e293b;
+        padding-top: 0.75rem;
+    }
+    .vol-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-top: 0.5rem;
+        align-items: center;
+    }
+    .vstrip-label {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-right: 0.3rem;
+    }
+    .vstrip-cell {
+        font-family: monospace;
+        font-size: 0.75rem;
+        background: #1e293b;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+        color: #a78bfa;
+    }
+    .ci-strip {
+        margin-top: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .ci-row {
+        display: flex;
+        gap: 0.75rem;
+        font-size: 0.78rem;
+        align-items: center;
+    }
+    .ci-label {
+        color: #64748b;
+        min-width: 70px;
+    }
+    .ci-range {
+        font-family: monospace;
+        color: #fbbf24;
     }
 </style>

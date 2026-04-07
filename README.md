@@ -380,16 +380,16 @@ CREATE TABLE IF NOT EXISTS risk_reports (
   - `/api/ocaml/risk`: 부체비율·영변도·레버리지·신용점수 규칙 기반 LOW/MEDIUM/HIGH/CRITICAL 판정 (`:8004`)
   - `/api/ocaml/score`: 로지스틱 회귀 신용 점수 + A+~D 등급
   - Svelte: **OCaml Risk Rule Engine 패널** 추가 (리스크 레벨 색상 코딩)
-- [x] **2026-04-08** — **WebAssembly 추가 (8번째 신규 언어 — 브라우저 런타임)**
+- [x] **2026-04-06** — **WebAssembly 추가 (8번째 신규 언어 — 브라우저 런타임)**
   - **Zig → WASM32 freestanding**: `finance.wasm` (24KB) — normCdf · bsCall · bsPut · bsDelta · bsGamma · varNormal · dcfValue
   - Svelte: **WebAssembly 패널** 추가 (`fetch` → `WebAssembly.instantiate` · 서버 왕복 없음)
-- [x] **2026-04-08** — **F# 옵션 프라이서 추가 (7번째 신규 언어)**
+- [x] **2026-04-06** — **F# 옵션 프라이서 추가 (7번째 신규 언어)**
   - **F# (.NET 8) + ASP.NET Core**: Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho · DCF 가치평가 (`:9001`)
   - Svelte: **F# Black-Scholes 패널** 추가 (6-grid Greeks 카드)
-- [x] **2026-04-08** — **R 통계 엔진 추가 (6번째 신규 언어)**
+- [x] **2026-04-06** — **R 통계 엔진 추가 (6번째 신규 언어)**
   - **R 4.1 + Plumber**: MLE 정규/t분포 피팅 · VaR/CVaR 95% · Sharpe Ratio · 4-asset 상관행렬 (`:8003`)
   - Svelte: **R Distribution Fit 패널** 추가
-- [x] **2026-04-08** — **5개 언어 추가 (Lua · Zig · Kotlin · Elixir · Julia)**
+- [x] **2026-04-06** — **5개 언어 추가 (Lua · Zig · Kotlin · Elixir · Julia)**
   - **Lua**: Go 내 Redis `EVAL` 원자적 Lua 스크립트로 캐시 히트/미스 카운터 (`/api/cache/stats`)
   - **Zig 0.13**: `libzigcore.so` C ABI — `volatility_estimate()` · `value_at_risk()` · Python ctypes 연동
   - **Kotlin 2.0**: 코루틴 스케줄러 `:9000` — 60초 주기 리스크 리포트 자동 생성 (`scheduler.jar` 빌드 완료)
@@ -424,7 +424,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### 🎨 Svelte 5 (Frontend)
 
 <details open>
-<summary><strong>📅 2026-04-08 : 5개 언어 패널 추가 · 버그 수정</strong></summary>
+<summary><strong>📅 2026-04-06 : 5개 언어 패널 추가 · 버그 수정</strong></summary>
 
 #### ✅ 구축 내역
 - **Zig 상태 카드**: 변동성 추정치 · VaR 95% 표시.
@@ -616,7 +616,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### 🌙 Lua (Redis 원자적 스크립팅)
 
 <details open>
-<summary><strong>📅 2026-04-08 : Redis EVAL 원자적 캐시 카운터</strong></summary>
+<summary><strong>📅 2026-04-06 : Redis EVAL 원자적 캐시 카운터</strong></summary>
 
 #### ✅ 구축 내역
 - Go 내 `redis.NewScript` 로 Lua 스크립트 2개 정의: `luaGetAndCount` (GET + 히트/미스 INCR 원자적), `luaSetWithTTL` (SET + EXPIRE 원자적).
@@ -629,7 +629,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### ⚡ Zig (C ABI Core 라이브러리)
 
 <details open>
-<summary><strong>📅 2026-04-08 : libzigcore.so 구축 · Python FFI 연동</strong></summary>
+<summary><strong>📅 2026-04-06 : libzigcore.so 구축 · Python FFI 연동</strong></summary>
 
 #### ✅ 구축 내역
 - Zig 0.13.0 설치 (`~/.local/zig`).
@@ -643,7 +643,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### ☕ Kotlin (코루틴 스케줄러)
 
 <details open>
-<summary><strong>📅 2026-04-08 : 리스크 리포트 스케줄러 구축</strong></summary>
+<summary><strong>📅 2026-04-06 : 리스크 리포트 스케줄러 구축</strong></summary>
 
 #### ✅ 구축 내역
 - Kotlin 2.0.21 + OpenJDK 21 설치 (`~/.local/kotlinc`, `~/.local/jdk`).
@@ -664,7 +664,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### 💜 Elixir/Phoenix (WebSocket Hub)
 
 <details open>
-<summary><strong>📅 2026-04-08 : OTP Supervisor + WebSocket Channel 구조 완성</strong></summary>
+<summary><strong>📅 2026-04-06 : OTP Supervisor + WebSocket Channel 구조 완성</strong></summary>
 
 #### ✅ 구축 내역
 - `hub-elixir/mix.exs`: Phoenix, phoenix_pubsub, bandit, jason, httpoison 의존성.
@@ -684,7 +684,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### 🔬 Julia (Monte Carlo 엔진)
 
 <details open>
-<summary><strong>📅 2026-04-08 : GBM 병렬 시뮬레이션 · VaR/CVaR 서버</strong></summary>
+<summary><strong>📅 2026-04-06 : GBM 병렬 시뮬레이션 · VaR/CVaR 서버</strong></summary>
 
 #### ✅ 구축 내역
 - Julia 1.10.5 설치 (`~/.local/julia`), HTTP.jl + JSON3.jl 패키지 설치.
@@ -700,7 +700,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### 📊 R (통계 분석 엔진)
 
 <details open>
-<summary><strong>📅 2026-04-08 : MLE 분포 피팅 · VaR/CVaR · 상관 분석</strong></summary>
+<summary><strong>📅 2026-04-06 : MLE 분포 피팅 · VaR/CVaR · 상관 분석</strong></summary>
 
 #### ✅ 구축 내역
 - R 4.1.2 (사전 설치), plumber + jsonlite 패키지 설치 (`~/R/library`).
@@ -876,7 +876,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### �️ WebAssembly (Client-side)
 
 <details open>
-<summary><strong>📅 2026-04-08 : Zig → WASM32 · 브라우저 직접 실행</strong></summary>
+<summary><strong>📅 2026-04-06 : Zig → WASM32 · 브라우저 직접 실행</strong></summary>
 
 #### ✅ 구축 내역
 - `wasm-zig/src/finance.zig`: `normCdf` · `bsCall` · `bsPut` · `bsDelta` · `bsGamma` · `varNormal` · `dcfValue` 구현.
@@ -904,7 +904,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ### �🟣 F# (옵션 프라이서)
 
 <details open>
-<summary><strong>📅 2026-04-08 : Black-Scholes Greeks · DCF 가치평가 엔진</strong></summary>
+<summary><strong>📅 2026-04-06 : Black-Scholes Greeks · DCF 가치평가 엔진</strong></summary>
 
 #### ✅ 구축 내역
 - .NET SDK 8.0 apt 설치 (`dotnet-sdk-8.0`).

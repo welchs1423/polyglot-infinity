@@ -227,6 +227,9 @@ func aggregateHandler(w http.ResponseWriter, r *http.Request) {
 		{"Kotlin-Scheduler", 9000, "http://localhost:9000/health"},
 		{"Elixir-Hub", 4000, "http://localhost:4000/health"},
 		{"Swift-Actor", 8008, "http://localhost:8008/health"},
+		{"Lua-Stream", 8007, "http://localhost:8007/health"},
+		{"Clojure-STM", 8009, "http://localhost:8009/health"},
+		{"Java-Loom", 8010, "http://localhost:8010/health"},
 	}
 
 	type Result struct {

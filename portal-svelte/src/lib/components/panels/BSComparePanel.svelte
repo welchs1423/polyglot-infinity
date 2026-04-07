@@ -73,18 +73,19 @@
 
     <div class="param-grid">
         <div class="param-row">
-            <label>Spot (S)</label>
-            <input type="range" min="50" max="200" step="5" bind:value={bsS} />
+            <label for="bs-s">Spot (S)</label>
+            <input id="bs-s" type="range" min="50" max="200" step="5" bind:value={bsS} />
             <span class="param-val">{bsS}</span>
         </div>
         <div class="param-row">
-            <label>Strike (K)</label>
-            <input type="range" min="50" max="200" step="5" bind:value={bsK} />
+            <label for="bs-k">Strike (K)</label>
+            <input id="bs-k" type="range" min="50" max="200" step="5" bind:value={bsK} />
             <span class="param-val">{bsK}</span>
         </div>
         <div class="param-row">
-            <label>Volatility σ</label>
+            <label for="bs-sigma">Volatility σ</label>
             <input
+                id="bs-sigma"
                 type="range"
                 min="0.05"
                 max="0.80"
@@ -94,8 +95,9 @@
             <span class="param-val">{bsSigma.toFixed(2)}</span>
         </div>
         <div class="param-row">
-            <label>Maturity T (년)</label>
+            <label for="bs-t">Maturity T (년)</label>
             <input
+                id="bs-t"
                 type="range"
                 min="0.1"
                 max="3.0"
@@ -105,8 +107,9 @@
             <span class="param-val">{bsT.toFixed(1)}</span>
         </div>
         <div class="param-row">
-            <label>Risk-free r</label>
+            <label for="bs-r">Risk-free r</label>
             <input
+                id="bs-r"
                 type="range"
                 min="0.00"
                 max="0.15"

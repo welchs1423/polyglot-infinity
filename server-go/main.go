@@ -710,7 +710,7 @@ func workflowOptionCompareHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		{"F#", fmt.Sprintf("http://localhost:9001/api/fsharp/option?s=%s&k=%s&r=%s&sigma=%s&t=%s", s, k, rRate, sigma, t)},
 		{"Haskell", fmt.Sprintf("http://localhost:8006/api/haskell/blackscholes?s=%s&k=%s&r=%s&sigma=%s&t=%s", s, k, rRate, sigma, t)},
-		{"Python+ZigFFI", fmt.Sprintf("http://localhost:8000/api/analyze")},
+		{"Python+ZigFFI", "http://localhost:8000/api/analyze"},
 	}
 
 	ch := make(chan engineResult, len(engines))

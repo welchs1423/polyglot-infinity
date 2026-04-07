@@ -248,8 +248,9 @@
 			</div>
 		</div>
 		<div class="status-right">
-			<label class="refresh-label">자동갱신</label>
+			<label class="refresh-label" for="refresh-select">자동갱신</label>
 			<select
+				id="refresh-select"
 				class="refresh-select"
 				bind:value={refreshInterval}
 				onchange={applyRefreshTimer}

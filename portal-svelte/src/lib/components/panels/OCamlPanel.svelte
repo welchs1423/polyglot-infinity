@@ -3,6 +3,13 @@
     let ocamlRisk = $state(null);
     /** @type {boolean} */
     let ocamlLoading = $state(false);
+    /** @type {any | null} */
+    let scoreData = $state(null);
+    let scoreLoading = $state(false);
+    let income = $state(5000000);
+    let debt = $state(2000000);
+    let historyYears = $state(3);
+    let missedPayments = $state(1);
 
     async function runOcamlRisk() {
         ocamlLoading = true;
@@ -32,6 +39,21 @@
             ocamlRisk = { error: "OCaml 엔진 접속 불가 (:8004)" };
         } finally {
             ocamlLoading = false;
+        }
+    }
+
+    async function fetchScore() {
+        scoreLoading = true;
+        scoreData = null;
+        try {
+            const url = `http://localhost:8004/api/ocaml/score?income=${income}&debt=${debt}&history_years=${historyYears}&missed_payments=${missedPayments}`;
+            const res = await fetch(url);
+            if (res.ok) scoreData = await res.json();
+            else scoreData = { error: "OCaml 스코어 오프라인" };
+        } catch {
+            scoreData = { error: "OCaml 엔진 접속 불가 (:8004)" };
+        } finally {
+            scoreLoading = false;
         }
     }
 </script>
@@ -100,6 +122,55 @@
             </p>
         </div>
     {/if}
+
+    <div class="score-section">
+        <p class="score-label">신용 스코어 실시간 산정</p>
+        <div class="score-form">
+            <label class="sf-field">
+                <span>연소득 (원)</span>
+                <input class="sf-input" type="number" bind:value={income} min="100000" step="100000" />
+            </label>
+            <label class="sf-field">
+                <span>부체 (원)</span>
+                <input class="sf-input" type="number" bind:value={debt} min="0" step="100000" />
+            </label>
+            <label class="sf-field">
+                <span>신용이력 (년)</span>
+                <input class="sf-input" type="number" bind:value={historyYears} min="0" max="30" />
+            </label>
+            <label class="sf-field">
+                <span>연체 횟수</span>
+                <input class="sf-input" type="number" bind:value={missedPayments} min="0" max="20" />
+            </label>
+            <button class="ocaml-btn score-btn" onclick={fetchScore} disabled={scoreLoading}>
+                {scoreLoading ? "산정 중..." : "스코어 산정"}
+            </button>
+        </div>
+        {#if scoreData}
+            {#if scoreData.error}
+                <p style="color:#f87171">{scoreData.error}</p>
+            {:else}
+                <div class="julia-grid" style="margin-top:0.5rem">
+                    <div class="julia-card ocaml-card" style="border-color:#60a5fa">
+                        <span class="jlabel">Credit Score</span>
+                        <span class="jval" style="color:#60a5fa">{scoreData.score}</span>
+                    </div>
+                    <div class="julia-card ocaml-card" style="border-color:#60a5fa">
+                        <span class="jlabel">Grade</span>
+                        <span class="jval" style="color:#60a5fa">{scoreData.grade}</span>
+                    </div>
+                    <div class="julia-card ocaml-card">
+                        <span class="jlabel">제거 확률</span>
+                        <span class="jval">{((scoreData.prob_good ?? 0) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div class="julia-card ocaml-card">
+                        <span class="jlabel">DTI</span>
+                        <span class="jval">{((scoreData.dti ?? 0) * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+            {/if}
+        {/if}
+    </div>
 </section>
 
 <style>
@@ -134,5 +205,51 @@
     }
     :global(.risk-critical) {
         color: #f87171 !important;
+    }
+    .score-section {
+        margin-top: 1.5rem;
+        border-top: 1px solid rgba(249, 115, 22, 0.25);
+        padding-top: 1rem;
+    }
+    .score-label {
+        font-size: 0.75rem;
+        color: #f97316;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+    }
+    .score-form {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .sf-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.75rem;
+        color: #94a3b8;
+        flex: 1;
+        min-width: 110px;
+    }
+    .sf-input {
+        background: rgba(249, 115, 22, 0.07);
+        border: 1px solid rgba(249, 115, 22, 0.35);
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-size: 0.85rem;
+        padding: 0.4rem 0.5rem;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .sf-input:focus {
+        outline: none;
+        border-color: #f97316;
+    }
+    .score-btn {
+        padding: 0.5rem 1.1rem;
+        font-size: 0.82rem;
     }
 </style>

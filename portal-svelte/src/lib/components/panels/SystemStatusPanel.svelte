@@ -14,14 +14,15 @@
     let autoSyncInterval = $state(null);
     /** @type {any | null} */
     let aggregateData = $state(null);
-    let aggregateLoading = $state(false);
+    /** @type {EventSource | null} */
+    let sseSource = $state(null);
+    let sseConnected = $state(false);
     /** @type {any | null} */
     let reportData = $state(null);
     let reportLoading = $state(false);
 
     async function runReport() {
         reportLoading = true;
-        reportData = null;
         try {
             const res = await fetch("http://localhost:8080/api/report");
             if (res.ok) reportData = await res.json();
@@ -46,17 +47,22 @@
         }
     }
 
-    async function runAggregate() {
-        aggregateLoading = true;
-        aggregateData = null;
-        try {
-            const res = await fetch("http://localhost:8080/api/aggregate");
-            if (res.ok) aggregateData = await res.json();
-            else aggregateData = { error: "Go 허브 오프라인" };
-        } catch {
-            aggregateData = { error: "Go 허브 접속 불가 (:8080)" };
-        } finally {
-            aggregateLoading = false;
+    function toggleSSE() {
+        if (sseConnected) {
+            sseSource?.close();
+            sseSource = null;
+            sseConnected = false;
+        } else {
+            sseSource = new EventSource("http://localhost:8080/api/aggregate/stream");
+            sseConnected = true;
+            sseSource.onmessage = (e) => {
+                try { aggregateData = JSON.parse(e.data); } catch { /* ignore */ }
+            };
+            sseSource.onerror = () => {
+                sseConnected = false;
+                sseSource?.close();
+                sseSource = null;
+            };
         }
     }
 
@@ -73,6 +79,7 @@
 
     onDestroy(() => {
         if (autoSyncInterval !== null) clearInterval(autoSyncInterval);
+        sseSource?.close();
     });
 </script>
 
@@ -91,11 +98,10 @@
             </button>
             <button class="sync-btn" onclick={syncSystem}>Sync System</button>
             <button
-                class="agg-btn"
-                onclick={runAggregate}
-                disabled={aggregateLoading}
+                class="agg-btn {sseConnected ? 'sse-active' : ''}"
+                onclick={toggleSSE}
             >
-                {aggregateLoading ? "스캔 중..." : "전체 헬스체크"}
+                {sseConnected ? "🟢 Live 스트림 중지" : "전체 헬스체크 (SSE)"}
             </button>
             <button
                 class="report-btn"
@@ -363,7 +369,7 @@
         {:else}
             <div class="agg-header">
                 <span
-                    >🔍 전체 백엔드 헬스체크 — <strong style="color:#34d399"
+                    >{sseConnected ? "🟢 실시간 스트림" : "🔍 전체 백엔드 헬스체크"} — <strong style="color:#34d399"
                         >{aggregateData.online}</strong
                     >
                     / {aggregateData.total} online</span
@@ -405,9 +411,13 @@
     .agg-btn:hover:not(:disabled) {
         background: #0f2a3f;
     }
-    .agg-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
+    .agg-btn.sse-active {
+        background: #052e16;
+        color: #34d399;
+        border-color: #34d399;
+    }
+    .agg-btn.sse-active:hover {
+        background: #064e3b;
     }
     .report-btn {
         background: #1e293b;

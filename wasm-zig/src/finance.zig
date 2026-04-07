@@ -46,6 +46,32 @@ export fn bsGamma(s: f64, k: f64, r: f64, sigma: f64, t: f64) f64 {
     return pdf / (s * sigma * math.sqrt(t));
 }
 
+// ── Theta (콜, 1일 기준) ──────────────────────────────────────────────────
+export fn bsTheta(s: f64, k: f64, r: f64, sigma: f64, t: f64) f64 {
+    if (t <= 0.0) return 0.0;
+    const d1 = (math.log(f64, math.e, s / k) + (r + sigma * sigma / 2.0) * t) / (sigma * math.sqrt(t));
+    const d2 = d1 - sigma * math.sqrt(t);
+    const pdf = math.exp(-d1 * d1 / 2.0) / math.sqrt(2.0 * math.pi);
+    const annual = -(s * pdf * sigma) / (2.0 * math.sqrt(t)) - r * k * math.exp(-r * t) * normCdf(d2);
+    return annual / 365.0; // 1일 기준
+}
+
+// ── Vega (변동성 1% 변화당) ───────────────────────────────────────────────
+export fn bsVega(s: f64, k: f64, r: f64, sigma: f64, t: f64) f64 {
+    if (t <= 0.0) return 0.0;
+    const d1 = (math.log(f64, math.e, s / k) + (r + sigma * sigma / 2.0) * t) / (sigma * math.sqrt(t));
+    const pdf = math.exp(-d1 * d1 / 2.0) / math.sqrt(2.0 * math.pi);
+    return s * pdf * math.sqrt(t) / 100.0; // 1% σ 변화당
+}
+
+// ── Rho (콜, 금리 1% 변화당) ──────────────────────────────────────────────
+export fn bsRho(s: f64, k: f64, r: f64, sigma: f64, t: f64) f64 {
+    if (t <= 0.0) return 0.0;
+    const d1 = (math.log(f64, math.e, s / k) + (r + sigma * sigma / 2.0) * t) / (sigma * math.sqrt(t));
+    const d2 = d1 - sigma * math.sqrt(t);
+    return k * t * math.exp(-r * t) * normCdf(d2) / 100.0; // 1% r 변화당
+}
+
 // ── VaR (정규분포 가정, 단측 신뢰구간) ───────────────────────────────────────
 export fn varNormal(mu: f64, sigma: f64, confidence: f64) f64 {
     const p = 1.0 - confidence;

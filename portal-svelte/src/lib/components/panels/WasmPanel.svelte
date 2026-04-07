@@ -28,7 +28,7 @@
 
     // DCF 파라미터
     let dcfFcf = $state(1_000_000);
-    let dcfGrowth = $state(0.10);
+    let dcfGrowth = $state(0.1);
     let dcfTerminal = $state(0.03);
     let dcfWacc = $state(0.08);
     let dcfYears = $state(5);
@@ -55,6 +55,9 @@
                 put: exp.bsPut(100, 100, 0.05, 0.2, 1.0),
                 delta: exp.bsDelta(100, 100, 0.05, 0.2, 1.0),
                 gamma: exp.bsGamma(100, 100, 0.05, 0.2, 1.0),
+                theta: exp.bsTheta(100, 100, 0.05, 0.2, 1.0),
+                vega: exp.bsVega(100, 100, 0.05, 0.2, 1.0),
+                rho: exp.bsRho(100, 100, 0.05, 0.2, 1.0),
                 var95: exp.varNormal(0.0005, 0.018, 0.95),
                 dcf: exp.dcfValue(1_000_000, 0.1, 0.03, 0.08, 5),
             };
@@ -143,19 +146,25 @@
         wasmLoading = true;
         try {
             const exp = await loadWasm();
-            const value = exp.dcfValue(dcfFcf, dcfGrowth, dcfTerminal, dcfWacc, dcfYears);
+            const value = exp.dcfValue(
+                dcfFcf,
+                dcfGrowth,
+                dcfTerminal,
+                dcfWacc,
+                dcfYears,
+            );
             // 1단계별 PV 수동 계산 (시각화용)
             const steps = [];
             let cf = dcfFcf;
             let cumPv = 0;
             for (let y = 1; y <= dcfYears; y++) {
-                cf *= (1 + dcfGrowth);
+                cf *= 1 + dcfGrowth;
                 const pv = cf / Math.pow(1 + dcfWacc, y);
                 cumPv += pv;
                 steps.push({ year: y, cf: Math.round(cf), pv: Math.round(pv) });
             }
             const lastCf = dcfFcf * Math.pow(1 + dcfGrowth, dcfYears);
-            const tv = lastCf * (1 + dcfTerminal) / (dcfWacc - dcfTerminal);
+            const tv = (lastCf * (1 + dcfTerminal)) / (dcfWacc - dcfTerminal);
             const tvPv = tv / Math.pow(1 + dcfWacc, dcfYears);
             wasmDcfResult = {
                 intrinsic_value: Math.round(value),
@@ -211,6 +220,21 @@
                 <div class="julia-card wasm-card">
                     <span class="jlabel">Gamma</span><span class="jval"
                         >{wasmBsResult.gamma.toFixed(6)}</span
+                    >
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">Theta /day</span><span class="jval"
+                        >{wasmBsResult.theta.toFixed(4)}</span
+                    >
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">Vega /1%σ</span><span class="jval"
+                        >{wasmBsResult.vega.toFixed(4)}</span
+                    >
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">Rho /1%r</span><span class="jval"
+                        >{wasmBsResult.rho.toFixed(4)}</span
                     >
                 </div>
                 <div class="julia-card wasm-card">
@@ -410,36 +434,71 @@
     <div class="param-grid">
         <div class="param-row">
             <label for="wasm-fcf">FCF (연간)</label>
-            <input id="wasm-fcf" type="range" min="100000" max="10000000" step="100000"
-                bind:value={dcfFcf} />
+            <input
+                id="wasm-fcf"
+                type="range"
+                min="100000"
+                max="10000000"
+                step="100000"
+                bind:value={dcfFcf}
+            />
             <span class="param-val">₩{dcfFcf.toLocaleString()}</span>
         </div>
         <div class="param-row">
             <label for="wasm-growth">성장률 g</label>
-            <input id="wasm-growth" type="range" min="0.00" max="0.30" step="0.01"
-                bind:value={dcfGrowth} />
+            <input
+                id="wasm-growth"
+                type="range"
+                min="0.00"
+                max="0.30"
+                step="0.01"
+                bind:value={dcfGrowth}
+            />
             <span class="param-val">{(dcfGrowth * 100).toFixed(0)}%</span>
         </div>
         <div class="param-row">
             <label for="wasm-terminal">잡리성장 g∞</label>
-            <input id="wasm-terminal" type="range" min="0.01" max="0.05" step="0.005"
-                bind:value={dcfTerminal} />
+            <input
+                id="wasm-terminal"
+                type="range"
+                min="0.01"
+                max="0.05"
+                step="0.005"
+                bind:value={dcfTerminal}
+            />
             <span class="param-val">{(dcfTerminal * 100).toFixed(1)}%</span>
         </div>
         <div class="param-row">
             <label for="wasm-wacc">WACC</label>
-            <input id="wasm-wacc" type="range" min="0.03" max="0.20" step="0.005"
-                bind:value={dcfWacc} />
+            <input
+                id="wasm-wacc"
+                type="range"
+                min="0.03"
+                max="0.20"
+                step="0.005"
+                bind:value={dcfWacc}
+            />
             <span class="param-val">{(dcfWacc * 100).toFixed(1)}%</span>
         </div>
         <div class="param-row">
             <label for="wasm-years">예측기간</label>
-            <input id="wasm-years" type="range" min="3" max="15" step="1"
-                bind:value={dcfYears} />
+            <input
+                id="wasm-years"
+                type="range"
+                min="3"
+                max="15"
+                step="1"
+                bind:value={dcfYears}
+            />
             <span class="param-val">{dcfYears}년</span>
         </div>
     </div>
-    <button class="wasm-btn" onclick={runDcf} disabled={wasmLoading} style="margin-top:0.5rem">
+    <button
+        class="wasm-btn"
+        onclick={runDcf}
+        disabled={wasmLoading}
+        style="margin-top:0.5rem"
+    >
         DCF 계산
     </button>
     {#if wasmDcfResult}
@@ -449,19 +508,27 @@
             <div class="julia-grid" style="margin-top:0.75rem">
                 <div class="julia-card wasm-card" style="border-color:#f59e0b">
                     <span class="jlabel">내재가치 (DCF)</span>
-                    <span class="jval" style="color:#f59e0b">₩{wasmDcfResult.intrinsic_value?.toLocaleString()}</span>
+                    <span class="jval" style="color:#f59e0b"
+                        >₩{wasmDcfResult.intrinsic_value?.toLocaleString()}</span
+                    >
                 </div>
                 <div class="julia-card wasm-card">
                     <span class="jlabel">영업현금흐름 PV</span>
-                    <span class="jval">₩{wasmDcfResult.operating_pv?.toLocaleString()}</span>
+                    <span class="jval"
+                        >₩{wasmDcfResult.operating_pv?.toLocaleString()}</span
+                    >
                 </div>
                 <div class="julia-card wasm-card">
                     <span class="jlabel">쟑리치 PV</span>
-                    <span class="jval">₩{wasmDcfResult.terminal_value_pv?.toLocaleString()}</span>
+                    <span class="jval"
+                        >₩{wasmDcfResult.terminal_value_pv?.toLocaleString()}</span
+                    >
                 </div>
                 <div class="julia-card wasm-card" style="border-color:#a78bfa">
                     <span class="jlabel">쟑리치 비중</span>
-                    <span class="jval" style="color:#a78bfa">{wasmDcfResult.tv_pct}%</span>
+                    <span class="jval" style="color:#a78bfa"
+                        >{wasmDcfResult.tv_pct}%</span
+                    >
                 </div>
             </div>
             <div class="dcf-table">
@@ -472,13 +539,16 @@
                     <div class="dcf-row">
                         <span class="dcf-yr">Y{s.year}</span>
                         <span>₩{s.cf.toLocaleString()}</span>
-                        <span style="color:#67e8f9">₩{s.pv.toLocaleString()}</span>
+                        <span style="color:#67e8f9"
+                            >₩{s.pv.toLocaleString()}</span
+                        >
                     </div>
                 {/each}
             </div>
             <p class="wasm-hint">✓ 연도별 FCF 할인 · 쟑리수식 · 순수 WASM</p>
         {/if}
-    {/if}</section>
+    {/if}
+</section>
 
 <style>
     .wasm-btn {

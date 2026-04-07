@@ -106,14 +106,69 @@ end
 
 function health_handler(_req)
     HTTP.Response(200, ["Content-Type" => "application/json"],
-        JSON3.write(Dict("status" => "online", "module" => "Julia-Engine-v1",
+        JSON3.write(Dict("status" => "online", "module" => "Julia-Engine-v2",
                          "threads" => Threads.nthreads())))
+end
+
+# ── 스트레스 테스트 핸들러 ─────────────────────────────────────────
+# 4가지 시장 시나리오를 Threads.@spawn 으로 병렬 실행한다.
+# 각 태스크는 별도 Julia 태스크(green thread)로 스케줄되어
+# 멀티코어 활용 및 비동기 집계를 보여준다.
+function stress_handler(req::HTTP.Request)
+    uri    = HTTP.URIs.URI(req.target)
+    params = HTTP.URIs.queryparams(uri)
+    paths  = clamp(parse(Int, get(params, "paths", "5000")), 100, 50_000)
+    days   = clamp(parse(Int, get(params, "days",  "252")),    5,   504)
+
+    scenarios = [
+        (name="Bull Market",  mu=0.15,  vol=0.18),
+        (name="Bear Market",  mu=-0.20, vol=0.35),
+        (name="Crash",        mu=-0.45, vol=0.65),
+        (name="Flat/Low Vol", mu=0.02,  vol=0.05),
+    ]
+
+    t_start = time_ns()
+
+    # 각 시나리오를 독립 Task 로 병렬 실행
+    tasks = map(scenarios) do sc
+        Threads.@spawn begin
+            rets    = monte_carlo_gbm(paths=paths, days=days, mu=sc.mu, vol=sc.vol)
+            metrics = compute_risk_metrics(rets)
+            Dict(
+                "scenario"    => sc.name,
+                "mu"          => sc.mu,
+                "vol"         => sc.vol,
+                "var_95"      => round(metrics.var_95,  digits=6),
+                "cvar_95"     => round(metrics.cvar_95, digits=6),
+                "mean_return" => round(metrics.mean,    digits=6),
+                "sharpe"      => round(metrics.sharpe,  digits=4),
+                "max_loss"    => round(metrics.min_r,   digits=6),
+            )
+        end
+    end
+
+    results  = fetch.(tasks)          # 모든 태스크 완료 대기
+    elapsed  = round((time_ns() - t_start) / 1e6, digits=2)
+
+    body = JSON3.write(Dict(
+        "engine"     => "Julia-StressTest-v2",
+        "paths"      => paths,
+        "days"       => days,
+        "elapsed_ms" => elapsed,
+        "threads"    => Threads.nthreads(),
+        "scenarios"  => results,
+    ))
+
+    return HTTP.Response(200, ["Content-Type" => "application/json",
+                               "Access-Control-Allow-Origin" => "*"], body)
 end
 
 function router(req::HTTP.Request)
     path = HTTP.URIs.URI(req.target).path
     if startswith(path, "/api/julia/simulate")
         return simulate_handler(req)
+    elseif startswith(path, "/api/julia/stress")
+        return stress_handler(req)
     elseif path == "/health"
         return health_handler(req)
     else

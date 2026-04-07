@@ -1,6 +1,9 @@
 <script>
     /** @type {any[] | null} */
     let reports = $state(null);
+    let generating = $state(false);
+    /** @type {string | null} */
+    let genMsg = $state(null);
 
     async function fetchReports() {
         try {
@@ -10,16 +13,43 @@
             reports = null;
         }
     }
+
+    async function generateNow() {
+        generating = true;
+        genMsg = null;
+        try {
+            const res = await fetch("http://localhost:9000/api/reports/now");
+            if (res.ok) {
+                genMsg = "리포트 즉시 생성 완료";
+                await fetchReports(); // 목록 갱신
+            } else {
+                genMsg = "생성 실패";
+            }
+        } catch {
+            genMsg = "Kotlin 서버 접속 불가 (:9000)";
+        } finally {
+            generating = false;
+        }
+    }
 </script>
 
 <section class="panel">
     <div class="panel-header">
         <div>
-            <h2>☕ Kotlin Reports</h2>
-            <p class="subtitle">코루틴 스케줄러 · 리스크 리포트 생성 (:9000)</p>
+            <h2>☕ Kotlin 코루틴 스케줄러 (:9000)</h2>
+            <p class="subtitle">코루틴 스케줄러 · DB 리스크 리포트 자동 생성</p>
         </div>
-        <button class="kotlin-btn" onclick={fetchReports}>최신 리포트</button>
+        <div class="kbtn-group">
+            <button class="kotlin-btn" onclick={fetchReports}>최신 리포트</button>
+            <button class="kotlin-btn gen-btn" onclick={generateNow} disabled={generating}>
+                {generating ? "생성 중..." : "즉시 생성"}
+            </button>
+        </div>
     </div>
+
+    {#if genMsg}
+        <div class="gen-msg {genMsg.includes('완료') ? 'ok' : 'err'}">{genMsg}</div>
+    {/if}
     {#if reports && reports.length > 0}
         <table class="log-table">
             <thead>
@@ -74,4 +104,15 @@
     .kotlin-btn:hover {
         filter: brightness(1.15);
     }
+    .kbtn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .gen-btn { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+    .gen-msg {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.75rem;
+        border-radius: 6px;
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+    }
+    .gen-msg.ok { background: #052e16; color: #34d399; border: 1px solid #166534; }
+    .gen-msg.err { background: #2d1515; color: #f87171; border: 1px solid #b91c1c; }
 </style>

@@ -2,6 +2,12 @@
     /** @type {any | null} */
     let swiftData = $state(null);
     let swiftLoading = $state(false);
+    /** @type {any | null} */
+    let tradeResult = $state(null);
+    let tradeLoading = $state(false);
+    let tradeSym = $state("AAPL");
+    let tradeQty = $state(10);
+    let tradePrice = $state(182.5);
 
     async function runSwift() {
         swiftLoading = true;
@@ -20,6 +26,20 @@
             swiftData = { error: "Swift 서버 접속 불가 (:8008)" };
         } finally {
             swiftLoading = false;
+        }
+    }
+
+    async function executeTrade() {
+        tradeLoading = true;
+        tradeResult = null;
+        try {
+            const url = `http://localhost:8008/api/swift/trade?sym=${encodeURIComponent(tradeSym)}&qty=${tradeQty}&price=${tradePrice}`;
+            const res = await fetch(url);
+            tradeResult = await res.json();
+        } catch {
+            tradeResult = { error: "Swift 서버 접속 불가 (:8008)" };
+        } finally {
+            tradeLoading = false;
         }
     }
 </script>
@@ -104,6 +124,34 @@
             </p>
         </div>
     {/if}
+
+    <div class="trade-section">
+        <p class="trade-label">개별 거래 실행 (actor 직렬화 보장)</p>
+        <div class="trade-form">
+            <label class="trade-field">
+                <span>종목</span>
+                <input class="trade-input" type="text" bind:value={tradeSym} placeholder="AAPL" />
+            </label>
+            <label class="trade-field">
+                <span>수량</span>
+                <input class="trade-input" type="number" bind:value={tradeQty} min="1" max="10000" />
+            </label>
+            <label class="trade-field">
+                <span>가격 ($)</span>
+                <input class="trade-input" type="number" bind:value={tradePrice} min="0.01" step="0.01" />
+            </label>
+            <button class="swift-btn trade-btn" onclick={executeTrade} disabled={tradeLoading}>
+                {tradeLoading ? "처리 중..." : "거래 실행"}
+            </button>
+        </div>
+        {#if tradeResult}
+            {#if tradeResult.error}
+                <p class="trade-error">❌ {tradeResult.error}</p>
+            {:else}
+                <p class="trade-ok">✅ 거래 완료 · 누적 {tradeResult.total_trades?.toLocaleString()}건</p>
+            {/if}
+        {/if}
+    </div>
 </section>
 
 <style>
@@ -136,5 +184,59 @@
         font-style: italic;
         border-top: 1px solid #1e293b;
         padding-top: 0.5rem;
+    }
+    .trade-section {
+        margin-top: 1.5rem;
+        border-top: 1px solid rgba(249, 115, 22, 0.25);
+        padding-top: 1rem;
+    }
+    .trade-label {
+        font-size: 0.75rem;
+        color: #f97316;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+    }
+    .trade-form {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+    .trade-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+    .trade-input {
+        background: rgba(249, 115, 22, 0.07);
+        border: 1px solid rgba(249, 115, 22, 0.4);
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-size: 0.85rem;
+        padding: 0.4rem 0.6rem;
+        width: 90px;
+    }
+    .trade-input:focus {
+        outline: none;
+        border-color: #f97316;
+    }
+    .trade-btn {
+        padding: 0.5rem 1.1rem;
+        font-size: 0.85rem;
+    }
+    .trade-ok {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #34d399;
+        font-weight: 600;
+    }
+    .trade-error {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #f87171;
     }
 </style>

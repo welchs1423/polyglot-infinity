@@ -108,7 +108,7 @@ CREATE TABLE risk_reports (
 
 | 날짜 | 내용 |
 |:---|:---|
-| 2026-04-08 | SSE 헬스 스트림 · WASM Theta/Vega/Rho Greeks · Python 멀티스테이지 Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI |
+| 2026-04-08 | SSE 헬스 스트림 · WASM Theta/Vega/Rho Greeks · Python 멀티스테이지 Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI · Rust 베이스 이미지 1.78 → 1.88 (edition2024 / MSRV 호환) · openssl-libs-static 추가 (musl 정적 링크 수정) · portal-svelte package-lock.json 추가 (npm ci 수정) |
 | 2026-04-07 | Docker Compose 28 서비스 · Go 워크플로 오케스트레이션 · 서킷 브레이커 · R GARCH/ARIMA · Nim AR(p) · OCaml 멀티에셋 VaR · WASM MC/포트폴리오 · Elixir Redis Pub/Sub · Svelte 탭/알림/차트/의존성맵 패널 |
 | 2026-04-06 | SWI-Prolog 추가 (28번째) · Lua 코루틴 · Swift Actor · Clojure STM · Java Loom · Erlang 핫스왑 · V Zero-GC · Ruby DSL · Gleam ADT · Scala 3 · Nim · Crystal · OCaml · Dart · Haskell · R · F# · WebAssembly |
 | 2026-03-18 | Rust 파이프라인 · Docker PostgreSQL 연동 |

@@ -21,11 +21,11 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 11 | **Julia 1.10** | 8002 | `Threads.@threads` GBM Monte Carlo · VaR/CVaR |
 | 12 | **R 4.1** | 8003 | MLE distribution fitting · GARCH · ARIMA · Sharpe |
 | 13 | **F# (.NET 8)** | 9001 | Black-Scholes Greeks · Implied Volatility · DCF |
-| 14 | **OCaml 4.13** | 8004 | Rule-based risk judgment · logistic credit scoring |
+| 14 | **OCaml 4.13** | 8004 | Rule-based risk judgment · logistic credit scoring · pattern-match loan approval · margin call escalation |
 | 15 | **Crystal 1.19** | 9002 | `spawn`/`Channel` fibers — parallel FX collection from 4 sources (~1.8x) |
 | 16 | **Nim 2.2.8** | 8005 | `static:` compile-time EMA/RSI tables · zero runtime divisions |
 | 17 | **Scala 3** | 9003 | `enum` ADT + `LazyList.unfold` infinite stream + `given` typeclass |
-| 18 | **Haskell GHC** | 8006 | Pure functional Black-Scholes Greeks · GBM Monte Carlo |
+| 18 | **Haskell GHC** | 8006 | Servant HTTP API · `/price` Black-Scholes Greeks (pure functional) · GBM Monte Carlo · lazy infinite stream |
 | 19 | **Ruby 3.0** | 9004 | `instance_eval` runtime DSL — dynamic rule loading without restart |
 | 20 | **Dart 3.11** | 9005 | Bond pricing · Duration · Nelson-Siegel yield curve |
 | 21 | **Gleam 1.15** | 4001 | `wisp` + `mist` HTTP server · `ServiceMessage` ADT · exhaustive pattern match enforced at compile time |
@@ -147,6 +147,8 @@ CREATE TABLE risk_reports (
 
 | Date | Changes |
 |:---|:---|
+| 2026-04-08 | **Haskell pricer-haskell**: `server.hs` 전면 재작성 — raw socket → Servant + Warp HTTP 프레임워크 · `DataKinds`/`TypeOperators` 타입레벨 API 정의 · `/price` 엔드포인트 (Black-Scholes call/put/delta/gamma/vega/theta 순수 함수) · `/montecarlo` GBM MC (LCG + Box-Muller) · `/stream` 무한 레이지 GBM 스트림 (iterate/scanl/zipWith) · `BSResult`/`MCResult`/`StreamResult` Generic 기반 ToJSON · `pricer-haskell.cabal` aeson/servant-server/warp 의존성 |
+| 2026-04-08 | **OCaml risk-ocaml**: `server.ml` — `applicant` 레코드 타입 · `loan_decision` ADT (Approved, ConditionalApproval of string, Rejected of string) · `margin_status` ADT (Safe, MarginWarning, MarginCall, ForcedLiquidation) · `evaluate_loan` 패턴 매칭 + when 가드 6단계 심사 · `evaluate_margin` 패턴 매칭 Basel III 기준 4단계 에스컬레이션 · `/api/ocaml/loan` · `/api/ocaml/margincall` HTTP 엔드포인트 · `dune`/`dune-project` Dune 3.0 빌드 설정 추가 |
 | 2026-04-08 | **Java 21 Loom**: `VirtualServer.java` 전면 재작성 — `OrderStatus` enum 상태머신 (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `OrderEvent` 기반 전이 검증 · `LinkedBlockingQueue` + Virtual Thread 워커 16개 비동기 이벤트 처리 · `ReentrantLock`으로 Virtual Thread pinning 방지 · Virtual vs Platform Thread 벤치마크 메서드 · REST 엔드포인트 추가 (`POST/PUT/GET /api/java/order`, `GET /api/java/benchmark`) |
 | 2026-04-08 | **Go reverse proxy**: `server-go/main.go` — 22개 canonical 언어 라우트 + 5개 role alias (총 27개) `httputil.ReverseProxy` 등록 · `resolveBackend` env-override + localhost fallback · `withCORS` preflight 처리 · 공유 `proxyTransport` (30s header timeout) |
 | 2026-04-08 | **.gitignore**: `tree.txt` · `server-go/server` (Go 컴파일 바이너리) 추가 |

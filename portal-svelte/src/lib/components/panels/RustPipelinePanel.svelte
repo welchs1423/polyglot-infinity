@@ -1,4 +1,6 @@
 <script>
+    import { onMount } from "svelte";
+
     /** @type {{ onTrigger?: () => void }} */
     let { onTrigger } = $props();
 
@@ -6,10 +8,23 @@
     let pipelineResult = $state(null);
     /** @type {any | null} */
     let riskSummary = $state(null);
+    /** @type {any | null} */
+    let rustStatus = $state(null);
     /** @type {boolean} */
     let pipelineLoading = $state(false);
     /** @type {boolean} */
     let summaryLoading = $state(false);
+
+    async function fetchRustStatus() {
+        try {
+            const res = await fetch("http://localhost:8081/api/rust/status");
+            if (res.ok) rustStatus = await res.json();
+        } catch {
+            rustStatus = null;
+        }
+    }
+
+    onMount(() => { fetchRustStatus(); });
 
     async function triggerPipeline() {
         pipelineLoading = true;
@@ -21,6 +36,7 @@
             );
             pipelineResult = await res.json();
             onTrigger?.();
+            await fetchRustStatus();
         } catch {
             pipelineResult = {
                 status: "error",
@@ -53,6 +69,12 @@
             <p class="subtitle">
                 10,000건 리스크 DB 적재 · VaR(95%) 통계 (:8081)
             </p>
+            {#if rustStatus}
+                <p class="db-badge">
+                    <span class="db-dot"></span>
+                    DB {rustStatus.total_risk_logs?.toLocaleString() ?? 0}행 · {rustStatus.module ?? rustStatus.status}
+                </p>
+            {/if}
         </div>
         <div class="btn-group">
             <button
@@ -183,6 +205,21 @@
     .summary-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+    }
+    .db-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: 0.25rem 0 0;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+    .db-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #f97316;
     }
     .pipeline-result {
         display: flex;

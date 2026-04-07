@@ -17,7 +17,7 @@ module BlackScholes =
         if t <= 0.0 then
             {| call_price = max (s-k) 0.0; put_price = max (k-s) 0.0
                delta_call = (if s > k then 1.0 else 0.0); delta_put = (if s < k then -1.0 else 0.0)
-               gamma = 0.0; vega = 0.0; theta_call = 0.0; rho_call = 0.0; engine = "F#-Pricer-v1" |}
+               gamma = 0.0; vega = 0.0; theta_call = 0.0; rho_call = 0.0; engine = "F#-Pricer-v2" |}
         else
             let d1 = (log(s/k) + (r + sigma*sigma/2.0)*t) / (sigma * sqrt t)
             let d2 = d1 - sigma * sqrt t
@@ -31,7 +31,7 @@ module BlackScholes =
                vega        = Math.Round(s * normPdf d1 * sqrt t / 100.0, 6)
                theta_call  = Math.Round((-(s * normPdf d1 * sigma) / (2.0 * sqrt t) - r * k * exp(-r*t) * normCdf d2) / 365.0, 6)
                rho_call    = Math.Round(k * t * exp(-r*t) * normCdf d2 / 100.0, 6)
-               engine      = "F#-Pricer-v1" |}
+               engine      = "F#-Pricer-v2" |}
 
 module Dcf =
     let calculate (fcf: float) (growthRate: float) (terminalGrowth: float) (wacc: float) (years: int) =
@@ -43,7 +43,59 @@ module Dcf =
            margin_of_safety = Math.Round((npv - fcf) / npv * 100.0, 2)
            npv              = Math.Round(npv, 2)
            cash_flows       = flows |> List.map (fun x -> Math.Round(x, 2))
-           engine           = "F#-Pricer-v1" |}
+           engine           = "F#-Pricer-v2" |}
+
+module ImpliedVol =
+    open MathHelper
+    open BlackScholes
+
+    /// Newton-Raphson 역산으로 Implied Volatility 를 구한다.
+    ///
+    /// 수렴 조건:
+    ///   |BS(σ_n) - market_price| < tol  또는 iter >= max_iter
+    ///
+    /// 반환값:
+    ///   Some σ  — 수렴 성공
+    ///   None    — vega ⍨00 또는 범위 이탈 (로우/하이 불리)
+    let solve
+            (marketPrice : float)
+            (s           : float)
+            (k           : float)
+            (r           : float)
+            (t           : float)
+            (isCall      : bool)
+            : {| iv: float option; iterations: int; error: float option; engine: string |} =
+
+        let maxIter = 200
+        let tol     = 1e-8
+        let mutable sigma       = 0.20   // 초기값
+        let mutable iter        = 0
+        let mutable converged   = false
+        let mutable lastError   = Double.MaxValue
+
+        while iter < maxIter && not converged do
+            let bs    = price s k r sigma t
+            let bsP   = if isCall then bs.call_price else bs.put_price
+            // vega 는 price() 에서 /100 스케일링되어 나온다 → 원래 vega 복원
+            let vega  = bs.vega * 100.0
+            lastError <- abs (bsP - marketPrice)
+
+            if vega < 1e-10 then
+                iter <- maxIter   // vega ≈ 0: 수렴 불가
+            else
+                let step = (bsP - marketPrice) / vega
+                sigma <- max 0.001 (min 10.0 (sigma - step))
+                if abs step < tol then converged <- true
+
+            iter <- iter + 1
+
+        let ivResult = if converged then Some (Math.Round(sigma, 8)) else None
+        let errResult = if converged then Some (Math.Round(lastError, 10)) else None
+
+        {| iv         = ivResult
+           iterations = iter
+           error      = errResult
+           engine     = "F#-Pricer-v2" |}
 
 [<EntryPoint>]
 let main args =
@@ -71,16 +123,35 @@ let main args =
         writeJson ctx res
     )) |> ignore
 
+    // GET /api/fsharp/iv?market_price=10.5&s=100&k=100&r=0.05&t=1.0&type=call
+    // Newton-Raphson 역산으로 Implied Volatility 계산
+    app.MapGet("/api/fsharp/iv", RequestDelegate(fun ctx ->
+        let q        = ctx.Request.Query
+        let mktPrice = getF q "market_price" 10.0
+        let s        = getF q "s"            100.0
+        let k        = getF q "k"            100.0
+        let r        = getF q "r"            0.05
+        let t        = getF q "t"            1.0
+        let isCall   =
+            match q.TryGetValue("type") with
+            | true, v -> (string v).ToLower() <> "put"
+            | _       -> true
+        let res = ImpliedVol.solve mktPrice s k r t isCall
+        writeJson ctx res
+    )) |> ignore
+
     app.MapGet("/api/fsharp/dcf", RequestDelegate(fun ctx ->
         let q     = ctx.Request.Query
-        let years = match q.TryGetValue("years") with true, v -> try int (string v) with _ -> 5 | _ -> 5
+        let years = match q.TryGetValue("years") with
+                    | true, v -> try int (string v) with _ -> 5
+                    | _       -> 5
         let res   = Dcf.calculate (getF q "fcf" 1_000_000.0) (getF q "growth" 0.10)
                                   (getF q "terminal" 0.03) (getF q "wacc" 0.08) years
         writeJson ctx res
     )) |> ignore
 
     app.MapGet("/health", RequestDelegate(fun ctx ->
-        writeJson ctx {| status = "ok"; engine = "F#-Pricer-v1"; port = 9001 |}
+        writeJson ctx {| status = "ok"; engine = "F#-Pricer-v2"; port = 9001 |}
     )) |> ignore
 
     app.Urls.Add("http://0.0.0.0:9001")

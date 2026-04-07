@@ -24,7 +24,8 @@ defmodule HubElixir.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:bandit, "~> 1.5"},
       {:jason, "~> 1.4"},
-      {:httpoison, "~> 2.2"}
+      {:httpoison, "~> 2.2"},
+      {:plug_cowboy, "~> 2.7", optional: true}
     ]
   end
 end

@@ -5,7 +5,7 @@ import time
 import urllib.request
 import json
 
-app = FastAPI()
+app = FastAPI(title="Python-Brain", version="v6")
 
 # 1. C++ 코어 엔진 로드
 lib_path = os.path.join(os.path.dirname(__file__), 'libcore.so')
@@ -28,6 +28,19 @@ except Exception as e:
 FALLBACK_RATES = {"KRW": 1350.00, "JPY": 149.50, "EUR": 0.92, "CNY": 7.23}
 CURRENCY_WEIGHTS = {"KRW": 0.45, "JPY": 0.25, "EUR": 0.20, "CNY": 0.10}
 POSITION_SIZE = 100_000_000  # 1억 원 포지션 가정
+
+
+@app.get("/health")
+def health():
+    """Liveness probe: 서버가 당장 열릴 수 있는지 확인"""
+    return {
+        "status": "ok",
+        "engine": "Python-Brain-v6",
+        "port": 8000,
+        "ffi_cpp": True,
+        "ffi_zig": zig_core is not None,
+    }
+
 
 @app.get("/api/analyze")
 def analyze_data():

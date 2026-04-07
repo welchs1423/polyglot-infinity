@@ -117,13 +117,15 @@
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
 | `GET` | `/api/analyze` | KRW·JPY·EUR·CNY 환율 수집 → C++/Zig FFI + Julia HTTP 리스크 계산 |
+| `GET` | `/health` | 헬스체크 · FFI C++/Zig 로드 상태 포함 |
 
 ### Rust `:8081`
 
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
 | `GET` | `/api/rust/status` | 파이프라인 상태 · `risk_logs` 총 레코드 수 반환 |
-| `POST` | `/api/bulk-insert` | 10,000건 리스크 데이터 트랜잭션 일괄 적재 |
+| `POST` | `/api/bulk-insert` | 10,000건 일별 VaR(95%) 트랜잭션 일괄 적재 (Xorshift64 · `position × (vol/√252) × z₀.₉₅`) |
+| `GET` | `/health` | 헬스체크 |
 
 ### Kotlin `:9000`
 
@@ -137,7 +139,7 @@
 
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
-| `GET` | `/api/hub/status` | Phoenix Hub 상태 · PubSub 브로드캐스트 채널 확인 |
+| `GET` | `/api/hub/status` | Phoenix Hub 상태 · Poller 최신 스냅숏 반환 (스냅숏 미준비 시 503) |
 | `WS` | `/socket` (channel: `system:*`) | WebSocket 실시간 스냅샷 스트림 |
 
 ### Julia `:8002`
@@ -160,6 +162,7 @@
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
 | `GET` | `/api/fsharp/option` | Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho (`s`,`k`,`r`,`sigma`,`t`) |
+| `GET` | `/api/fsharp/iv` | **Implied Volatility (Newton-Raphson)** — 시장가격 역산 (`market_price`,`s`,`k`,`r`,`t`,`type`) |
 | `GET` | `/api/fsharp/dcf` | DCF 내재가치 · 안전마진 · 현금흐름 PV (`fcf`,`growth`,`terminal`,`wacc`,`years`) |
 | `GET` | `/health` | 헬스체크 |
 

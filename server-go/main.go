@@ -17,6 +17,10 @@ var (
 	db  *sql.DB
 	rdb *redis.Client
 	ctx = context.Background()
+
+	// 모든 다운스트림 HTTP 호출에 공유되는 클라이언트.
+	// 타임아웃 없이 http.Get/Post 를 쓰면 다운스트림 장애 시 고루틴이 영구 블록된다.
+	httpClient = &http.Client{Timeout: 5 * time.Second}
 )
 
 type SystemLog struct {
@@ -96,11 +100,10 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 		engineData["source"] = "Redis Cache (Lua)"
 	} else {
 		fmt.Println("Cache MISS! [Lua atomic] (Python 엔진 호출)")
-		resp, err := http.Get("http://localhost:8000/api/analyze")
-
+		respPy, err := httpClient.Get("http://localhost:8000/api/analyze")
 		if err == nil {
-			defer resp.Body.Close()
-			json.NewDecoder(resp.Body).Decode(&engineData)
+			defer respPy.Body.Close()
+			json.NewDecoder(respPy.Body).Decode(&engineData)
 			engineData["source"] = "Python Engine"
 			jsonData, _ := json.Marshal(engineData)
 			// Lua 스크립트: SET + TTL을 원자적으로 처리
@@ -116,7 +119,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var rustData map[string]interface{}
-	rustResp, rustErr := http.Get("http://localhost:8081/api/rust/status")
+	rustResp, rustErr := httpClient.Get("http://localhost:8081/api/rust/status")
 	if rustErr == nil {
 		defer rustResp.Body.Close()
 		json.NewDecoder(rustResp.Body).Decode(&rustData)
@@ -147,7 +150,7 @@ func pipelineTriggerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Post("http://localhost:8081/api/bulk-insert", "application/json", nil)
+	resp, err := httpClient.Post("http://localhost:8081/api/bulk-insert", "application/json", nil)
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{

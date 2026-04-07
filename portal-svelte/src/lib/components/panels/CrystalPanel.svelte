@@ -8,16 +8,18 @@
         crystalLoading = true;
         crystalData = null;
         try {
-            const [pfRes, fxRes] = await Promise.all([
+            const [pfRes, fxRes, concRes] = await Promise.all([
                 fetch(
                     "http://localhost:9002/api/crystal/portfolio?mu=0.12&sigma=0.18&days=252",
                 ),
                 fetch("http://localhost:9002/api/crystal/fx"),
+                fetch("http://localhost:9002/api/crystal/concurrent"),
             ]);
             if (pfRes.ok && fxRes.ok) {
                 const pf = await pfRes.json();
                 const fx = await fxRes.json();
-                crystalData = { ...pf, fx };
+                const conc = concRes.ok ? await concRes.json() : null;
+                crystalData = { ...pf, fx, conc };
             } else {
                 crystalData = { error: "Crystal 게이트웨이 오프라인" };
             }
@@ -104,6 +106,28 @@
                     </div>
                 {/if}
             </div>
+
+            <!-- /concurrent fiber sources -->
+            {#if crystalData.conc?.sources?.length}
+                <div class="fiber-header">
+                    ⚡ {crystalData.conc.fiber_model} — {crystalData.conc
+                        .sources.length}개 소스 병렬 수집
+                </div>
+                <div class="fiber-list">
+                    {#each crystalData.conc.sources as src}
+                        <div class="fiber-item">
+                            <span class="fiber-name">{src.source}</span>
+                            <span class="fiber-rate"
+                                >₩{src.rate?.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                })}</span
+                            >
+                            <span class="fiber-ms">{src.elapsed_ms}ms</span>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
         {/if}
     {:else}
         <div class="empty-box">
@@ -135,5 +159,38 @@
     }
     .crystal-card {
         border-color: #a855f7 !important;
+    }
+    .fiber-header {
+        font-size: 0.78rem;
+        color: #94a3b8;
+        margin: 0.6rem 0 0.3rem;
+        font-weight: 600;
+    }
+    .fiber-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .fiber-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.8rem;
+        font-family: monospace;
+        padding: 0.25rem 0.5rem;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 5px;
+    }
+    .fiber-name {
+        color: #a855f7;
+        min-width: 80px;
+    }
+    .fiber-rate {
+        color: #e2e8f0;
+        flex: 1;
+    }
+    .fiber-ms {
+        color: #38bdf8;
     }
 </style>

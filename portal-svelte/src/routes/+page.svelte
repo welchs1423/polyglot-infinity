@@ -2,6 +2,7 @@
 	import { onMount } from "svelte";
 	import SystemStatusPanel from "$lib/components/panels/SystemStatusPanel.svelte";
 	import RustPipelinePanel from "$lib/components/panels/RustPipelinePanel.svelte";
+	import PythonBrainPanel from "$lib/components/panels/PythonBrainPanel.svelte";
 	import LuaCachePanel from "$lib/components/panels/LuaCachePanel.svelte";
 	import JuliaPanel from "$lib/components/panels/JuliaPanel.svelte";
 	import KotlinPanel from "$lib/components/panels/KotlinPanel.svelte";
@@ -47,6 +48,7 @@
 
 	<SystemStatusPanel onSync={fetchLogs} />
 	<RustPipelinePanel onTrigger={fetchLogs} />
+	<PythonBrainPanel />
 	<LuaCachePanel />
 	<JuliaPanel />
 	<KotlinPanel />

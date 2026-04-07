@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-> **23개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V · Erlang**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
+> **27개 언어/런타임**(Svelte · Go · Python · Rust · C++ · **Lua · Zig · Kotlin · Elixir · Julia · R · F# · WebAssembly · OCaml · Crystal · Nim · Scala · Haskell · Ruby · Dart · Gleam · V · Erlang · Lua(코루틴) · Swift · Clojure · Java**)과 2개 DB(PostgreSQL · Redis)가 유기적으로 연결된
 > **실시간 다중 통화 마이크로 대출 리스크 분석 플랫폼**
 
 ---
@@ -39,6 +39,10 @@
 [Gleam Hub · :4001]           ← ★ ServiceMessage ADT · exhaustive pattern match 컴파일 강제
 [V Quant · :4002]             ← ★ --gc none Zero-GC MA 크로스오버 전략 백테스터
 [Erlang/OTP · :4003]          ← ★ code:load_file/1 핫 코드 스왉 · 0ms 다운타임 로직 교체
+[Lua Coroutine · :8007]       ← ★ coroutine.yield/resume — 단일 OS 스레드에서 6개 피드 협력적 멀티플렉싱
+[Swift Actor · :8008]         ← ★ actor 키워드 — 컴파일 타임 data race 차단 · await 없이 접근 불가
+[Clojure STM · :8009]         ← ★ ref + dosync — 잠금 없는 원자적 이체 · 합계 불변성 보존
+[Java 21 Loom · :8010]        ← ★ Thread.ofVirtual() — 5만 virtual thread · platform 대비 ~6x
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -63,6 +67,10 @@
 | **Gleam 1.15** | **4001** | **★ `ServiceMessage` ADT · exhaustive pattern match 컴파일 강제 · 계약 검증 레이어** |
 | **V 0.5.1** | **4002** | **★ `v -gc none` Zero-GC MA 크로스오버 전략 백테스터 — GC 일시정지 물리적 불가** |
 | **Erlang/OTP 24** | **4003** | **★ `code:load_file/1` 핫 코드 스왉 — 0ms 다운타임으로 리스크 로직 교체 (BEAM 2-version protocol)** |
+| **Lua 5.4 (코루틴)** | **8007** | **★ `coroutine.yield/resume` — 단일 OS 스레드에서 6개 가격 피드 협력적 멀티플렉싱** |
+| **Swift 6.1** | **8008** | **★ `actor` 키워드 — 컴파일 타임 data race 원천 차단 · 외부 접근 시 `await` 강제** |
+| **Clojure 1.10** | **8009** | **★ `ref` + `dosync` STM — 잠금 없는 원자적 이체 · 합계 불변성 보존 (300 동시 트랜잭션)** |
+| **Java 21 (Project Loom)** | **8010** | **★ `Thread.ofVirtual()` — 5만 virtual thread · platform 대비 ~6x · OS 스레드 수 무관** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -97,6 +105,10 @@
 | **Contract Validation** | **Gleam 1.15, BEAM/Erlang — `ServiceMessage` ADT exhaustive match 컴파일 강제 (:4001)** |
 | **Zero-GC Backtest** | **V 0.5.1, `v -gc none` — MA 크로스오버 백테스터 · GC 일시정지 물리적 불가 (:4002)** |
 | **Hot Code Swap** | **Erlang/OTP 24, gen_tcp — `code:load_file/1` 0ms 다운타임 로직 교체 · BEAM 2-version protocol (:4003)** |
+| **Coroutine Stream** | **Lua 5.4, luasocket — `coroutine.create/yield/resume` 단일 스레드 6-피드 스케줄러 (:8007)** |
+| **Actor Concurrency** | **Swift 6.1 — `actor` 컴파일 타임 격리 · `await` 없이 접근 불가 · data race 원천 차단 (:8008)** |
+| **STM Ledger** | **Clojure 1.10, `ref`/`dosync` STM — 잠금 없는 원자적 이체 · 트랜잭션 충돌 시 자동 재시도 (:8009)** |
+| **Virtual Threads** | **Java 21, Project Loom `Thread.ofVirtual()` — 5만 경량 스레드 · OS 스레드 수 독립 (:8010)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -167,13 +179,39 @@
 | `GET` | `/api/fsharp/dcf` | DCF 내재가치 · 안전마진 · 현금흐름 PV (`fcf`,`growth`,`terminal`,`wacc`,`years`) |
 | `GET` | `/health` | 헬스체크 |
 
-### Swift `:8008`
+### Lua Coroutine `:8007`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/lua/status` | 엔진 상태 · Lua 버전 · 최대 피드 수 |
+| `GET` | `/api/lua/stream?feeds=4&steps=200` | ★ N개 코루틴 라운드로빈 스케줄링 — 각 피드 수익/변동성 · `coroutine.status` 반환 |
+| `GET` | `/health` | 헬스체크 |
+
+### Swift Actor `:8008`
 
 | Method | Endpoint | 설명 |
 |:---|:---|:---|
 | `GET` | `/api/swift/status` | PortfolioLedger 상태 · 전체 포지션 · 명목금액 |
-| `GET` | `/api/swift/concurrent?n=100` | **actor 동시성 검증** — N개 Task 동시 실행 → data race 감지 없음 증명 |
+| `GET` | `/api/swift/concurrent?n=100` | **★ actor 동시성 검증** — N개 Task 동시 실행 → data race 감지 없음 증명 |
 | `GET` | `/api/swift/trade?sym=&qty=&price=` | 싱글 트레이드 실행 · 포지션 업데이트 |
+| `GET` | `/health` | 헬스체크 |
+
+### Clojure STM `:8009`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/clojure/status` | 전체 계좌 잔액 · 총 이체 횟수 |
+| `GET` | `/api/clojure/transfer?from=&to=&amount=` | **★ `dosync` 원자적 이체** — 충돌 시 자동 재시도 |
+| `GET` | `/api/clojure/stress?n=200` | **★ N개 동시 이체 · 합계 불변성 검증** (`final-total-balance` = 36,500 보장) |
+| `GET` | `/health` | 헬스체크 |
+
+### Java Loom `:8010`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/java/status` | JVM 정보 · CPU 코어 수 · virtual thread 엔진 상태 |
+| `GET` | `/api/java/vthreads?n=50000` | **★ N개 virtual thread 동시 BS 계산** — 처리량/메모리 측정 |
+| `GET` | `/api/java/compare?n=500` | **★ virtual vs platform thread 생성 시간 비교** — speedup 배율 |
 | `GET` | `/health` | 헬스체크 |
 
 ### Scala `:9003`
@@ -274,6 +312,13 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **4개 언어 추가 (Lua 코루틴 · Swift Actor · Clojure STM · Java Virtual Threads) — 27번째까지**
+  - **Lua 5.4** `:8007` — `coroutine.create/yield/resume` 단일 OS 스레드 6-피드 협력적 스케줄러 · OS 스레드·락·콜백 없음
+  - **Swift 6.1** `:8008` — `actor` 키워드로 컴파일 타임 data race 원천 차단 · 200 동시 Task 검증
+  - **Clojure 1.10** `:8009` — `ref + dosync` STM · 300 동시 이체 후 잔액 합계 36,500 불변성 보존
+  - **Java 21 (Project Loom)** `:8010` — `Thread.ofVirtual()` 5만 경량 스레드 · platform 대비 ~6x 가속
+  - Svelte: 4개 패널 추가 (LuaStreamPanel, SwiftActorPanel, ClojureSTMPanel, JavaLoomPanel)
+  - 런타임 설치: lua5.4 (apt), clojure (apt + JRE 11), Swift 6.1 (수동 `/home/dev/.local/swift`), Java 21 (기존 `/home/dev/.local/jdk`)
 - [x] **2026-04-07** — **Erlang/OTP 24 Hot Code Swap 서버 추가 (23번째 언어/런타임)**
   - 추가 설치 0 — Gleam이 이미 설치한 BEAM/OTP 24 고용
   - `hot-erlang/server.erl`: gen_tcp HTTP 서버 · ETS 상태 저장 · `code:load_file/1` 시뮬레이션

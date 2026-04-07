@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
-### 2026-04-09
+### 2026-04-07
 - [x] **탭 시스템 · SSE 스트리밍 · 통합 리포트 · 전 언어 패널 기능 강화**
   - **탭 시스템 (7탭)**: 전체 패널을 Core · Pipeline · Functional · Actor&STM · Logic&DSL · Charts · System 탭으로 분류
   - **SSE 스트리밍** `GET /api/aggregate/stream`: 28개 서비스 상태를 Server-Sent Events로 실시간 브로드캐스트 (Go → EventSource)
@@ -343,16 +343,12 @@ CREATE TABLE IF NOT EXISTS risk_reports (
   - **OCaml**: 연소득/부채/신용이력/연체횟수 4-입력 폼 → `/api/ocaml/score` 신용점수(300-850) + DTI
   - **Dart**: 만기/쿠폰 파라미터 → Bull(3%)/Base(6%)/Bear(10%) 3시나리오 YTM 병렬 fetch → 채권가격 비교표
   - **Kotlin**: expandable 리포트 카드 + 인라인 risk range 바 (min 🟢 / avg 🟡 / max 🔴 시각화)
-
-### 2026-04-08
 - [x] **SWI-Prolog 8.4 제약 추론 솔버 추가 — 28번째 언어**
   - `solver-prolog/server.pl` — 포트 8011, 선언적 제약 규칙 + 백트래킹 자동 탐색 + 논리 추론 체인
   - `/api/prolog/portfolio` — 주식/채권/대안/현금 비중 합=100%, 포트폴리오 타입 범위, 리스크 ≤ risk_max 만족하는 해를 백트래킹으로 탐색
   - `/api/prolog/infer` — 부채비율/변동성/연체 → 플래그 발화 → 규칙 매칭 → grade + 발화 규칙 목록 (논리 추론 체인)
   - **Prolog 강점**: 탐색 로직을 직접 작성하지 않아도 됨 — "이런 포트폴리오가 유효하다" 규칙만 선언하면 Prolog 엔진이 백트래킹으로 해 탐색
   - Fix: SWI-Prolog 8.4에서 `if-then-else` 내 변수와 `maplist` 람다 변수 충돌 → 변수명 분리(`R1`, `G2-R2`)
-
-### 2026-04-07
 - [x] **Prolog 패널 · 금융 차트 · 서비스 의존성 맵 추가**
   - **PrologPanel**: SWI-Prolog :8011 연결 — 신용 리스크 논리 추론 + 백트래킹 포트폴리오 탐색 (범위 슬라이더 파라미터 입력, 자산 배분 바 차트)
   - **ChartsPanel**: Canvas 기반 금융 차트 3종 (외부 라이브러리 없음)

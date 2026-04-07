@@ -9,7 +9,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | # | Language | Port | Key Feature |
 |:-:|:---|:---:|:---|
 | 1 | **Svelte 5** (SvelteKit + Bun) | 5173 | Real-time dashboard UI |
-| 2 | **Go** `net/http` | 8080 | API Hub · Redis caching · SSE stream · Circuit breaker |
+| 2 | **Go** `net/http` | 8080 | API Hub · Reverse proxy gateway (27 backends) · Redis caching · SSE stream · Circuit breaker |
 | 3 | **Python** FastAPI | 8000 | FX rate collection · C++/Zig FFI · Julia HTTP |
 | 4 | **Rust** Axum + sqlx | 8081 | High-performance bulk insert pipeline |
 | 5 | **C++** | 8012 | `libcore.so` — Python FFI compute acceleration · HTTP artifact server |
@@ -64,6 +64,31 @@ Standalone services: Kotlin · Elixir · R · F# · OCaml · Crystal · Nim · S
 
 All 29 containers share the "polyglot" bridge network.
 Inter-service DNS: http://<service-name>:<port>/ (e.g. http://risk-ocaml:8004)
+
+Reverse proxy routes registered on Go Hub (:8080):
+  Canonical (language prefix)     Role alias (service name)
+  /api/python/   -> :8000         /api/risk/       -> ocaml-risk  :8004
+  /api/rust/     -> :8081         /api/pricer/     -> fsharp-pricer:9001
+  /api/julia/    -> :8002         /api/analytics/  -> nim-analytics:8005
+  /api/r/        -> :8003         /api/ledger/     -> clojure-stm :8009
+  /api/fsharp/   -> :9001         /api/scheduler/  -> kotlin-sched:9000
+  /api/ocaml/    -> :8004
+  /api/crystal/  -> :9002
+  /api/nim/      -> :8005
+  /api/scala/    -> :9003
+  /api/haskell/  -> :8006
+  /api/ruby/     -> :9004
+  /api/dart/     -> :9005
+  /api/gleam/    -> :4001
+  /api/v/        -> :4002
+  /api/erlang/   -> :4003
+  /api/elixir/   -> :4000
+  /api/clojure/  -> :8009
+  /api/java/     -> :8010
+  /api/prolog/   -> :8011
+  /api/lua/      -> :8007
+  /api/swift/    -> :8008
+  /api/kotlin/   -> :9000
 ```
 
 ---
@@ -80,6 +105,12 @@ Inter-service DNS: http://<service-name>:<port>/ (e.g. http://risk-ocaml:8004)
 | GET | `/api/workflow/option-compare` | F# · Haskell · Python 3-engine BS price comparison |
 | GET | `/api/circuit/status` | Circuit breaker status |
 | GET | `/api/cache/stats` | Redis Lua EVAL cache hit/miss stats |
+| ANY | `/api/<lang>/*` | **Reverse proxy** — 22 canonical language routes forwarded to backend container |
+| ANY | `/api/risk/*` | Role alias → `ocaml-risk:8004` |
+| ANY | `/api/pricer/*` | Role alias → `fsharp-pricer:9001` |
+| ANY | `/api/analytics/*` | Role alias → `nim-analytics:8005` |
+| ANY | `/api/ledger/*` | Role alias → `clojure-stm:8009` |
+| ANY | `/api/scheduler/*` | Role alias → `kotlin-scheduler:9000` |
 
 ---
 
@@ -111,6 +142,7 @@ CREATE TABLE risk_reports (
 
 | Date | Changes |
 |:---|:---|
+| 2026-04-08 | **Go reverse proxy**: `server-go/main.go` — 22개 canonical 언어 라우트 + 5개 role alias (총 27개) `httputil.ReverseProxy` 등록 · `resolveBackend` env-override + localhost fallback · `withCORS` preflight 처리 · 공유 `proxyTransport` (30s header timeout) |
 | 2026-04-08 | **Gleam hub_gleam**: gen_tcp 기반 Erlang 서버 → `wisp` 2.2.2 + `mist` 6.0.2 순수 Gleam HTTP 서버로 교체 · `/health` "Gleam Hub OK" · `handle_request` wisp 라우터 · `gleam.toml` 의존성 추가 |
 | 2026-04-08 | docker-compose: cpp-core(:8012) · zig-core(:8013) · wasm-zig(:8014) 컨테이너 추가 · 전 서비스 polyglot bridge 네트워크 통합 · nginx wasm MIME 설정 · SSE health stream · WASM Theta/Vega/Rho Greeks · Python multi-stage Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI · Rust base image 1.78 → 1.88 (edition2024 / MSRV) · add openssl-libs-static (fix musl static link) · add portal-svelte package-lock.json (fix npm ci) |
 | 2026-04-07 | Docker Compose 28 services · Go workflow orchestration · circuit breaker · R GARCH/ARIMA · Nim AR(p) · OCaml multi-asset VaR · WASM MC/portfolio · Elixir Redis Pub/Sub · Svelte tabs/notifications/charts/dependency-map panels |

@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -102,6 +105,81 @@ func cbGet(name, url string) (*http.Response, error) {
 	return resp, nil
 }
 
+// ── Reverse proxy: port constants ────────────────────────────────────────────
+// Port assignments for all 22 HTTP-capable backend services.
+// core-cpp and core-zig are compiled as shared libraries loaded via FFI.
+// wasm-zig is compiled to WASM32 and executed in the browser.
+// Neither group exposes a standalone HTTP server.
+const (
+	portPythonBrain     = 8000
+	portRustPipeline    = 8081
+	portJuliaEngine     = 8002
+	portRStats          = 8003
+	portFSharpPricer    = 9001
+	portOCamlRisk       = 8004
+	portCrystalGateway  = 9002
+	portNimAnalytics    = 8005
+	portScalaStreamer   = 9003
+	portHaskellPricer   = 8006
+	portRubyScorer      = 9004
+	portDartEngine      = 9005
+	portGleamHub        = 4001
+	portVQuant          = 4002
+	portErlangHot       = 4003
+	portElixirHub       = 4000
+	portClojureSTM      = 8009
+	portJavaLoom        = 8010
+	portPrologSolver    = 8011
+	portLuaStream       = 8007
+	portSwiftActor      = 8008
+	portKotlinScheduler = 9000
+)
+
+// proxyTransport is shared by all reverse proxy instances.
+// ResponseHeaderTimeout caps the wait after a TCP connection is established
+// but before the upstream sends the first response header byte.
+var proxyTransport = &http.Transport{
+	ResponseHeaderTimeout: 30 * time.Second,
+}
+
+// resolveBackend returns the HTTP base URL for a downstream service.
+// Lookup order: env SVC_UPPER_SNAKE_NAME > localhost fallback.
+// Docker Compose usage: export SVC_PYTHON_BRAIN=python-brain:8000
+func resolveBackend(dockerName string, port int) string {
+	envKey := "SVC_" + strings.ToUpper(strings.ReplaceAll(dockerName, "-", "_"))
+	if addr := os.Getenv(envKey); addr != "" {
+		return "http://" + addr
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+// newReverseProxy builds a single-host reverse proxy to target.
+// The full request path is forwarded unchanged; no prefix stripping is applied.
+func newReverseProxy(target string) *httputil.ReverseProxy {
+	u, err := url.Parse(target)
+	if err != nil {
+		log.Fatalf("invalid proxy target %q: %v", target, err)
+	}
+	p := httputil.NewSingleHostReverseProxy(u)
+	p.Transport = proxyTransport
+	return p
+}
+
+// withCORS wraps a handler to emit CORS headers on every response
+// and short-circuit OPTIONS preflight requests before they hit the backend.
+func withCORS(h http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	}
+}
+
 var (
 	db  *sql.DB
 	rdb *redis.Client
@@ -160,6 +238,41 @@ func main() {
 	http.HandleFunc("/api/workflow/risk-full", workflowRiskFullHandler)
 	http.HandleFunc("/api/workflow/option-compare", workflowOptionCompareHandler)
 	http.HandleFunc("/api/circuit/status", circuitStatusHandler)
+
+	// ── Reverse proxy routes: 22 canonical + 5 role-based aliases = 27 total ──
+	// Each route forwards the full path unchanged to the target backend.
+	// Backends must be reachable at resolveBackend(name, port).
+	// Set SVC_<UPPER_SNAKE> env vars for Docker Compose internal DNS resolution.
+	//
+	// Canonical routes (one per language service)
+	http.Handle("/api/python/", withCORS(newReverseProxy(resolveBackend("python-brain", portPythonBrain))))
+	http.Handle("/api/rust/", withCORS(newReverseProxy(resolveBackend("rust-pipeline", portRustPipeline))))
+	http.Handle("/api/julia/", withCORS(newReverseProxy(resolveBackend("julia-engine", portJuliaEngine))))
+	http.Handle("/api/r/", withCORS(newReverseProxy(resolveBackend("r-stats", portRStats))))
+	http.Handle("/api/fsharp/", withCORS(newReverseProxy(resolveBackend("fsharp-pricer", portFSharpPricer))))
+	http.Handle("/api/ocaml/", withCORS(newReverseProxy(resolveBackend("ocaml-risk", portOCamlRisk))))
+	http.Handle("/api/crystal/", withCORS(newReverseProxy(resolveBackend("crystal-gateway", portCrystalGateway))))
+	http.Handle("/api/nim/", withCORS(newReverseProxy(resolveBackend("nim-analytics", portNimAnalytics))))
+	http.Handle("/api/scala/", withCORS(newReverseProxy(resolveBackend("scala-streamer", portScalaStreamer))))
+	http.Handle("/api/haskell/", withCORS(newReverseProxy(resolveBackend("haskell-pricer", portHaskellPricer))))
+	http.Handle("/api/ruby/", withCORS(newReverseProxy(resolveBackend("ruby-scorer", portRubyScorer))))
+	http.Handle("/api/dart/", withCORS(newReverseProxy(resolveBackend("dart-engine", portDartEngine))))
+	http.Handle("/api/gleam/", withCORS(newReverseProxy(resolveBackend("gleam-hub", portGleamHub))))
+	http.Handle("/api/v/", withCORS(newReverseProxy(resolveBackend("v-quant", portVQuant))))
+	http.Handle("/api/erlang/", withCORS(newReverseProxy(resolveBackend("erlang-hot", portErlangHot))))
+	http.Handle("/api/elixir/", withCORS(newReverseProxy(resolveBackend("elixir-hub", portElixirHub))))
+	http.Handle("/api/clojure/", withCORS(newReverseProxy(resolveBackend("clojure-stm", portClojureSTM))))
+	http.Handle("/api/java/", withCORS(newReverseProxy(resolveBackend("java-loom", portJavaLoom))))
+	http.Handle("/api/prolog/", withCORS(newReverseProxy(resolveBackend("prolog-solver", portPrologSolver))))
+	http.Handle("/api/lua/", withCORS(newReverseProxy(resolveBackend("lua-stream", portLuaStream))))
+	http.Handle("/api/swift/", withCORS(newReverseProxy(resolveBackend("swift-actor", portSwiftActor))))
+	http.Handle("/api/kotlin/", withCORS(newReverseProxy(resolveBackend("kotlin-scheduler", portKotlinScheduler))))
+	// Role-based aliases: 5 unambiguous functional namespaces from the architecture doc
+	http.Handle("/api/risk/", withCORS(newReverseProxy(resolveBackend("ocaml-risk", portOCamlRisk))))                  // risk-ocaml
+	http.Handle("/api/pricer/", withCORS(newReverseProxy(resolveBackend("fsharp-pricer", portFSharpPricer))))          // pricer-fsharp
+	http.Handle("/api/analytics/", withCORS(newReverseProxy(resolveBackend("nim-analytics", portNimAnalytics))))       // analytics-nim
+	http.Handle("/api/ledger/", withCORS(newReverseProxy(resolveBackend("clojure-stm", portClojureSTM))))              // ledger-clojure
+	http.Handle("/api/scheduler/", withCORS(newReverseProxy(resolveBackend("kotlin-scheduler", portKotlinScheduler)))) // scheduler-kotlin
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

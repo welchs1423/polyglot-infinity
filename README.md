@@ -312,20 +312,21 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
-- [x] **2026-04-07** — **4개 언어 추가 (Lua 코루틴 · Swift Actor · Clojure STM · Java Virtual Threads) — 27번째까지**
+### 2026-04-07
+- [x] **4개 언어 추가 (Lua 코루틴 · Swift Actor · Clojure STM · Java Virtual Threads) — 27번째까지**
   - **Lua 5.4** `:8007` — `coroutine.create/yield/resume` 단일 OS 스레드 6-피드 협력적 스케줄러 · OS 스레드·락·콜백 없음
   - **Swift 6.1** `:8008` — `actor` 키워드로 컴파일 타임 data race 원천 차단 · 200 동시 Task 검증
   - **Clojure 1.10** `:8009` — `ref + dosync` STM · 300 동시 이체 후 잔액 합계 36,500 불변성 보존
   - **Java 21 (Project Loom)** `:8010` — `Thread.ofVirtual()` 5만 경량 스레드 · platform 대비 ~6x 가속
   - Svelte: 4개 패널 추가 (LuaStreamPanel, SwiftActorPanel, ClojureSTMPanel, JavaLoomPanel)
   - 런타임 설치: lua5.4 (apt), clojure (apt + JRE 11), Swift 6.1 (수동 `/home/dev/.local/swift`), Java 21 (기존 `/home/dev/.local/jdk`)
-- [x] **2026-04-07** — **Erlang/OTP 24 Hot Code Swap 서버 추가 (23번째 언어/런타임)**
+- [x] **Erlang/OTP 24 Hot Code Swap 서버 추가 (23번째 언어/런타임)**
   - 추가 설치 0 — Gleam이 이미 설치한 BEAM/OTP 24 고용
   - `hot-erlang/server.erl`: gen_tcp HTTP 서버 · ETS 상태 저장 · `code:load_file/1` 시뮬레이션
   - `/api/erlang/hotswap`: linear\_v1 ⇌ nonlinear\_v2 로직 스왉 · `downtime_ms: 0`
   - BEAM 2-version protocol: 진행 중 연결은 구버전으로 완료됨
   - Svelte: **Erlang Hot Swap 패널** 추가 (빨간 그라디언트)
-- [x] **2026-04-07** — **6개 언어 역할 강화 ("이 언어가 꼭 필요해요" 리팩터링)**
+- [x] **6개 언어 역할 강화 ("이 언어가 꼭 필요해요" 리팩터링)**
   - **V 0.5.1** — `--gc none` Zero-GC MA 크로스오버 전략 백테스터로 전면 재작성. `gc_pauses_ms: 0` 결정론적 레이턴시 보증
   - **Ruby 3.0.2** — `instance_eval` 기반 런타임 DSL 엔진으로 전환. `RiskDSL#safe_load`로 서버 재시작 없이 규칙 동적 적재
   - **Gleam 1.15** — `ServiceMessage` / `ValidationError` ADT 추가. exhaustive pattern match — 케이스 누락 시 컴파일 에러
@@ -333,71 +334,54 @@ CREATE TABLE IF NOT EXISTS risk_reports (
   - **Scala 3.8.3** — `enum RiskEvent`, `enum AlertLevel`, `given Aggregatable[RiskEvent]` + `LazyList.unfold` 무한 스트림 추가
   - **Crystal 1.19** — `spawn`/`Channel` 파이버 기반 4-소스 병렬 FX 수집으로 전환. 순차 대비 ~1.8x 가속
   - Frontend: 6개 패널 UI 전면 업데이트 (새 엔드포인트, 새 지표 카드)
-- [x] **2026-04-07** — **V 0.5.1 쿼트 엔진 추가 (17번째 신규 언어)**
+- [x] **V 0.5.1 쿼트 엔진 추가 (17번째 신규 언어)**
   - **V 0.5.1** (zip 설치, `~/.local/v/v`) — C 유사 문법 + 빠른 컴파일 + 내장 `net` 모듈
   - `/api/v/var`: Monte Carlo GBM VaR/CVaR/Sharpe/Kelly Criterion (`:4002`)
   - `/api/v/portfolio`: 2자산 Equal Weight vs Min Variance 포트폴리오 최적화
   - Svelte: **V Quant Engine 패널** 추가 (파란 그라디언트)
-- [x] **2026-04-07** — **Gleam 함수형 파이프라인 엔진 추가 (16번째 신규 언어)**
+- [x] **Gleam 함수형 파이프라인 엔진 추가 (16번째 신규 언어)**
   - **Gleam 1.15** + Erlang OTP 24 — mist 호환성 이슈 → Erlang gen_tcp FFI로 순수 구현
   - `hub_gleam/src/hub_gleam.gleam`: 순수 Gleam 금융 로직 (GBM, 파이프라인, 리스크)
   - `hub_gleam/src/hub_gleam_server.erl`: Erlang gen_tcp HTTP 서버 (Gleam 함수 호출)
   - `/api/gleam/pipeline`: GBM 수익률 → 4단계 함수형 파이프라인 (`:4001`)
   - `/api/gleam/risk`: VaR/CVaR/Sharpe/MDD 집계 (`:4001`)
   - Svelte: **Gleam Functional Pipeline 패널** 추가 (핑크-보라 그라디언트)
-- [x] **2026-04-07** — **Dart 수익률 곡선 엔진 추가 (15번째 신규 언어)**
+- [x] **Dart 수익률 곡선 엔진 추가 (15번째 신규 언어)**
   - **Dart 3.11** (SDK zip 설치) `dart:io HttpServer` — 외부 패키지 완전 무
   - `/api/dart/bond`: 채구 가격 · Macaulay/Modified Duration · Convexity · DV01 (`:9005`)
   - `/api/dart/yieldcurve`: Nelson-Siegel 면 (b0/b1/b2/tau) · 10Y-2Y 스프레드 · 곡선 형태 판정
   - Svelte: **Dart Yield Curve Engine 패널** 추가 (청리씨 그라디언트)
-- [x] **2026-04-07** — **Ruby 신용 스코어링 엔진 추가 (14번째 신규 언어)**
+- [x] **Ruby 신용 스코어링 엔진 추가 (14번째 신규 언어)**
   - **Ruby 3.0.2** (apt 설치) WEBrick stdlib — 외부 gem 완전 무
   - `/api/ruby/score`: 로지스틱 회귀 신용 스코어(0-1000) + 등급(A+~D) + PD (`:9004`)
   - `/api/ruby/summary`: n개 대울 포트폴리오 요약 (평균/표준편차/백분위수 + 리스크 분포)
   - Svelte: **Ruby Credit Scorer 패널** 추가 (써레드 빨겕 그라디언트)
-- [x] **2026-04-07** — **Haskell 옵션 프라이서 추가 (13번째 신규 언어)**
+- [x] **Haskell 옵션 프라이서 추가 (13번째 신규 언어)**
   - **Haskell GHC 8.8.4** (apt 설치) `Network.Socket` + `libghc-network-dev` — Stdlib 전용
   - `/api/haskell/blackscholes`: Black-Scholes 옵션 가격 + Delta/Gamma/Vega/Theta (`:8006`)
   - `/api/haskell/montecarlo`: GBM Monte Carlo (LCG + Box-Muller) • VaR/CVaR 95% + 연율화 수익률/변동성
   - Svelte: **Haskell Option Pricer 패널** 추가 (보라 그라디언트)
-- [x] **2026-04-07** — **Scala 스트리밍 집계 엔진 추가 (12번째 신규 언어)**
+- [x] **Scala 스트리밍 집계 엔진 추가 (12번째 신규 언어)**
   - **Scala 3.8.3** (Coursier 설치) + JDK 21 내장 `HttpServer` — 외부 의존 무
   - `/api/scala/aggregate`: mean/std/median/ann_return/ann_vol/p5/p95/sma20 (`:9003`)
   - `/api/scala/smooth`: Holt 이중 지수평활 · 1-step ahead 예측
   - Svelte: **Scala Streaming Aggregator 패널** 추가 (빨강 그라디언트)
-- [x] **2026-04-07** — **Nim 시계열 분석 엔진 추가 (11번째 신규 언어)**
+- [x] **Nim 시계열 분석 엔진 추가 (11번째 신규 언어)**
   - **Nim 2.2.8** (choosenim 설치) asynchttpserver — 외부 패키지 무의존
   - `/api/nim/timeseries`: mean/std/skewness/excess_kurtosis/autocorr 연환산 (`:8005`)
   - `/api/nim/momentum`: RSI(14) · MACD · EMA12/26 · 볼린저밴드 (너비/위치)
   - Svelte: **Nim Time-series Analytics 패널** 추가 (초록 그라디언트)
-- [x] **2026-04-07** — **Crystal 포트폴리오 게이트웨이 추가 (10번째 신규 언어)**
+- [x] **Crystal 포트폴리오 게이트웨이 추가 (10번째 신규 언어)**
   - **Crystal 1.19** (Ruby 문법 + LLVM 싼 컴파일) `HTTP::Server` — 3.2MB 네이티브 바이너리
   - `/api/crystal/portfolio`: 의사난수 수익률 시뮬레이션 → Total Return · Sharpe · Sortino · MDD (`:9002`)
   - `/api/crystal/fx`: USD/EUR/JPY/CNY 가중평균 KRW 환율
   - Svelte: **Crystal Portfolio Gateway 패널** 추가 (뷁보라 그라디언트)
-- [x] **2026-04-07** — **OCaml 리스크 엔진 추가 (9번째 신규 언어)**
+- [x] **OCaml 리스크 엔진 추가 (9번째 신규 언어)**
   - **OCaml 4.13** stdlib Unix 소켓 HTTP 서버 — 외부 패키지 무의존 네이티브 컴파일 (`ocamlfind ocamlopt -package unix`)
   - `/api/ocaml/risk`: 부체비율·영변도·레버리지·신용점수 규칙 기반 LOW/MEDIUM/HIGH/CRITICAL 판정 (`:8004`)
   - `/api/ocaml/score`: 로지스틱 회귀 신용 점수 + A+~D 등급
   - Svelte: **OCaml Risk Rule Engine 패널** 추가 (리스크 레벨 색상 코딩)
-- [x] **2026-04-06** — **WebAssembly 추가 (8번째 신규 언어 — 브라우저 런타임)**
-  - **Zig → WASM32 freestanding**: `finance.wasm` (24KB) — normCdf · bsCall · bsPut · bsDelta · bsGamma · varNormal · dcfValue
-  - Svelte: **WebAssembly 패널** 추가 (`fetch` → `WebAssembly.instantiate` · 서버 왕복 없음)
-- [x] **2026-04-06** — **F# 옵션 프라이서 추가 (7번째 신규 언어)**
-  - **F# (.NET 8) + ASP.NET Core**: Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho · DCF 가치평가 (`:9001`)
-  - Svelte: **F# Black-Scholes 패널** 추가 (6-grid Greeks 카드)
-- [x] **2026-04-06** — **R 통계 엔진 추가 (6번째 신규 언어)**
-  - **R 4.1 + Plumber**: MLE 정규/t분포 피팅 · VaR/CVaR 95% · Sharpe Ratio · 4-asset 상관행렬 (`:8003`)
-  - Svelte: **R Distribution Fit 패널** 추가
-- [x] **2026-04-06** — **5개 언어 추가 (Lua · Zig · Kotlin · Elixir · Julia)**
-  - **Lua**: Go 내 Redis `EVAL` 원자적 Lua 스크립트로 캐시 히트/미스 카운터 (`/api/cache/stats`)
-  - **Zig 0.13**: `libzigcore.so` C ABI — `volatility_estimate()` · `value_at_risk()` · Python ctypes 연동
-  - **Kotlin 2.0**: 코루틴 스케줄러 `:9000` — 60초 주기 리스크 리포트 자동 생성 (`scheduler.jar` 빌드 완료)
-  - **Elixir/Phoenix**: OTP Supervisor · GenServer Poller · WebSocket Channel `:4000` (코드 완성, Erlang 설치 필요)
-  - **Julia 1.10**: `Threads.@threads` GBM Monte Carlo `:8002` — VaR 95% · CVaR 95% · Sharpe Ratio
-  - Svelte: **Lua/Julia/Kotlin/Elixir 패널** 4개 추가, Zig 상태 카드 추가
-  - Svelte: `reports` null 안전성 버그 수정 (`reports.length` → `reports && reports.length`)
-- [x] **2026-04-07** — 전 서비스 연동 완성 및 UI 기능 대폭 강화
+- [x] **전 서비스 연동 완성 및 UI 기능 대폭 강화**
   - Rust 포트 불일치 버그 수정 (3000 → **8081**)
   - Rust `GET /api/rust/status` 신규 추가 (DB 레코드 수 포함)
   - Go `POST /api/pipeline/trigger` 신규 추가 (Rust 프록시 + DB 로깅)
@@ -405,16 +389,58 @@ CREATE TABLE IF NOT EXISTS risk_reports (
   - Svelte: **Auto-Sync 토글** (10초 자동 갱신) 추가
   - Svelte: **Bulk Insert 트리거 패널** 추가 (소요시간·적재 건수 표시)
   - Svelte: Python 카드에 **멀티 통화 칩**, Rust 카드에 **DB 레코드 수** 표시
-- [x] **2026-03-18** — Rust 파이프라인 실전 가동 · Docker PostgreSQL 컨테이너 연동
-- [x] **2026-03-07** — 외부 금융 API(USD/KRW) 연동 · Svelte 금융 데이터 시각화
-- [x] **2026-03-05** — C++ Core 엔진 구축 · Python FFI 연동 · Python 대비 **47배** 속도 향상
-- [x] **2026-02-25** — Svelte 상태 카드 UI 고도화 · TypeScript/CSS 경고 제거
-- [x] **2026-02-24** — Rust Axum 파이프라인 초기화 · `--release` 최적화 검증
-- [x] **2026-02-20** — Redis Cache-Aside 패턴 도입 (TTL 10s)
-- [x] **2026-02-18** — Go `/api/history` 로그 조회 API · Svelte 로그 테이블 UI
-- [x] **2026-02-16** — PostgreSQL 스키마 설계 · Go DB 연동 · Go 1.23+ 업그레이드
-- [x] **2026-02-15** — Svelte ↔ Go ↔ Python 3단 대통합 성공
-- [x] **2026-02-14** — 프로젝트 초기화 (SvelteKit + Bun, Go API, Tailwind CSS v4)
+
+### 2026-04-06
+- [x] **WebAssembly 추가 (8번째 신규 언어 — 브라우저 런타임)**
+  - **Zig → WASM32 freestanding**: `finance.wasm` (24KB) — normCdf · bsCall · bsPut · bsDelta · bsGamma · varNormal · dcfValue
+  - Svelte: **WebAssembly 패널** 추가 (`fetch` → `WebAssembly.instantiate` · 서버 왕복 없음)
+- [x] **F# 옵션 프라이서 추가 (7번째 신규 언어)**
+  - **F# (.NET 8) + ASP.NET Core**: Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho · DCF 가치평가 (`:9001`)
+  - Svelte: **F# Black-Scholes 패널** 추가 (6-grid Greeks 카드)
+- [x] **R 통계 엔진 추가 (6번째 신규 언어)**
+  - **R 4.1 + Plumber**: MLE 정규/t분포 피팅 · VaR/CVaR 95% · Sharpe Ratio · 4-asset 상관행렬 (`:8003`)
+  - Svelte: **R Distribution Fit 패널** 추가
+- [x] **5개 언어 추가 (Lua · Zig · Kotlin · Elixir · Julia)**
+  - **Lua**: Go 내 Redis `EVAL` 원자적 Lua 스크립트로 캐시 히트/미스 카운터 (`/api/cache/stats`)
+  - **Zig 0.13**: `libzigcore.so` C ABI — `volatility_estimate()` · `value_at_risk()` · Python ctypes 연동
+  - **Kotlin 2.0**: 코루틴 스케줄러 `:9000` — 60초 주기 리스크 리포트 자동 생성 (`scheduler.jar` 빌드 완료)
+  - **Elixir/Phoenix**: OTP Supervisor · GenServer Poller · WebSocket Channel `:4000` (코드 완성, Erlang 설치 필요)
+  - **Julia 1.10**: `Threads.@threads` GBM Monte Carlo `:8002` — VaR 95% · CVaR 95% · Sharpe Ratio
+  - Svelte: **Lua/Julia/Kotlin/Elixir 패널** 4개 추가, Zig 상태 카드 추가
+  - Svelte: `reports` null 안전성 버그 수정 (`reports.length` → `reports && reports.length`)
+
+### 2026-03-18
+- [x] Rust 파이프라인 실전 가동 · Docker PostgreSQL 컨테이너 연동
+
+### 2026-03-07
+- [x] 외부 금융 API(USD/KRW) 연동 · Svelte 금융 데이터 시각화
+
+### 2026-03-05
+- [x] C++ Core 엔진 구축 · Python FFI 연동 · Python 대비 **47배** 속도 향상
+
+### 2026-02-25
+- [x] Svelte 상태 카드 UI 고도화 · TypeScript/CSS 경고 제거
+
+### 2026-02-24
+- [x] Rust Axum 파이프라인 초기화 · `--release` 최적화 검증
+
+### 2026-02-20
+- [x] Redis Cache-Aside 패턴 도입 (TTL 10s)
+
+### 2026-02-18
+- [x] Go `/api/history` 로그 조회 API · Svelte 로그 테이블 UI
+
+### 2026-02-16
+- [x] PostgreSQL 스키마 설계 · Go DB 연동 · Go 1.23+ 업그레이드
+
+### 2026-02-15
+- [x] Svelte ↔ Go ↔ Python 3단 대통합 성공
+
+### 2026-02-14
+- [x] 프로젝트 초기화 (SvelteKit + Bun, Go API, Tailwind CSS v4)
+
+---
+
 - [ ] Docker Compose 전체 스택 컨테이너화
 
 ---

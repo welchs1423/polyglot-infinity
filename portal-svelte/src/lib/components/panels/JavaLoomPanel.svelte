@@ -14,7 +14,9 @@
         try {
             const res = await fetch("http://localhost:8010/api/java/status");
             if (res.ok) javaStatus = await res.json();
-        } catch { /* offline */ }
+        } catch {
+            /* offline */
+        }
     });
 
     async function runJava() {

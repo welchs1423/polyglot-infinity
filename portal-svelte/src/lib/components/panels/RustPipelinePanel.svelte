@@ -24,7 +24,9 @@
         }
     }
 
-    onMount(() => { fetchRustStatus(); });
+    onMount(() => {
+        fetchRustStatus();
+    });
 
     async function triggerPipeline() {
         pipelineLoading = true;
@@ -72,7 +74,8 @@
             {#if rustStatus}
                 <p class="db-badge">
                     <span class="db-dot"></span>
-                    DB {rustStatus.total_risk_logs?.toLocaleString() ?? 0}행 · {rustStatus.module ?? rustStatus.status}
+                    DB {rustStatus.total_risk_logs?.toLocaleString() ?? 0}행 · {rustStatus.module ??
+                        rustStatus.status}
                 </p>
             {/if}
         </div>

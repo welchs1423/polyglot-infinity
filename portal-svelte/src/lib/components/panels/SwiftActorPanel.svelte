@@ -130,17 +130,38 @@
         <div class="trade-form">
             <label class="trade-field">
                 <span>종목</span>
-                <input class="trade-input" type="text" bind:value={tradeSym} placeholder="AAPL" />
+                <input
+                    class="trade-input"
+                    type="text"
+                    bind:value={tradeSym}
+                    placeholder="AAPL"
+                />
             </label>
             <label class="trade-field">
                 <span>수량</span>
-                <input class="trade-input" type="number" bind:value={tradeQty} min="1" max="10000" />
+                <input
+                    class="trade-input"
+                    type="number"
+                    bind:value={tradeQty}
+                    min="1"
+                    max="10000"
+                />
             </label>
             <label class="trade-field">
                 <span>가격 ($)</span>
-                <input class="trade-input" type="number" bind:value={tradePrice} min="0.01" step="0.01" />
+                <input
+                    class="trade-input"
+                    type="number"
+                    bind:value={tradePrice}
+                    min="0.01"
+                    step="0.01"
+                />
             </label>
-            <button class="swift-btn trade-btn" onclick={executeTrade} disabled={tradeLoading}>
+            <button
+                class="swift-btn trade-btn"
+                onclick={executeTrade}
+                disabled={tradeLoading}
+            >
                 {tradeLoading ? "처리 중..." : "거래 실행"}
             </button>
         </div>
@@ -148,7 +169,9 @@
             {#if tradeResult.error}
                 <p class="trade-error">❌ {tradeResult.error}</p>
             {:else}
-                <p class="trade-ok">✅ 거래 완료 · 누적 {tradeResult.total_trades?.toLocaleString()}건</p>
+                <p class="trade-ok">
+                    ✅ 거래 완료 · 누적 {tradeResult.total_trades?.toLocaleString()}건
+                </p>
             {/if}
         {/if}
     </div>

@@ -18,7 +18,7 @@
     async function runAll() {
         loading = true;
         try {
-            const [status, infer, portfolio] = await Promise.all([
+            const [status, infer, portfolio, explain] = await Promise.all([
                 fetch("http://localhost:8011/api/prolog/status").then((x) =>
                     x.json(),
                 ),
@@ -28,10 +28,14 @@
                 fetch(
                     `http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
                 ).then((x) => x.json()),
+                fetch(
+                    `http://localhost:8011/api/prolog/explain?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
+                ).then((x) => x.json()),
             ]);
             statusData = status;
             inferData = infer;
             portfolioData = portfolio;
+            explainData = explain;
         } catch {
             inferData = { error: "Prolog 서버 접속 불가 (:8011)" };
         } finally {
@@ -155,7 +159,11 @@
     <button class="prolog-btn" onclick={runAll} disabled={loading}>
         {loading ? "추론 중..." : "논리 추론 실행"}
     </button>
-    <button class="explain-btn" onclick={fetchExplain} disabled={explainLoading}>
+    <button
+        class="explain-btn"
+        onclick={fetchExplain}
+        disabled={explainLoading}
+    >
         {explainLoading ? "분석 중..." : "회? (Why?) 역추적 설명"}
     </button>
 
@@ -227,6 +235,35 @@
                     {/each}
                 </div>
             {/if}
+
+            <!-- Why? 역추적 설명 -->
+            {#if explainData && !explainData.error}
+                <h3 class="section-title" style="margin-top:1rem">
+                    🔎 Why? 역추적 추론 체인
+                </h3>
+                <div class="explain-box">
+                    <div class="explain-method">{explainData.method}</div>
+                    <ul class="evidence-list">
+                        {#each explainData.evidence ?? [] as ev}
+                            <li class="evidence-item">{ev}</li>
+                        {/each}
+                    </ul>
+                    {#if explainData.rules_matched?.length > 0}
+                        <div class="explain-section">
+                            <span class="explain-label">매칭된 규칙:</span>
+                            {#each explainData.rules_matched as rule}
+                                <span class="rule-chip">{rule}</span>
+                            {/each}
+                        </div>
+                    {/if}
+                    <div
+                        class="explain-conclusion"
+                        style="color: {gradeColor(explainData.final_grade)}"
+                    >
+                        {explainData.conclusion}
+                    </div>
+                </div>
+            {/if}
         {/if}
     {/if}
 
@@ -258,11 +295,15 @@
                     <span class="flags-label">발화된 플래그: 없음</span>
                 </div>
             {/if}
-            <div class="explain-conclusion"
-                 style="color:{gradeColor(explainData.final_grade)}">
+            <div
+                class="explain-conclusion"
+                style="color:{gradeColor(explainData.final_grade)}"
+            >
                 {explainData.conclusion}
             </div>
-            <p class="prolog-method" style="margin-top:0.4rem">{explainData.method}</p>
+            <p class="prolog-method" style="margin-top:0.4rem">
+                {explainData.method}
+            </p>
         {/if}
     {/if}
 

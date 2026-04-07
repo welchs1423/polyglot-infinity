@@ -59,6 +59,8 @@ func main() {
 	http.HandleFunc("/api/pipeline/trigger", pipelineTriggerHandler)
 	http.HandleFunc("/api/cache/stats", cacheStatsHandler)
 	http.HandleFunc("/api/aggregate", aggregateHandler)
+	http.HandleFunc("/api/aggregate/stream", aggregateSSEHandler)
+	http.HandleFunc("/api/report", reportHandler)
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -230,6 +232,7 @@ func aggregateHandler(w http.ResponseWriter, r *http.Request) {
 		{"Lua-Stream", 8007, "http://localhost:8007/health"},
 		{"Clojure-STM", 8009, "http://localhost:8009/health"},
 		{"Java-Loom", 8010, "http://localhost:8010/health"},
+		{"Prolog-Solver", 8011, "http://localhost:8011/health"},
 	}
 
 	type Result struct {
@@ -303,4 +306,175 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 		logs = append(logs, l)
 	}
 	json.NewEncoder(w).Encode(logs)
+}
+
+// aggregateSSEHandler — /api/aggregate/stream
+// Server-Sent Events: 클라이언트에게 10초마다 전체 서비스 헬스를 push한다.
+func aggregateSSEHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sendAggregate := func() bool {
+		data, err := buildAggregate()
+		if err != nil {
+			return false
+		}
+		b, _ := json.Marshal(data)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		flusher.Flush()
+		return true
+	}
+
+	sendAggregate()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			if !sendAggregate() {
+				return
+			}
+		}
+	}
+}
+
+// buildAggregate — aggregateHandler 와 SSE 핸들러가 공유하는 핵심 로직
+func buildAggregate() (map[string]interface{}, error) {
+	type ServiceInfo struct {
+		Name      string
+		Port      int
+		HealthURL string
+	}
+	services := []ServiceInfo{
+		{"Python-Brain", 8000, "http://localhost:8000/health"},
+		{"Rust-Pipeline", 8081, "http://localhost:8081/health"},
+		{"Julia-Engine", 8002, "http://localhost:8002/health"},
+		{"R-Stats", 8003, "http://localhost:8003/health"},
+		{"FSharp-Pricer", 9001, "http://localhost:9001/health"},
+		{"OCaml-Risk", 8004, "http://localhost:8004/health"},
+		{"Crystal-Gateway", 9002, "http://localhost:9002/health"},
+		{"Nim-Analytics", 8005, "http://localhost:8005/health"},
+		{"Scala-Streamer", 9003, "http://localhost:9003/health"},
+		{"Haskell-Pricer", 8006, "http://localhost:8006/health"},
+		{"Ruby-Scorer", 9004, "http://localhost:9004/health"},
+		{"Dart-Engine", 9005, "http://localhost:9005/health"},
+		{"Gleam-Hub", 4001, "http://localhost:4001/health"},
+		{"V-Quant", 4002, "http://localhost:4002/health"},
+		{"Erlang-Hot", 4003, "http://localhost:4003/health"},
+		{"Kotlin-Scheduler", 9000, "http://localhost:9000/health"},
+		{"Elixir-Hub", 4000, "http://localhost:4000/health"},
+		{"Swift-Actor", 8008, "http://localhost:8008/health"},
+		{"Lua-Stream", 8007, "http://localhost:8007/health"},
+		{"Clojure-STM", 8009, "http://localhost:8009/health"},
+		{"Java-Loom", 8010, "http://localhost:8010/health"},
+		{"Prolog-Solver", 8011, "http://localhost:8011/health"},
+	}
+
+	type Result struct {
+		Name      string `json:"name"`
+		Port      int    `json:"port"`
+		Status    string `json:"status"`
+		LatencyMs int64  `json:"latency_ms"`
+	}
+
+	results := make([]Result, len(services))
+	var wg sync.WaitGroup
+	for i, svc := range services {
+		wg.Add(1)
+		go func(idx int, s ServiceInfo) {
+			defer wg.Done()
+			start := time.Now()
+			resp, err := httpClient.Get(s.HealthURL)
+			latency := time.Since(start).Milliseconds()
+			status := "offline"
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 200 {
+					status = "online"
+				}
+			}
+			results[idx] = Result{s.Name, s.Port, status, latency}
+		}(i, svc)
+	}
+	wg.Wait()
+
+	online := 0
+	for _, r := range results {
+		if r.Status == "online" {
+			online++
+		}
+	}
+	return map[string]interface{}{
+		"engine":    "Go-Aggregate-v1",
+		"total":     len(results),
+		"online":    online,
+		"offline":   len(results) - online,
+		"services":  results,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}, nil
+}
+
+// reportHandler — /api/report
+// 주요 분석 서비스에서 데이터를 동시 수집해 통합 리스크 리포트를 반환한다.
+func reportHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	type fetchResult struct {
+		key  string
+		data map[string]interface{}
+	}
+
+	endpoints := []struct {
+		key string
+		url string
+	}{
+		{"rust_risk", "http://localhost:8081/api/risk/summary"},
+		{"python_analysis", "http://localhost:8000/api/analyze"},
+		{"julia_mc", "http://localhost:8002/api/julia/simulate?paths=50&days=252&vol=0.20&mu=0.05"},
+		{"r_stats", "http://localhost:8003/api/r/stats"},
+		{"ocaml_risk", "http://localhost:8004/api/ocaml/risk"},
+		{"haskell_mc", "http://localhost:8006/api/haskell/montecarlo?s=100&vol=0.2&mu=0.05&n=500&days=252"},
+	}
+
+	ch := make(chan fetchResult, len(endpoints))
+	for _, ep := range endpoints {
+		go func(key, url string) {
+			var data map[string]interface{}
+			resp, err := httpClient.Get(url)
+			if err == nil {
+				defer resp.Body.Close()
+				json.NewDecoder(resp.Body).Decode(&data)
+			} else {
+				data = map[string]interface{}{"status": "offline"}
+			}
+			ch <- fetchResult{key, data}
+		}(ep.key, ep.url)
+	}
+
+	report := map[string]interface{}{
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		"engine":       "Go-Unified-Report-v1",
+	}
+	for range endpoints {
+		r := <-ch
+		report[r.key] = r.data
+	}
+
+	_, _ = db.Exec("INSERT INTO system_logs (source, message) VALUES ($1, $2)",
+		"Go-Report", fmt.Sprintf("Unified report generated at %s", report["generated_at"]))
+
+	json.NewEncoder(w).Encode(report)
 }

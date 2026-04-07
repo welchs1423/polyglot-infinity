@@ -15,6 +15,23 @@
     /** @type {any | null} */
     let aggregateData = $state(null);
     let aggregateLoading = $state(false);
+    /** @type {any | null} */
+    let reportData = $state(null);
+    let reportLoading = $state(false);
+
+    async function runReport() {
+        reportLoading = true;
+        reportData = null;
+        try {
+            const res = await fetch("http://localhost:8080/api/report");
+            if (res.ok) reportData = await res.json();
+            else reportData = { error: "리포트 생성 실패" };
+        } catch {
+            reportData = { error: "Go 허브 접속 불가 (:8080)" };
+        } finally {
+            reportLoading = false;
+        }
+    }
 
     async function syncSystem() {
         try {
@@ -79,6 +96,13 @@
                 disabled={aggregateLoading}
             >
                 {aggregateLoading ? "스캔 중..." : "전체 헬스체크"}
+            </button>
+            <button
+                class="report-btn"
+                onclick={runReport}
+                disabled={reportLoading}
+            >
+                {reportLoading ? "리포트 생성 중..." : "통합 리포트"}
             </button>
         </div>
     </div>
@@ -186,6 +210,150 @@
         </div>
     {/if}
 
+    <!-- 통합 리스크 리포트 -->
+    {#if reportData}
+        <div class="report-section">
+            <div class="report-header">
+                📋 통합 리스크 리포트
+                <span class="report-time"
+                    >{reportData.generated_at
+                        ?.slice(0, 19)
+                        .replace("T", " ")}</span
+                >
+            </div>
+            {#if reportData.error}
+                <p style="color:#f87171;font-size:0.85rem">
+                    {reportData.error}
+                </p>
+            {:else}
+                <div class="report-grid">
+                    <!-- Rust Risk -->
+                    {#if reportData.rust_risk && !reportData.rust_risk.status}
+                        <div class="report-card">
+                            <span class="rc-label">🦀 Rust Risk</span>
+                            <span class="rc-val"
+                                >{reportData.rust_risk.count ?? "—"} logs</span
+                            >
+                            <span class="rc-sub"
+                                >avg VaR {reportData.rust_risk.avg_var?.toFixed(
+                                    4,
+                                ) ?? "—"}</span
+                            >
+                        </div>
+                    {:else}
+                        <div class="report-card offline">
+                            <span class="rc-label">🦀 Rust Risk</span><span
+                                class="rc-val">offline</span
+                            >
+                        </div>
+                    {/if}
+                    <!-- Python -->
+                    {#if reportData.python_analysis?.version}
+                        <div class="report-card">
+                            <span class="rc-label">🐍 Python</span>
+                            <span class="rc-val"
+                                >{reportData.python_analysis.recommendation ??
+                                    "online"}</span
+                            >
+                            <span class="rc-sub"
+                                >{reportData.python_analysis.source ?? ""}</span
+                            >
+                        </div>
+                    {:else}
+                        <div class="report-card offline">
+                            <span class="rc-label">🐍 Python</span><span
+                                class="rc-val">offline</span
+                            >
+                        </div>
+                    {/if}
+                    <!-- Julia MC -->
+                    {#if reportData.julia_mc?.var_95 !== undefined}
+                        <div class="report-card">
+                            <span class="rc-label">🟣 Julia MC</span>
+                            <span class="rc-val"
+                                >VaR {reportData.julia_mc.var_95?.toFixed(
+                                    3,
+                                )}</span
+                            >
+                            <span class="rc-sub"
+                                >CVaR {reportData.julia_mc.cvar_95?.toFixed(
+                                    3,
+                                ) ?? "—"}</span
+                            >
+                        </div>
+                    {:else}
+                        <div class="report-card offline">
+                            <span class="rc-label">🟣 Julia MC</span><span
+                                class="rc-val">offline</span
+                            >
+                        </div>
+                    {/if}
+                    <!-- R Stats -->
+                    {#if reportData.r_stats?.mean !== undefined}
+                        <div class="report-card">
+                            <span class="rc-label">📊 R Stats</span>
+                            <span class="rc-val"
+                                >μ={reportData.r_stats.mean?.toFixed(4)}</span
+                            >
+                            <span class="rc-sub"
+                                >VaR {reportData.r_stats.var_95?.toFixed(4) ??
+                                    "—"}</span
+                            >
+                        </div>
+                    {:else}
+                        <div class="report-card offline">
+                            <span class="rc-label">📊 R Stats</span><span
+                                class="rc-val">offline</span
+                            >
+                        </div>
+                    {/if}
+                    <!-- OCaml -->
+                    {#if reportData.ocaml_risk?.score !== undefined || reportData.ocaml_risk?.risk_level}
+                        <div class="report-card">
+                            <span class="rc-label">🐪 OCaml</span>
+                            <span class="rc-val"
+                                >{reportData.ocaml_risk.risk_level ?? "—"}</span
+                            >
+                            <span class="rc-sub"
+                                >score {reportData.ocaml_risk.score?.toFixed(
+                                    3,
+                                ) ?? "—"}</span
+                            >
+                        </div>
+                    {:else}
+                        <div class="report-card offline">
+                            <span class="rc-label">🐪 OCaml</span><span
+                                class="rc-val">offline</span
+                            >
+                        </div>
+                    {/if}
+                    <!-- Haskell -->
+                    {#if reportData.haskell_mc?.var_95 !== undefined}
+                        <div class="report-card">
+                            <span class="rc-label">λ Haskell</span>
+                            <span class="rc-val"
+                                >VaR {reportData.haskell_mc.var_95?.toFixed(
+                                    3,
+                                )}</span
+                            >
+                            <span class="rc-sub"
+                                >CVaR {reportData.haskell_mc.cvar_95?.toFixed(
+                                    3,
+                                ) ?? "—"}</span
+                            >
+                        </div>
+                    {:else}
+                        <div class="report-card offline">
+                            <span class="rc-label">λ Haskell</span><span
+                                class="rc-val">offline</span
+                            >
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+        </div>
+    {/if}
+
     <!-- 전체 헬스체크 집계 -->
     {#if aggregateData}
         {#if aggregateData.error}
@@ -240,6 +408,78 @@
     .agg-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+    }
+    .report-btn {
+        background: #1e293b;
+        color: #a78bfa;
+        border: 1px solid #7c3aed;
+        padding: 0.6rem 1.1rem;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: background 0.2s;
+    }
+    .report-btn:hover:not(:disabled) {
+        background: #2e1065;
+    }
+    .report-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .report-section {
+        margin-top: 0.75rem;
+        border: 1px solid #4c1d95;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        background: #0f0f1e;
+    }
+    .report-header {
+        font-size: 0.82rem;
+        color: #a78bfa;
+        font-weight: bold;
+        margin-bottom: 0.6rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .report-time {
+        color: #64748b;
+        font-family: monospace;
+        font-size: 0.75rem;
+        font-weight: normal;
+    }
+    .report-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 0.4rem;
+    }
+    .report-card {
+        background: #1e293b;
+        border: 1px solid #312e81;
+        border-radius: 6px;
+        padding: 0.5rem 0.6rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+    .report-card.offline {
+        opacity: 0.4;
+        border-color: #1e293b;
+    }
+    .rc-label {
+        font-size: 0.72rem;
+        color: #94a3b8;
+    }
+    .rc-val {
+        font-size: 0.9rem;
+        color: #e2e8f0;
+        font-weight: 700;
+    }
+    .rc-sub {
+        font-size: 0.7rem;
+        color: #64748b;
+        font-family: monospace;
     }
     .agg-header {
         display: flex;

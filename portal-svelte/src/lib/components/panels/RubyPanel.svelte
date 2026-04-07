@@ -53,7 +53,10 @@
                 await runRuby();
             }
         } catch {
-            rulesResult = { loaded: false, error: "Ruby 서버 접속 불가 (:9004)" };
+            rulesResult = {
+                loaded: false,
+                error: "Ruby 서버 접속 불가 (:9004)",
+            };
         } finally {
             rulesLoading = false;
         }
@@ -136,7 +139,11 @@
             placeholder="rule(:name) do ... end"
         ></textarea>
         <div class="dsl-row">
-            <button class="ruby-btn dsl-btn" onclick={loadCustomRule} disabled={rulesLoading}>
+            <button
+                class="ruby-btn dsl-btn"
+                onclick={loadCustomRule}
+                disabled={rulesLoading}
+            >
                 {rulesLoading ? "로딩 중..." : "룰 로드"}
             </button>
             {#if rulesResult}

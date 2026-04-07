@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
-### 2026-04-08
+### 2026-04-07
 - [x] **전 언어 심층 기능 확장 스프린트 (Go · R · Nim · Crystal · OCaml · Zig WASM · Elixir · Svelte)**
 
   **Go 워크플로 오케스트레이션 + 서킷 브레이커**
@@ -367,8 +367,6 @@ CREATE TABLE IF NOT EXISTS risk_reports (
   - **WasmPanel 확장** — MC VaR 섹션 (경로 수·시뮬레이션 기간 슬라이더) + 포트폴리오 최적화 섹션 (2-자산 상관관계·기대수익 슬라이더)
   - **BSComparePanel** (신규) — Go 워크플로 `/api/workflow/option-compare` 호출 → F#/Haskell/Python 3-엔진 Call/Put/Delta/Gamma 나란히 비교
   - **WorkflowPanel** (신규) — `/api/workflow/risk-full` 파이프라인 스텝 타임라인 시각화 + `/api/circuit/status` 서킷 브레이커 상태 카드
-
-### 2026-04-07
 - [x] **VPanel.svelte a11y 접근성 수정** — `<label>` 4개에 `for` 속성 추가, 대응 `<input>`에 `id` 추가 (`v-ticks`, `v-fast-ma`, `v-slow-ma`, `v-seed`) → `a11y_label_has_associated_control` 경고 제거
 - [x] **전 언어 패널 인터랙티브 파라미터 슬라이더 강화**
   - **Ruby**: 부채비율 · LTV · 연체횟수 · 연소득 range 슬라이더 → `/api/ruby/score` 동적 파라미터

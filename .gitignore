@@ -30,6 +30,10 @@ pricer-haskell/server
 pricer-haskell/*.hi
 pricer-haskell/*.o
 
+# Erlang (컴파일 산출물)
+hot-erlang/*.beam
+hot-erlang/erl_crash.dump
+
 # Crystal (컴파일 산출물)
 gateway-crystal/server
 

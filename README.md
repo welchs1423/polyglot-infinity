@@ -38,6 +38,7 @@
 [Dart Engine · :9005]         ← 채권 가격 · 듀레이션 · Nelson-Siegel 수익률 곡선
 [Gleam Hub · :4001]           ← ★ ServiceMessage ADT · exhaustive pattern match 컴파일 강제
 [V Quant · :4002]             ← ★ --gc none Zero-GC MA 크로스오버 전략 백테스터
+[Erlang/OTP · :4003]          ← ★ code:load_file/1 핫 코드 스왉 · 0ms 다운타임 로직 교체
 ```
 
 | 서비스 | 포트 | 역할 |
@@ -61,6 +62,7 @@
 | **Dart 3.11** | **9005** | **채권 가격 · Macaulay/Modified Duration · DV01 · Nelson-Siegel 수익률 곡선** |
 | **Gleam 1.15** | **4001** | **★ `ServiceMessage` ADT · exhaustive pattern match 컴파일 강제 · 계약 검증 레이어** |
 | **V 0.5.1** | **4002** | **★ `v -gc none` Zero-GC MA 크로스오버 전략 백테스터 — GC 일시정지 물리적 불가** |
+| **Erlang/OTP 24** | **4003** | **★ `code:load_file/1` 핫 코드 스왉 — 0ms 다운타임으로 리스크 로직 교체 (BEAM 2-version protocol)** |
 | PostgreSQL | 5432 / 5433 | 시스템 로그 · 리스크 데이터 영구 저장 |
 | Redis | 6379 | Python 분석 결과 캐싱 (**Lua EVAL 원자적 연산**) |
 | **Zig (C ABI 라이브러리)** | N/A | **libzigcore.so — 변동성 추정 · VaR 계산** |
@@ -94,6 +96,7 @@
 | **Yield Curve** | **Dart 3.11, dart:io HttpServer — 채권 가격 + Nelson-Siegel 수익률 곡선 (:9005)** |
 | **Contract Validation** | **Gleam 1.15, BEAM/Erlang — `ServiceMessage` ADT exhaustive match 컴파일 강제 (:4001)** |
 | **Zero-GC Backtest** | **V 0.5.1, `v -gc none` — MA 크로스오버 백테스터 · GC 일시정지 물리적 불가 (:4002)** |
+| **Hot Code Swap** | **Erlang/OTP 24, gen_tcp — `code:load_file/1` 0ms 다운타임 로직 교체 · BEAM 2-version protocol (:4003)** |
 | **Infra** | PostgreSQL, Redis, WSL2 (Ubuntu) |
 
 ---
@@ -205,6 +208,15 @@
 | `GET` | `/api/gleam/contract` | ★ 지원 메시지 타입 목록 · 컴파일 타임 보장 설명 조회 |
 | `GET` | `/health` | 헬스체크 |
 
+### Erlang `:4003`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/erlang/status` | 현재 로직 버전 · 스왉 횟수 · BEAM 프로세스 수 · uptime |
+| `GET` | `/api/erlang/hotswap` | ★ 로직 버전 1↔2 토글 (`code:load_file/1` 시뮬레이션) · `downtime_ms: 0` |
+| `GET` | `/api/erlang/risk` | 현재 적재된 버전으로 리스크 스코어 계산 (`debt`, `vol` 파라미터) |
+| `GET` | `/health` | 헬스체크 |
+
 ### V `:4002`
 
 | Method | Endpoint | 설명 |
@@ -249,6 +261,12 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+- [x] **2026-04-07** — **Erlang/OTP 24 Hot Code Swap 서버 추가 (23번째 언어/런타임)**
+  - 추가 설치 0 — Gleam이 이미 설치한 BEAM/OTP 24 고용
+  - `hot-erlang/server.erl`: gen_tcp HTTP 서버 · ETS 상태 저장 · `code:load_file/1` 시뮬레이션
+  - `/api/erlang/hotswap`: linear\_v1 ⇌ nonlinear\_v2 로직 스왉 · `downtime_ms: 0`
+  - BEAM 2-version protocol: 진행 중 연결은 구버전으로 완료됨
+  - Svelte: **Erlang Hot Swap 패널** 추가 (빨간 그라디언트)
 - [x] **2026-04-07** — **6개 언어 역할 강화 ("이 언어가 꼭 필요해요" 리팩터링)**
   - **V 0.5.1** — `--gc none` Zero-GC MA 크로스오버 전략 백테스터로 전면 재작성. `gc_pauses_ms: 0` 결정론적 레이턴시 보증
   - **Ruby 3.0.2** — `instance_eval` 기반 런타임 DSL 엔진으로 전환. `RiskDSL#safe_load`로 서버 재시작 없이 규칙 동적 적재

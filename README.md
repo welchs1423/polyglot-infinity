@@ -57,7 +57,7 @@
 | **Julia (HTTP.jl)** | **8002** | **GBM 병렬 Monte Carlo · VaR/CVaR 95%** |
 | **R (Plumber)** | **8003** | **MLE 분포 피팅 · VaR/CVaR · Sharpe Ratio** |
 | **F# (ASP.NET 8)** | **9001** | **Black-Scholes Greeks · DCF 가치평가** |
-| **WebAssembly (Zig → WASM32)** | **Browser** | **클라이언트 직접 실행 · Black-Scholes/VaR/DCF · 서버 불필요** |
+| **WebAssembly (Zig → WASM32)** | **Browser** | **클라이언트 직접 실행 · Black-Scholes Greeks(Δ/Γ/Θ/V/ρ)/VaR/DCF/MC/포트폴리오 · 서버 불필요** |
 | **OCaml 4.13** | **8004** | **규칙 기반 리스크 판정 · 신용 스코어링 (로지스틱)** |
 | **Crystal 1.19** | **9002** | **★ `spawn`/`Channel` 파이버 병렬 FX 수집 — 4소스 동시 실행 · 가속 배율 ~1.8x** |
 | **Nim 2.2.8** | **8005** | **★ `static:` 컴파일타임 EMA/RSI α 계수 테이블 · `{.noSideEffect.}` — 런타임 나눗셈 0회** |
@@ -96,7 +96,7 @@
 | **Simulation** | **Julia 1.10, HTTP.jl, Threads.@threads GBM (:8002)** |
 | **Statistics** | **R 4.1, Plumber, MASS — MLE 분포 피팅 · Sharpe (:8003)** |
 | **Option Pricing** | **F# (.NET 8), ASP.NET Core — Black-Scholes Greeks · DCF (:9001)** |
-| **WebAssembly** | **Zig 0.13 → WASM32 freestanding — 브라우저 클라이언트 실행 (서버 없음)** |
+| **WebAssembly** | **Zig 0.13 → WASM32 freestanding — 브라우저 클라이언트 실행 (서버 없음) · Greeks(Θ/V/ρ) 포함 13개 export** |
 | **Risk Rules** | **OCaml 4.13, stdlib Unix HTTP — 규칙 기반 리스크 + 로지스틱 신용점수 (:8004)** |
 | **FX Concurrent** | **Crystal 1.19, `spawn`/`Channel` 파이버 — 4소스 병렬 FX 수집 · 순차 대비 ~1.8x 가속 (:9002)** |
 | **Time-series** | **Nim 2.2.8, `static:` 컴파일타임 α 테이블 · `{.noSideEffect.}` — 런타임 나눗셈 0회 (:8005)** |
@@ -327,6 +327,35 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+### 2026-04-08
+- [x] **SSE 실시간 헬스 스트림 · WASM Greeks 확장 · Docker 빌드 수정 · GitHub Actions CI**
+
+  **SSE 실시간 헬스 스트림 (SystemStatusPanel)**
+  - `전체 헬스체크` 버튼 → `EventSource` 토글로 교체 (`/api/aggregate/stream` 영구 연결)
+  - 연결 중 🟢 Live 스트림 중지 / 미연결 시 `전체 헬스체크 (SSE)` 토글
+  - SSE active 시 헤더 `🔍 전체 백엔드 헬스체크` → `🟢 실시간 스트림` 전환
+  - `onDestroy`에서 `sseSource?.close()` 자동 정리 (메모리 누수 방지)
+
+  **WASM Greeks 확장 (finance.zig → WASM32)**
+  - `bsTheta(s,k,r,σ,T)` — 1일 시간가치 소멸 (call: `-(S·N'(d1)·σ)/(2√T) - r·K·e^(-rT)·N(d2)`) / 365 일할
+  - `bsVega(s,k,r,σ,T)` — σ 1%p 당 가격 변화 (`S·N'(d1)·√T / 100`)
+  - `bsRho(s,k,r,σ,T)` — r 1%p 당 가격 변화 (`K·T·e^(-rT)·N(d2) / 100`)
+  - finance.wasm 재빌드 → `portal-svelte/static/finance.wasm` 갱신
+  - WasmPanel BS 결과 그리드: Delta/Gamma/Theta/Vega/Rho/VaR 6-카드 표시
+
+  **Python Dockerfile 멀티스테이지 빌드 수정**
+  - Stage 1: `gcc:12` → `g++ -shared -fPIC -O2` → `libcore.so` 컴파일
+  - Stage 2: `python:3.11-slim` + `libcore.so` + `core-zig/zig-out/lib/libzigcore.so` 복사
+  - `docker-compose.yml`: `python-brain` context `./brain-python` → `.` (루트) 로 변경 (C++/Zig 소스 접근)
+
+  **Rust Dockerfile SQLX 빌드 수정**
+  - `ENV SQLX_OFFLINE=true` — Docker 빌드 시 Postgres 없이 sqlx 오프라인 컴파일 가능
+
+  **GitHub Actions CI**
+  - `.github/workflows/ci.yml`: `push`/`pull_request` 트리거
+  - `svelte-check` 잡: Node 22 + `npx svelte-check --threshold error`
+  - `docker-build` 잡: Go Hub · Rust Pipeline · Python Brain 이미지 빌드 검증
+
 ### 2026-04-07
 - [x] **전 언어 심층 기능 확장 스프린트 (Go · R · Nim · Crystal · OCaml · Zig WASM · Elixir · Svelte)**
 
@@ -535,7 +564,8 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ---
 
-- [ ] Docker Compose 전체 스택 컨테이너화
+- [x] **Docker Compose 전체 스택 컨테이너화** — 28개 서비스 + PostgreSQL + Redis, `docker compose up` 원커맨드 기동
+- [x] **GitHub Actions CI** — `.github/workflows/ci.yml`: svelte-check(TypeScript 타입 검사) + Docker 빌드 검증 (Go·Rust·Python)
 
 ---
 

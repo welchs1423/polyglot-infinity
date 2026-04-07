@@ -73,12 +73,48 @@ async fn main() {
     let app = Router::new()
         .route("/api/rust/status", get(status_handler))
         .route("/api/bulk-insert", post(bulk_insert))
+        .route("/api/risk/summary", get(risk_summary))
         .route("/health", get(health_handler))
         .with_state(pool);
 
     println!("[Rust Pipeline] Server is running on http://0.0.0.0:8081");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8081").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+// VaR 통계 요약 핸들러 — risk_logs 전체에서 min/max/avg/p95 조회
+async fn risk_summary(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
+    // query! 매크로는 DATABASE_URL이 필요하므로 query()로 직접 파싱
+    let row: Result<(Option<i64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>), _> =
+        sqlx::query_as(
+            r#"SELECT
+                COUNT(*)::BIGINT,
+                MIN(risk_score),
+                MAX(risk_score),
+                AVG(risk_score),
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY risk_score)
+               FROM risk_logs"#,
+        )
+        .fetch_one(&pool)
+        .await;
+
+    match row {
+        Ok((count, min_v, max_v, avg_v, p95_v)) => {
+            let round2 = |v: Option<f64>| v.map(|x| (x * 100.0).round() / 100.0);
+            Json(json!({
+                "engine":  "Rust-Pipeline-v2",
+                "model":   "daily_VaR_95 (position × annual_vol/√252 × z₀.₉₅)",
+                "count":   count,
+                "min_var": round2(min_v),
+                "max_var": round2(max_v),
+                "avg_var": round2(avg_v),
+                "p95_var": round2(p95_v),
+            }))
+        }
+        Err(_) => Json(json!({
+            "error": "risk_logs 테이블이 비어있거나 /api/bulk-insert 를 먼저 실행하세요"
+        })),
+    }
 }
 
 // 헬스체크 핸들러

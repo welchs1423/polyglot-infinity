@@ -110,8 +110,7 @@
 | `GET` | `/api/status` | 전체 시스템 상태 · Python 분석 결과 · Rust 상태 집계 |
 | `GET` | `/api/history` | `system_logs` 최신 10건 조회 |
 | `POST` | `/api/pipeline/trigger` | Rust 벌크 인서트 트리거 · 결과 DB 기록 |
-| `GET` | `/api/cache/stats` | **Lua EVAL** 원자적 캐시 히트/미스 카운터 조회 |
-
+| `GET` | `/api/cache/stats` | **Lua EVAL** 원자적 캐시 히트/미스 카운터 조회 || `GET` | `/api/aggregate` | **전체 18개 백엔드 /health 병렬 호출** — 온라인/오프라인 집계 · 응답레이턴시(ms) |
 ### Python `:8000`
 
 | Method | Endpoint | 설명 |
@@ -125,6 +124,7 @@
 |:---|:---|:---|
 | `GET` | `/api/rust/status` | 파이프라인 상태 · `risk_logs` 총 레코드 수 반환 |
 | `POST` | `/api/bulk-insert` | 10,000건 일별 VaR(95%) 트랜잭션 일괄 적재 (Xorshift64 · `position × (vol/√252) × z₀.₉₅`) |
+| `GET` | `/api/risk/summary` | **risk_logs VaR 통계** — `count/min/max/avg/p95` (PostgreSQL PERCENTILE_CONT) |
 | `GET` | `/health` | 헬스체크 |
 
 ### Kotlin `:9000`
@@ -163,7 +163,17 @@
 |:---|:---|:---|
 | `GET` | `/api/fsharp/option` | Black-Scholes 옵션 가격 · Delta/Gamma/Vega/Theta/Rho (`s`,`k`,`r`,`sigma`,`t`) |
 | `GET` | `/api/fsharp/iv` | **Implied Volatility (Newton-Raphson)** — 시장가격 역산 (`market_price`,`s`,`k`,`r`,`t`,`type`) |
+| `GET` | `/api/fsharp/smile` | **Volatility Smile** — strike 범위만큼 IV 커브 계산 (`s`,`r`,`t`,`k_min`,`k_max`,`steps`,`atm_vol`,`skew`,`curvature`,`type`) |
 | `GET` | `/api/fsharp/dcf` | DCF 내재가치 · 안전마진 · 현금흐름 PV (`fcf`,`growth`,`terminal`,`wacc`,`years`) |
+| `GET` | `/health` | 헬스체크 |
+
+### Swift `:8008`
+
+| Method | Endpoint | 설명 |
+|:---|:---|:---|
+| `GET` | `/api/swift/status` | PortfolioLedger 상태 · 전체 포지션 · 명목금액 |
+| `GET` | `/api/swift/concurrent?n=100` | **actor 동시성 검증** — N개 Task 동시 실행 → data race 감지 없음 증명 |
+| `GET` | `/api/swift/trade?sym=&qty=&price=` | 싱글 트레이드 실행 · 포지션 업데이트 |
 | `GET` | `/health` | 헬스체크 |
 
 ### Scala `:9003`

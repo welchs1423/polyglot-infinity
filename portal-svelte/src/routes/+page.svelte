@@ -19,6 +19,11 @@
 	import GleamPanel from "$lib/components/panels/GleamPanel.svelte";
 	import VPanel from "$lib/components/panels/VPanel.svelte";
 	import ErlangPanel from "$lib/components/panels/ErlangPanel.svelte";
+	import SwiftPanel from "$lib/components/panels/SwiftPanel.svelte";
+	import LuaStreamPanel from "$lib/components/panels/LuaStreamPanel.svelte";
+	import SwiftActorPanel from "$lib/components/panels/SwiftActorPanel.svelte";
+	import ClojureSTMPanel from "$lib/components/panels/ClojureSTMPanel.svelte";
+	import JavaLoomPanel from "$lib/components/panels/JavaLoomPanel.svelte";
 	import LogsPanel from "$lib/components/panels/LogsPanel.svelte";
 
 	/** @type {any[]} */
@@ -60,5 +65,10 @@
 	<GleamPanel />
 	<VPanel />
 	<ErlangPanel />
+	<SwiftPanel />
+	<LuaStreamPanel />
+	<SwiftActorPanel />
+	<ClojureSTMPanel />
+	<JavaLoomPanel />
 	<LogsPanel {logs} />
 </main>

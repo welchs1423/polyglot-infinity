@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -57,6 +58,7 @@ func main() {
 	http.HandleFunc("/api/history", historyHandler)
 	http.HandleFunc("/api/pipeline/trigger", pipelineTriggerHandler)
 	http.HandleFunc("/api/cache/stats", cacheStatsHandler)
+	http.HandleFunc("/api/aggregate", aggregateHandler)
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -190,6 +192,91 @@ func cacheStatsHandler(w http.ResponseWriter, r *http.Request) {
 		"engine":       "Lua (Redis EVAL)",
 		"cache_hits":   hits,
 		"cache_misses": misses,
+	})
+}
+
+// aggregateHandler: 전체 백엔드 /health 를 병렬 호출해 집계를 반환한다.
+// 각 백엔드 호출은 독립 고루틴으로 실행되고, WaitGroup으로 합산한다.
+// 타임아웃은 httpClient(5s)가 보장하므로 개별 블록 없음.
+func aggregateHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	type ServiceInfo struct {
+		Name      string `json:"name"`
+		Port      int    `json:"port"`
+		HealthURL string `json:"-"`
+	}
+
+	services := []ServiceInfo{
+		{"Python-Brain", 8000, "http://localhost:8000/health"},
+		{"Rust-Pipeline", 8081, "http://localhost:8081/health"},
+		{"Julia-Engine", 8002, "http://localhost:8002/health"},
+		{"R-Stats", 8003, "http://localhost:8003/health"},
+		{"FSharp-Pricer", 9001, "http://localhost:9001/health"},
+		{"OCaml-Risk", 8004, "http://localhost:8004/health"},
+		{"Crystal-Gateway", 9002, "http://localhost:9002/health"},
+		{"Nim-Analytics", 8005, "http://localhost:8005/health"},
+		{"Scala-Streamer", 9003, "http://localhost:9003/health"},
+		{"Haskell-Pricer", 8006, "http://localhost:8006/health"},
+		{"Ruby-Scorer", 9004, "http://localhost:9004/health"},
+		{"Dart-Engine", 9005, "http://localhost:9005/health"},
+		{"Gleam-Hub", 4001, "http://localhost:4001/health"},
+		{"V-Quant", 4002, "http://localhost:4002/health"},
+		{"Erlang-Hot", 4003, "http://localhost:4003/health"},
+		{"Kotlin-Scheduler", 9000, "http://localhost:9000/health"},
+		{"Elixir-Hub", 4000, "http://localhost:4000/health"},
+		{"Swift-Actor", 8008, "http://localhost:8008/health"},
+	}
+
+	type Result struct {
+		Name      string `json:"name"`
+		Port      int    `json:"port"`
+		Status    string `json:"status"`
+		LatencyMs int64  `json:"latency_ms"`
+	}
+
+	results := make([]Result, len(services))
+	var wg sync.WaitGroup
+
+	for i, svc := range services {
+		wg.Add(1)
+		go func(idx int, s ServiceInfo) {
+			defer wg.Done()
+			start := time.Now()
+			resp, err := httpClient.Get(s.HealthURL)
+			latency := time.Since(start).Milliseconds()
+			status := "offline"
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 200 {
+					status = "online"
+				}
+			}
+			results[idx] = Result{
+				Name:      s.Name,
+				Port:      s.Port,
+				Status:    status,
+				LatencyMs: latency,
+			}
+		}(i, svc)
+	}
+
+	wg.Wait()
+
+	online := 0
+	for _, r := range results {
+		if r.Status == "online" {
+			online++
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"engine":   "Go-Aggregate-v1",
+		"total":    len(results),
+		"online":   online,
+		"offline":  len(results) - online,
+		"services": results,
 	})
 }
 

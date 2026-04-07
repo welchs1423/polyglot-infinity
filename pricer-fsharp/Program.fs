@@ -97,6 +97,51 @@ module ImpliedVol =
            error      = errResult
            engine     = "F#-Pricer-v2" |}
 
+module VolSmile =
+    open MathHelper
+    open BlackScholes
+    open ImpliedVol
+
+    /// \"Sticky Strike\" vol surface 파라미터식으로 strike K에서 주어진 변동성을 생성한다.
+    ///
+    /// \u03c3(K) = atm_vol \u00d7 (1 + skew\u00d7(K/S-1) + curvature\u00d7(K/S-1)\u00b2)
+    ///
+    /// \uc774 \ub370\uc774\ud130\ub97c BS\ub85c \uc2dc\uc7a5\uac00\uaca9 \uc0dd\uc131 \u2192 Newton-Raphson\uc73c\ub85c IV \uc5ed\uc0b0.
+    let compute
+            (s         : float)
+            (r         : float)
+            (t         : float)
+            (kMin      : float)
+            (kMax      : float)
+            (steps     : int)
+            (atmVol    : float)
+            (skew      : float)
+            (curvature : float)
+            (isCall    : bool)
+        =
+        let strikes =
+            if steps <= 1 then [| kMin |]
+            else
+                let step = (kMax - kMin) / float (steps - 1)
+                [| for i in 0..(steps-1) -> kMin + float i * step |]
+
+        strikes |> Array.map (fun k ->
+            let moneyness   = k / s
+            let surfaceVol  = atmVol * (1.0 + skew * (moneyness - 1.0) + curvature * (moneyness - 1.0) ** 2.0)
+            let sigmaClamp  = max 0.001 (min 5.0 surfaceVol)
+            let bs          = BlackScholes.price s k r sigmaClamp t
+            let mktPrice    = if isCall then bs.call_price else bs.put_price
+            let ivResult    = ImpliedVol.solve mktPrice s k r t isCall
+            {| strike      = Math.Round(k, 4)
+               moneyness   = Math.Round(moneyness, 4)
+               surface_vol = Math.Round(sigmaClamp, 6)
+               market_price = Math.Round(mktPrice, 6)
+               iv          = ivResult.iv
+               iv_delta    = ivResult.iv |> Option.map (fun iv ->
+                                 let d = BlackScholes.price s k r iv t
+                                 if isCall then d.delta_call else d.delta_put)
+               converged   = ivResult.iv.IsSome |})
+
 [<EntryPoint>]
 let main args =
     let builder = WebApplication.CreateBuilder(args)
@@ -138,6 +183,37 @@ let main args =
             | _       -> true
         let res = ImpliedVol.solve mktPrice s k r t isCall
         writeJson ctx res
+    )) |> ignore
+
+    // GET /api/fsharp/smile?s=100&r=0.05&t=1.0&k_min=80&k_max=120&steps=9&atm_vol=0.20&skew=-0.10&curvature=0.05&type=call
+    // Volatility Smile: strike \ubc94\uc704\uc5d0 \uac78\uccd0 IV \ucee4\ube0c \uacc4\uc0b0
+    app.MapGet("/api/fsharp/smile", RequestDelegate(fun ctx ->
+        let q     = ctx.Request.Query
+        let s     = getF q "s"          100.0
+        let r     = getF q "r"          0.05
+        let t     = getF q "t"          1.0
+        let kMin  = getF q "k_min"      80.0
+        let kMax  = getF q "k_max"      120.0
+        let steps = match q.TryGetValue("steps") with
+                    | true, v -> try int (string v) |> max 2 |> min 50 with _ -> 9
+                    | _       -> 9
+        let atmVol    = getF q "atm_vol"    0.20
+        let skew      = getF q "skew"      -0.10
+        let curvature = getF q "curvature"  0.05
+        let isCall    = match q.TryGetValue("type") with
+                        | true, v -> (string v).ToLower() <> "put"
+                        | _       -> true
+        let points = VolSmile.compute s r t kMin kMax steps atmVol skew curvature isCall
+        writeJson ctx
+            {| engine     = "F#-Pricer-v2"
+               s          = s
+               r          = r
+               t          = t
+               atm_vol    = atmVol
+               skew       = skew
+               curvature  = curvature
+               option_type = (if isCall then "call" else "put")
+               smile      = points |}
     )) |> ignore
 
     app.MapGet("/api/fsharp/dcf", RequestDelegate(fun ctx ->

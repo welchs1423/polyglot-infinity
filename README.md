@@ -125,7 +125,9 @@
 | `GET` | `/api/status` | 전체 시스템 상태 · Python 분석 결과 · Rust 상태 집계 |
 | `GET` | `/api/history` | `system_logs` 최신 10건 조회 |
 | `POST` | `/api/pipeline/trigger` | Rust 벌크 인서트 트리거 · 결과 DB 기록 |
-| `GET` | `/api/cache/stats` | **Lua EVAL** 원자적 캐시 히트/미스 카운터 조회 || `GET` | `/api/aggregate` | **전체 18개 백엔드 /health 병렬 호출** — 온라인/오프라인 집계 · 응답레이턴시(ms) |
+| `GET` | `/api/cache/stats` | **Lua EVAL** 원자적 캐시 히트/미스 카운터 조회 || `GET` | `/api/aggregate` | **전체 28개 백엔드 /health 병렬 호출** — 온라인/오프라인 집계 · 응답레이턴시(ms) |
+| `GET` | `/api/aggregate/stream` | **SSE 스트리밍** — 28개 서비스 상태를 Server-Sent Events로 실시간 전송 |
+| `GET` | `/api/report` | **통합 시스템 리포트** — 전체 서비스 헬스, DB 통계(risk_logs count, avg_risk, p95), 시스템 요약 |
 ### Python `:8000`
 
 | Method | Endpoint | 설명 |
@@ -223,6 +225,7 @@
 |:---|:---|:---|
 | `GET` | `/api/prolog/portfolio?type=balanced&risk_max=12.0` | **★ 제약 충족 포트폴리오 백트래킹 탐색** — 비중 합=100%, 포트폴리오 타입, 리스크 ≤ risk_max 만족하는 첫 번째 해 |
 | `GET` | `/api/prolog/infer?debt=0.72&vol=0.38&defaults=1` | **★ 신용 리스크 논리 추론 체인** — 플래그 발화 → 규칙 매칭 → 등급(critical/high/medium/low) + 발화 규칙 목록 |
+| `GET` | `/api/prolog/explain?debt=&vol=&defaults=` | **★ 역추적 논리 설명 체인** — 4단계 증거 수집 → flags_fired → rules_matched → conclusion + final_grade |
 | `GET` | `/api/prolog/status` | SWI-Prolog 버전 · 패러다임 정보 |
 | `GET` | `/health` | 헬스체크 |
 
@@ -323,6 +326,23 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 ---
 
 ## 🚀 마일스톤 (최신순)
+
+### 2026-04-09
+- [x] **탭 시스템 · SSE 스트리밍 · 통합 리포트 · 전 언어 패널 기능 강화**
+  - **탭 시스템 (7탭)**: 전체 패널을 Core · Pipeline · Functional · Actor&STM · Logic&DSL · Charts · System 탭으로 분류
+  - **SSE 스트리밍** `GET /api/aggregate/stream`: 28개 서비스 상태를 Server-Sent Events로 실시간 브로드캐스트 (Go → EventSource)
+  - **통합 리포트** `GET /api/report`: 전체 서비스 헬스 + DB 통계(count · avg_risk · p95) + uptime 요약 한 번에 pull
+  - **Elixir WS 자동 재접속**: 연결 끊김 시 3초 후 Phoenix Channel 자동 재연결 로직
+  - **Rust**: `onMount` → `/api/rust/status` DB 상태 뱃지 (total\_risk\_logs 표시, bulk-insert 후 자동 갱신)
+  - **Gleam**: `/api/gleam/pipeline` · `/api/gleam/risk` 3-버튼 UI 추가
+  - **Ruby**: `/api/ruby/rules` POST DSL 동적 규칙 등록 폼 (instance\_eval 실시간 적재)
+  - **Swift**: 심볼/수량/가격 입력 → `/api/swift/trade` 개별 트레이드 실행 폼
+  - **Java**: `onMount` → `/api/java/status` JVM 정보 스트립 (JVM 버전 · vthread 엔진 · CPU 코어)
+  - **Prolog**: `GET /api/prolog/explain` 역추적 설명 체인 — 4단계 증거 → flags → rules → conclusion + grade; "Why? 역추적 설명" 버튼 추가
+  - **Erlang**: 부채비율/변동성 range 슬라이더 → `/api/erlang/risk` 실시간 리스크 등급 계산 (A+~F 색상 코딩)
+  - **OCaml**: 연소득/부채/신용이력/연체횟수 4-입력 폼 → `/api/ocaml/score` 신용점수(300-850) + DTI
+  - **Dart**: 만기/쿠폰 파라미터 → Bull(3%)/Base(6%)/Bear(10%) 3시나리오 YTM 병렬 fetch → 채권가격 비교표
+  - **Kotlin**: expandable 리포트 카드 + 인라인 risk range 바 (min 🟢 / avg 🟡 / max 🔴 시각화)
 
 ### 2026-04-08
 - [x] **SWI-Prolog 8.4 제약 추론 솔버 추가 — 28번째 언어**

@@ -25,6 +25,8 @@
 	import ClojureSTMPanel from "$lib/components/panels/ClojureSTMPanel.svelte";
 	import JavaLoomPanel from "$lib/components/panels/JavaLoomPanel.svelte";
 	import PrologPanel from "$lib/components/panels/PrologPanel.svelte";
+	import BSComparePanel from "$lib/components/panels/BSComparePanel.svelte";
+	import WorkflowPanel from "$lib/components/panels/WorkflowPanel.svelte";
 	import ChartsPanel from "$lib/components/panels/ChartsPanel.svelte";
 	import DependencyMapPanel from "$lib/components/panels/DependencyMapPanel.svelte";
 	import LogsPanel from "$lib/components/panels/LogsPanel.svelte";
@@ -67,6 +69,8 @@
 		ClojureSTM: ["all", "concurrency"],
 		JavaLoom: ["all", "concurrency"],
 		Prolog: ["all", "paradigm"],
+		BSCompare: ["all", "finance"],
+		Workflow: ["all", "infra", "monitor"],
 		Charts: ["all", "finance", "monitor"],
 		DependencyMap: ["all", "monitor"],
 		Logs: ["all", "monitor"],
@@ -88,6 +92,35 @@
 	let sseConnected = $state(false);
 	/** @type {EventSource | null} */
 	let sse = null;
+
+	// ── 글로벌 알림 배너 ──────────────────────────────────────
+	/** @type {{id:number, type:string, msg:string}[]} */
+	let notifications = $state([]);
+	let notifId = 0;
+
+	/** @param {'warning'|'success'|'error'|'info'} type @param {string} msg */
+	function addNotification(type, msg) {
+		const id = ++notifId;
+		notifications = [...notifications, { id, type, msg }];
+		setTimeout(() => {
+			notifications = notifications.filter((n) => n.id !== id);
+		}, 6000);
+	}
+
+	/** @param {number} id */
+	function dismissNotif(id) {
+		notifications = notifications.filter((n) => n.id !== id);
+	}
+
+	// 리스크 임계값 모니터링: onlineCount가 전체의 50% 미만이면 경고
+	$effect(() => {
+		if (totalCount > 0 && onlineCount < totalCount * 0.5) {
+			addNotification(
+				"error",
+				`⚠️ 서비스 장애 감지: ${totalCount - onlineCount}개 오프라인 (${onlineCount}/${totalCount})`,
+			);
+		}
+	});
 
 	// auto-refresh: 상태바 폴백 폴링 주기 (SSE 연결 실패 시)
 	const REFRESH_OPTIONS = [
@@ -176,6 +209,21 @@
 
 <main class="container">
 	<h1 class="title">Polyglot Infinity Portal</h1>
+
+	<!-- ── 글로벌 알림 배너 ─────────────────────────────────── -->
+	{#if notifications.length > 0}
+		<div class="notif-stack">
+			{#each notifications as n (n.id)}
+				<div class="notif notif-{n.type}">
+					<span class="notif-msg">{n.msg}</span>
+					<button
+						class="notif-close"
+						onclick={() => dismissNotif(n.id)}>✕</button
+					>
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	<!-- ── 상태바 ───────────────────────────────────────────── -->
 	<div class="status-bar">
@@ -308,6 +356,12 @@
 	{/if}
 	{#if show("Prolog")}
 		<PrologPanel />
+	{/if}
+	{#if show("BSCompare")}
+		<BSComparePanel />
+	{/if}
+	{#if show("Workflow")}
+		<WorkflowPanel />
 	{/if}
 	{#if show("Charts")}
 		<ChartsPanel />
@@ -481,5 +535,77 @@
 	.tab-btn.active .tab-badge {
 		background: #1e3a5f;
 		color: #60a5fa;
+	}
+
+	/* ── 알림 배너 ──────────────────────────────────────────── */
+	.notif-stack {
+		position: fixed;
+		top: 1rem;
+		right: 1rem;
+		z-index: 1000;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		max-width: 380px;
+		pointer-events: none;
+	}
+	.notif {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.75rem 1rem;
+		border-radius: 8px;
+		font-size: 0.85rem;
+		animation: slideIn 0.2s ease;
+		pointer-events: all;
+		backdrop-filter: blur(6px);
+	}
+	.notif-error {
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		color: #fca5a5;
+	}
+	.notif-warning {
+		background: rgba(245, 158, 11, 0.15);
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		color: #fcd34d;
+	}
+	.notif-success {
+		background: rgba(52, 211, 153, 0.15);
+		border: 1px solid rgba(52, 211, 153, 0.4);
+		color: #6ee7b7;
+	}
+	.notif-info {
+		background: rgba(99, 102, 241, 0.15);
+		border: 1px solid rgba(99, 102, 241, 0.4);
+		color: #a5b4fc;
+	}
+	.notif-msg {
+		flex: 1;
+		line-height: 1.4;
+	}
+	.notif-close {
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: inherit;
+		opacity: 0.7;
+		font-size: 0.9rem;
+		padding: 0;
+		flex-shrink: 0;
+	}
+	.notif-close:hover {
+		opacity: 1;
+	}
+	@keyframes slideIn {
+		from {
+			transform: translateX(100%);
+			opacity: 0;
+		}
+		to {
+			transform: translateX(0);
+			opacity: 1;
+		}
 	}
 </style>

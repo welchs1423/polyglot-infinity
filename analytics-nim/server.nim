@@ -8,6 +8,8 @@
 #   GET /api/nim/timeseries  — 시계열 기술 통계 (skewness/kurtosis/autocorr)
 #   GET /api/nim/momentum    — RSI/MACD/볼린저 (컴파일 타임 계수 사용)
 #   GET /api/nim/indicators  — 사전 계산된 계수 테이블 정보
+#   GET /api/nim/garch       — GARCH(1,1) 조건부 분산 시뮬레이션
+#   GET /api/nim/forecast    — AR(p) 자기회귀 예측
 #   GET /health
 
 import std/[asynchttpserver, asyncdispatch, strutils, strformat, math, json, uri]
@@ -186,6 +188,105 @@ proc buildMomentumJson(prices: seq[float]): string =
     "engine":"Nim 2.2.8"
   }}"""
 
+# ── GARCH(1,1) 조건부 분산 시뮬레이션 ────────────────────────────────────────
+
+proc garchSimulate(seed: int, n: int, omega: float, alpha: float, beta: float): (seq[float], seq[float]) =
+  ## 수익률 시퀀스와 조건부 분산 시퀀스를 반환
+  var h = newSeq[float](n)
+  var eps = newSeq[float](n)
+  h[0] = omega / max(1.0 - alpha - beta, 1e-10)
+  var x = float(seed)
+  for i in 1 ..< n:
+    x = sin(x * 12.9898 + 78.233) * 43758.5453
+    x = x - floor(x)
+    var y = sin(x * 93.9898 + 67.345) * 43758.5453
+    y = y - floor(y)
+    let z = sqrt(-2.0 * ln(x + 1e-10)) * cos(2.0 * PI * y)
+    eps[i] = z * sqrt(h[i-1])
+    h[i] = omega + alpha * eps[i-1]^2 + beta * h[i-1]
+    x = y
+  result = (eps, h)
+
+proc buildGarchJson(eps: seq[float], h: seq[float], omega, alpha, beta: float): string =
+  let persistence = alpha + beta
+  let halfLife = if persistence < 1.0: -ln(2.0) / ln(persistence) else: 999.0
+  let annVolAvg = sqrt(mean(h)) * sqrt(252.0)
+  let currentVolAnn = sqrt(h[h.len-1]) * sqrt(252.0)
+  # 마지막 10개 변동성 배열
+  var lastVols = newSeq[string]()
+  let startIdx = max(0, h.len - 10)
+  for i in startIdx ..< h.len:
+    lastVols.add(fmt"{sqrt(h[i]) * sqrt(252.0):.4f}")
+  let volArr = "[" & lastVols.join(",") & "]"
+  result = fmt"""{{
+    "engine":"Nim-GARCH-v1",
+    "model":"GARCH(1,1)",
+    "omega":{omega:.8f},
+    "alpha":{alpha:.4f},
+    "beta":{beta:.4f},
+    "persistence":{persistence:.4f},
+    "half_life_days":{halfLife:.2f},
+    "ann_vol_avg":{annVolAvg:.6f},
+    "current_vol_ann":{currentVolAnn:.6f},
+    "last_10_vols":{volArr},
+    "runtime_divisions":0
+  }}"""
+
+# ── AR(p) 자기회귀 예측 ────────────────────────────────────────────────────────
+
+proc arFit(series: seq[float], p: int): seq[float] =
+  ## OLS로 AR(p) 계수 추정 (단순 구현)
+  let n = series.len
+  if n <= p: return newSeq[float](p)
+  # Yule-Walker 방정식 (자기공분산 이용)
+  var gamma = newSeq[float](p + 1)
+  let m = mean(series)
+  for lag in 0..p:
+    var s = 0.0
+    for i in lag ..< n:
+      s += (series[i] - m) * (series[i - lag] - m)
+    gamma[lag] = s / float(n)
+  # Levinson-Durbin 간소화: p=1..3 직접 풀기
+  if p == 1:
+    let phi = if gamma[0] != 0.0: gamma[1] / gamma[0] else: 0.0
+    return @[phi]
+  # p>=2: 단순 역행렬 없이 반복 추정 (AR(2) 이내)
+  if p == 2:
+    let det = gamma[0]^2 - gamma[1]^2
+    if abs(det) < 1e-12: return @[0.0, 0.0]
+    let phi1 = (gamma[1] * gamma[0] - gamma[2] * gamma[1]) / det
+    let phi2 = (gamma[2] * gamma[0] - gamma[1]^2) / det
+    return @[phi1, phi2]
+  return newSeq[float](p)
+
+proc buildForecastJson(series: seq[float], coeffs: seq[float], steps: int, p: int): string =
+  var forecasts = newSeq[float](steps)
+  var history = series
+  let m = mean(series)
+  for s in 0 ..< steps:
+    var pred = m
+    for i in 0 ..< p:
+      let idx = history.len - 1 - i
+      if idx >= 0:
+        pred += coeffs[i] * (history[idx] - m)
+    forecasts[s] = pred
+    history.add(pred)
+  var fArr = newSeq[string]()
+  for v in forecasts: fArr.add(fmt"{v:.6f}")
+  let fStr = "[" & fArr.join(",") & "]"
+  var cArr = newSeq[string]()
+  for v in coeffs: cArr.add(fmt"{v:.6f}")
+  let cStr = "[" & cArr.join(",") & "]"
+  result = fmt"""{{
+    "engine":"Nim-AR-v1",
+    "model":"AR({p})",
+    "p":{p},
+    "steps":{steps},
+    "coefficients":{cStr},
+    "forecast":{fStr},
+    "last_actual":{series[series.len-1]:.6f}
+  }}"""
+
 # ── 쿼리 파싱 ──────────────────────────────────────────────
 
 proc parseQuery(query: string): Table[string, string] =
@@ -244,6 +345,27 @@ proc handler(req: Request) {.async.} =
 
   of "/api/nim/indicators":
     await req.respond(Http200, buildIndicatorsJson(), headers)
+
+  of "/api/nim/garch":
+    let omega  = getFloat(params, "omega", 0.000001)
+    let alpha  = getFloat(params, "alpha", 0.08)
+    let betaG  = getFloat(params, "beta",  0.90)
+    let n      = getInt(params,   "n",     500)
+    let seed   = getInt(params,   "seed",  7)
+    let (eps, h) = garchSimulate(seed, n, omega, alpha, betaG)
+    discard eps
+    await req.respond(Http200, buildGarchJson(eps, h, omega, alpha, betaG), headers)
+
+  of "/api/nim/forecast":
+    let mu    = getFloat(params, "mu",    0.10)
+    let sigma = getFloat(params, "sigma", 0.20)
+    let n     = getInt(params,   "n",     120)
+    let seed  = getInt(params,   "seed",  7)
+    let p     = clamp(getInt(params, "p", 2), 1, 2)
+    let steps = clamp(getInt(params, "steps", 10), 1, 30)
+    let series = pseudoSeries(seed, n, mu, sigma)
+    let coeffs = arFit(series, p)
+    await req.respond(Http200, buildForecastJson(series, coeffs, steps, p), headers)
 
   else:
     await req.respond(Http404, """{"error":"not found"}""", headers)

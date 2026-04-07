@@ -6,7 +6,39 @@
      GET /health           — 헬스체크
 *)
 
-(* ── 리스크 룰 엔진 ── *)
+(* ── 다중 자산 포트폴리오 리스크 계산 ── *)
+
+(* 4-자산 등가중 포트폴리오 VaR (정규분포 가정) *)
+let portfolio_risk ~vols ~weights ~corr_flat =
+  (* corr_flat: 4x4 상관행렬을 1차원 배열로 전달 (row-major) *)
+  let n = Array.length vols in
+  (* 포트폴리오 분산 = w^T · Σ · w   (Σ = D · Corr · D, D=diagonal vols) *)
+  let port_var = ref 0.0 in
+  for i = 0 to n - 1 do
+    for j = 0 to n - 1 do
+      let cov_ij = vols.(i) *. vols.(j) *. corr_flat.(i * n + j) in
+      port_var := !port_var +. weights.(i) *. weights.(j) *. cov_ij
+    done
+  done;
+  let port_vol = sqrt !port_var in
+  let ann_vol  = port_vol *. sqrt 252.0 in
+  let var_95   = -. (0.0 +. (-1.6449) *. port_vol) in  (* 1-day 95% VaR *)
+  let cvar_95  = port_vol *. (exp (-. 1.6449 *. 1.6449 /. 2.0))
+                              /. (0.05 *. sqrt (2.0 *. Float.pi)) in
+  (ann_vol, var_95, cvar_95, !port_var)
+
+let assets = [| "KRW"; "JPY"; "EUR"; "CNY" |]
+
+(* 기본 일별 변동성 (연율화 / sqrt(252)) *)
+let default_vols = [| 0.012; 0.008; 0.007; 0.005 |]
+
+(* 기본 상관행렬 (4x4, row-major) *)
+let default_corr = [|
+  1.00; 0.35; 0.20; 0.45;
+  0.35; 1.00; 0.30; 0.25;
+  0.20; 0.30; 1.00; 0.15;
+  0.45; 0.25; 0.15; 1.00;
+|]
 
 type risk_level = Low | Medium | High | Critical
 
@@ -177,6 +209,35 @@ let handle_request req =
       (json_kv_i "debt"           debt)
       (json_kv_i "history_years"  history_years)
       (json_kv_s "engine"         "OCaml 4.13 logistic") in
+    http_200 body
+
+  | "/api/ocaml/portfolio" ->
+    (* 4-자산 등가중 포트폴리오 리스크 *)
+    let w = [| 0.25; 0.25; 0.25; 0.25 |] in
+    let (ann_vol, var_95, cvar_95, port_var) =
+      portfolio_risk ~vols:default_vols ~weights:w ~corr_flat:default_corr in
+    (* 개별 자산 한계 공헌 VaR *)
+    let mcvar_list = Array.mapi (fun i _ ->
+      let contrib = ref 0.0 in
+      for j = 0 to 3 do
+        contrib := !contrib +. w.(j) *. default_vols.(i) *. default_vols.(j) *. default_corr.(i * 4 + j)
+      done;
+      !contrib /. sqrt port_var
+    ) default_vols in
+    let asset_rows = Array.to_list (Array.mapi (fun i a ->
+      Printf.sprintf "{%s,%s,%s}"
+        (json_kv_s "asset" a)
+        (json_kv_f "daily_vol" default_vols.(i))
+        (json_kv_f "marginal_var" mcvar_list.(i))
+    ) assets) in
+    let assets_json = "[" ^ (String.concat "," asset_rows) ^ "]" in
+    let body = Printf.sprintf "{%s,%s,%s,%s,%s,%s}"
+      (json_kv_f "portfolio_ann_vol" ann_vol)
+      (json_kv_f "var_95_1day"      var_95)
+      (json_kv_f "cvar_95_1day"     cvar_95)
+      (json_kv_s "weights"          "25/25/25/25")
+      (Printf.sprintf "\"assets\":%s" assets_json)
+      (json_kv_s "engine"           "OCaml 4.13 portfolio-risk") in
     http_200 body
 
   | _ -> http_404

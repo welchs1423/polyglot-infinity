@@ -5,20 +5,42 @@
     let wasmLoaded = $state(false);
     /** @type {any | null} */
     let wasmBsResult = $state(null);
+    /** @type {any | null} */
+    let wasmMcResult = $state(null);
+    /** @type {any | null} */
+    let wasmPortResult = $state(null);
     /** @type {boolean} */
     let wasmLoading = $state(false);
+
+    // MC 파라미터
+    let mcS0 = $state(100);
+    let mcMu = $state(0.08);
+    let mcSigma = $state(0.2);
+    let mcDays = $state(252);
+    let mcPaths = $state(500);
+
+    // 포트폴리오 파라미터
+    let portVol1 = $state(0.2);
+    let portVol2 = $state(0.15);
+    let portCorr = $state(0.3);
+    let portMu1 = $state(0.1);
+    let portMu2 = $state(0.07);
+
+    async function loadWasm() {
+        if (!wasmExports) {
+            const res = await fetch("/finance.wasm");
+            const bytes = await res.arrayBuffer();
+            const { instance } = await WebAssembly.instantiate(bytes, {});
+            wasmExports = instance.exports;
+            wasmLoaded = true;
+        }
+        return wasmExports;
+    }
 
     async function runWasm() {
         wasmLoading = true;
         try {
-            if (!wasmExports) {
-                const res = await fetch("/finance.wasm");
-                const bytes = await res.arrayBuffer();
-                const { instance } = await WebAssembly.instantiate(bytes, {});
-                wasmExports = instance.exports;
-                wasmLoaded = true;
-            }
-            const exp = wasmExports;
+            const exp = await loadWasm();
             wasmBsResult = {
                 call: exp.bsCall(100, 100, 0.05, 0.2, 1.0),
                 put: exp.bsPut(100, 100, 0.05, 0.2, 1.0),
@@ -29,6 +51,80 @@
             };
         } catch (e) {
             wasmBsResult = { error: String(e) };
+        } finally {
+            wasmLoading = false;
+        }
+    }
+
+    async function runMcVaR() {
+        wasmLoading = true;
+        try {
+            const exp = await loadWasm();
+            const seed = BigInt(Math.floor(Math.random() * 0xffffffff) + 1);
+            const var95 = exp.mcVaR95(
+                seed,
+                mcS0,
+                mcMu,
+                mcSigma,
+                mcDays,
+                mcPaths,
+            );
+            wasmMcResult = {
+                var95_pct: (var95 * 100).toFixed(3),
+                var95_abs: (var95 * mcS0).toFixed(2),
+                s0: mcS0,
+                mu: mcMu,
+                sigma: mcSigma,
+                days: mcDays,
+                paths: mcPaths,
+            };
+        } catch (e) {
+            wasmMcResult = { error: String(e) };
+        } finally {
+            wasmLoading = false;
+        }
+    }
+
+    async function runPortfolio() {
+        wasmLoading = true;
+        try {
+            const exp = await loadWasm();
+            const wStar = exp.minVarWeight(portVol1, portVol2, portCorr);
+            const sharpeStar = exp.portfolioSharpe(
+                wStar,
+                portMu1,
+                portMu2,
+                portVol1,
+                portVol2,
+                portCorr,
+                0.03,
+            );
+            const sharpeEq = exp.portfolioSharpe(
+                0.5,
+                portMu1,
+                portMu2,
+                portVol1,
+                portVol2,
+                portCorr,
+                0.03,
+            );
+            const portVarMV =
+                wStar * wStar * portVol1 ** 2 +
+                (1 - wStar) ** 2 * portVol2 ** 2 +
+                2 * wStar * (1 - wStar) * portCorr * portVol1 * portVol2;
+            wasmPortResult = {
+                min_var_w1: (wStar * 100).toFixed(1),
+                min_var_w2: ((1 - wStar) * 100).toFixed(1),
+                min_var_vol: (
+                    Math.sqrt(portVarMV) *
+                    Math.sqrt(252) *
+                    100
+                ).toFixed(2),
+                sharpe_mv: sharpeStar.toFixed(3),
+                sharpe_eq: sharpeEq.toFixed(3),
+            };
+        } catch (e) {
+            wasmPortResult = { error: String(e) };
         } finally {
             wasmLoading = false;
         }
@@ -48,6 +144,7 @@
                 로드 & 실행{/if}
         </button>
     </div>
+
     {#if wasmBsResult}
         {#if wasmBsResult.error}
             <div class="empty-box">
@@ -99,6 +196,174 @@
             </p>
         </div>
     {/if}
+
+    <!-- Monte Carlo VaR -->
+    <div class="section-divider">📊 GBM Monte Carlo VaR (WASM)</div>
+    <div class="param-grid">
+        <div class="param-row">
+            <label for="wasm-s0">S₀</label>
+            <input
+                id="wasm-s0"
+                type="range"
+                min="50"
+                max="500"
+                step="10"
+                bind:value={mcS0}
+            />
+            <span class="param-val">{mcS0}</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-mu">μ (연)</label>
+            <input
+                id="wasm-mu"
+                type="range"
+                min="0.01"
+                max="0.30"
+                step="0.01"
+                bind:value={mcMu}
+            />
+            <span class="param-val">{(mcMu * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-sigma">σ (연)</label>
+            <input
+                id="wasm-sigma"
+                type="range"
+                min="0.05"
+                max="0.60"
+                step="0.01"
+                bind:value={mcSigma}
+            />
+            <span class="param-val">{(mcSigma * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-paths">경로 수</label>
+            <input
+                id="wasm-paths"
+                type="range"
+                min="100"
+                max="2000"
+                step="100"
+                bind:value={mcPaths}
+            />
+            <span class="param-val">{mcPaths}</span>
+        </div>
+    </div>
+    <button
+        class="wasm-btn"
+        onclick={runMcVaR}
+        disabled={wasmLoading}
+        style="margin-top:0.5rem"
+    >
+        Monte Carlo 실행
+    </button>
+    {#if wasmMcResult}
+        {#if wasmMcResult.error}
+            <p style="color:#f87171">{wasmMcResult.error}</p>
+        {:else}
+            <div class="julia-grid" style="margin-top:0.75rem">
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">VaR 95% (손실률)</span>
+                    <span class="jval" style="color:#f87171"
+                        >{wasmMcResult.var95_pct}%</span
+                    >
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">VaR 95% (절대값)</span>
+                    <span class="jval" style="color:#f87171"
+                        >{wasmMcResult.var95_abs}</span
+                    >
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">경로 수</span>
+                    <span class="jval">{wasmMcResult.paths}</span>
+                </div>
+            </div>
+            <p class="wasm-hint">
+                ✓ xorshift64 PRNG · 부분 선택정렬 5% 분위 · 순수 WASM
+            </p>
+        {/if}
+    {/if}
+
+    <!-- 포트폴리오 최적화 -->
+    <div class="section-divider">⚖️ 최소분산 포트폴리오 (WASM)</div>
+    <div class="param-grid">
+        <div class="param-row">
+            <label for="wasm-vol1">σ₁ (자산1)</label>
+            <input
+                id="wasm-vol1"
+                type="range"
+                min="0.05"
+                max="0.60"
+                step="0.01"
+                bind:value={portVol1}
+            />
+            <span class="param-val">{(portVol1 * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-vol2">σ₂ (자산2)</label>
+            <input
+                id="wasm-vol2"
+                type="range"
+                min="0.05"
+                max="0.60"
+                step="0.01"
+                bind:value={portVol2}
+            />
+            <span class="param-val">{(portVol2 * 100).toFixed(0)}%</span>
+        </div>
+        <div class="param-row">
+            <label for="wasm-corr">상관계수 ρ</label>
+            <input
+                id="wasm-corr"
+                type="range"
+                min="-0.90"
+                max="0.90"
+                step="0.05"
+                bind:value={portCorr}
+            />
+            <span class="param-val">{portCorr.toFixed(2)}</span>
+        </div>
+    </div>
+    <button
+        class="wasm-btn"
+        onclick={runPortfolio}
+        disabled={wasmLoading}
+        style="margin-top:0.5rem"
+    >
+        포트폴리오 최적화
+    </button>
+    {#if wasmPortResult}
+        {#if wasmPortResult.error}
+            <p style="color:#f87171">{wasmPortResult.error}</p>
+        {:else}
+            <div class="julia-grid" style="margin-top:0.75rem">
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">최적 비중 (자산1)</span>
+                    <span class="jval">{wasmPortResult.min_var_w1}%</span>
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">최적 비중 (자산2)</span>
+                    <span class="jval">{wasmPortResult.min_var_w2}%</span>
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">최소분산 연변동성</span>
+                    <span class="jval" style="color:#34d399"
+                        >{wasmPortResult.min_var_vol}%</span
+                    >
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">Sharpe (MV)</span>
+                    <span class="jval">{wasmPortResult.sharpe_mv}</span>
+                </div>
+                <div class="julia-card wasm-card">
+                    <span class="jlabel">Sharpe (등가중)</span>
+                    <span class="jval">{wasmPortResult.sharpe_eq}</span>
+                </div>
+            </div>
+            <p class="wasm-hint">✓ 해석적 최솟값 공식 · 서버 왕복 없음</p>
+        {/if}
+    {/if}
 </section>
 
 <style>
@@ -127,5 +392,39 @@
         font-size: 0.8rem;
         color: #67e8f9;
         text-align: center;
+    }
+    .section-divider {
+        margin: 1.25rem 0 0.75rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #67e8f9;
+        border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+        padding-bottom: 0.4rem;
+    }
+    .param-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+    .param-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.82rem;
+    }
+    .param-row label {
+        width: 80px;
+        color: #94a3b8;
+        flex-shrink: 0;
+    }
+    .param-row input[type="range"] {
+        flex: 1;
+        accent-color: #06b6d4;
+    }
+    .param-val {
+        width: 50px;
+        text-align: right;
+        color: #e2e8f0;
+        font-size: 0.82rem;
     }
 </style>

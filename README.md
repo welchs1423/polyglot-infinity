@@ -327,6 +327,47 @@ CREATE TABLE IF NOT EXISTS risk_reports (
 
 ## 🚀 마일스톤 (최신순)
 
+### 2026-04-08
+- [x] **전 언어 심층 기능 확장 스프린트 (Go · R · Nim · Crystal · OCaml · Zig WASM · Elixir · Svelte)**
+
+  **Go 워크플로 오케스트레이션 + 서킷 브레이커**
+  - `CircuitBreaker` 구조체 (closed/open/half-open 3-상태 원자적 전환) + `cbGet()` 헬퍼로 전 upstream 호출 보호
+  - `GET /api/workflow/risk-full` — Python → Rust → Kotlin 엔드-투-엔드 파이프라인, 각 단계 결과 전파 + Redis `polyglot:events` 채널 Pub/Sub 발행
+  - `GET /api/workflow/option-compare` — F#·Haskell·Python+ZigFFI 3-엔진 병렬 BS 가격 비교 + 레이턴시 측정
+  - `GET /api/circuit/status` — 모든 서킷 브레이커 실시간 상태 (실패/성공 카운터)
+
+  **R GARCH(1,1) + ARIMA 시계열 예측**
+  - `GET /api/r/garch` — GARCH(1,1) 변동성 시뮬레이션: persistence, half_life_days, ann_vol_avg, VaR95, 최근 10일 변동성
+  - `GET /api/r/arima` — `arima()` 자동 피팅 + `predict()` 5-step 예측: AIC, forecast, 95% CI
+
+  **Nim GARCH 시뮬레이션 + AR(p) 자기회귀 예측**
+  - `GET /api/nim/garch` — Box-Muller 변환 GARCH(1,1), persistence, half-life, 현재 변동성
+  - `GET /api/nim/forecast` — OLS AR(p) (Yule-Walker), 계수 추정 + 3-step 수렴 예측
+
+  **Crystal 다중 FX 통계 집계**
+  - `GET /api/crystal/stats` — 병렬 FX 페치 집계: mean, std_dev, min, max, spread_bps, weighted_avg
+
+  **OCaml 멀티-에셋 포트폴리오 리스크**
+  - `GET /api/ocaml/portfolio` — 4-Asset (USD/EUR/JPY/GBP) 공분산 행렬, portfolio VaR95, CVaR95, 자산별 한계 VaR
+
+  **Zig → WASM32 브라우저 금융 계산 확장**
+  - `mcVaR95(seed, s0, mu, sigma, days, paths)` — xorshift64 PRNG + GBM 경로 시뮬레이션 → 5분위 VaR
+  - `minVarWeight(vol1, vol2, corr)` — 해석적 최소 분산 가중치
+  - `portfolioSharpe(w, mu1, mu2, vol1, vol2, corr, rf)` — 2-자산 포트폴리오 Sharp Ratio
+  - 빌드: `zig build-exe -target wasm32-freestanding -O ReleaseFast`, `portal-svelte/static/finance.wasm` 배포
+
+  **Elixir Redis Pub/Sub → Phoenix Channel 브릿지**
+  - `HubElixir.RedisSubscriber` GenServer — Redix로 `polyglot:events` 채널 구독
+  - 수신 이벤트 → `Phoenix.PubSub.broadcast` → `"system:lobby"` Socket 클라이언트에 실시간 전파
+  - `mix.exs`에 `{:redix, "~> 1.4"}` 추가, 슈퍼비전 트리 등록
+
+  **Svelte 프론트엔드 기능 추가**
+  - **글로벌 알림 배너** — `notifications $state`, `addNotification/dismissNotif` + 6초 자동 소멸 토스트 (error/warning/success/info 4종 CSS 애니메이션)
+  - **리스크 임계값 모니터링** — `$effect()`: 온라인 서비스 50% 미만 시 자동 error 알림
+  - **WasmPanel 확장** — MC VaR 섹션 (경로 수·시뮬레이션 기간 슬라이더) + 포트폴리오 최적화 섹션 (2-자산 상관관계·기대수익 슬라이더)
+  - **BSComparePanel** (신규) — Go 워크플로 `/api/workflow/option-compare` 호출 → F#/Haskell/Python 3-엔진 Call/Put/Delta/Gamma 나란히 비교
+  - **WorkflowPanel** (신규) — `/api/workflow/risk-full` 파이프라인 스텝 타임라인 시각화 + `/api/circuit/status` 서킷 브레이커 상태 카드
+
 ### 2026-04-07
 - [x] **VPanel.svelte a11y 접근성 수정** — `<label>` 4개에 `for` 속성 추가, 대응 `<input>`에 `id` 추가 (`v-ticks`, `v-fast-ma`, `v-slow-ma`, `v-seed`) → `a11y_label_has_associated_control` 경고 제거
 - [x] **전 언어 패널 인터랙티브 파라미터 슬라이더 강화**

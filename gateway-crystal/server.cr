@@ -264,6 +264,41 @@ server = HTTP::Server.new do |ctx|
     total_ms = ((Time.monotonic - t0).total_milliseconds).to_i32
     ctx.response.print build_concurrent_json(results, total_ms)
 
+  when "/api/crystal/stats"
+    # FX 수집 후 통계 집계: 가중평균, 스프레드, 변동성, 분산
+    t0 = Time.monotonic
+    results = fetch_fx_concurrent(FX_SOURCES.dup)
+    total_ms = ((Time.monotonic - t0).total_milliseconds).to_i32
+
+    rates_arr = results.map(&.rate)
+    r_mean = mean(rates_arr)
+    r_std  = std_dev(rates_arr)
+    r_min  = rates_arr.min
+    r_max  = rates_arr.max
+    spread = r_max - r_min
+    spread_bps = (spread / r_mean * 10000.0).round(2)
+
+    # 가중평균
+    total_w = FX_SOURCES.sum(&.weight)
+    weighted = results.sum { |r|
+      src = FX_SOURCES.find { |s| s.name == r.source }
+      (src ? src.weight : 0.0_f64) * r.rate
+    } / total_w
+
+    ctx.response.print String.build { |s|
+      s << %({"engine":"Crystal-FX-Stats-v1",)
+      s << %("collected_ms":#{total_ms},)
+      s << %("sources":#{results.size},)
+      s << %("weighted_avg":#{weighted.round(4)},)
+      s << %("mean":#{r_mean.round(4)},)
+      s << %("std_dev":#{r_std.round(4)},)
+      s << %("min":#{r_min},)
+      s << %("max":#{r_max},)
+      s << %("spread":#{spread.round(4)},)
+      s << %("spread_bps":#{spread_bps},)
+      s << %("fiber_model":"spawn/Channel")}
+    }
+
   else
     ctx.response.status = HTTP::Status::NOT_FOUND
     ctx.response.print %({"error":"not found"})

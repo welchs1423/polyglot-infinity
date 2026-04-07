@@ -8,6 +8,8 @@ defmodule HubElixir.Application do
       {Phoenix.PubSub, name: HubElixir.PubSub},
       # 주기적으로 Go API를 폴링해서 WebSocket 클라이언트에 브로드캐스트
       HubElixir.Poller,
+      # Redis Pub/Sub 구독자 — Go 워크플로 완료 이벤트 수신 → Phoenix Channel 브로드캐스트
+      HubElixir.RedisSubscriber,
       # Bandit HTTP + WebSocket 서버
       {Bandit, plug: HubElixir.Router, port: 4000}
     ]

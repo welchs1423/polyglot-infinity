@@ -1,6 +1,6 @@
 <script>
-	/** @type {{ logs?: any[] }} */
-	let { logs = [] } = $props();
+    /** @type {{ logs?: any[] }} */
+    let { logs = [] } = $props();
 </script>
 
 <section class="panel">

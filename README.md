@@ -36,8 +36,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
 | 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **HikariCP JDBC persistence** (PostgreSQL `INSERT ON CONFLICT DO NOTHING` + `UPDATE`, `autoCommit=true`, pool 20) · `DbStore` inner class — `initSchema` / `insertOrder` / `updateOrder` via pure JDBC · DB write inside Virtual Thread (blocking JDBC acceptable; OS thread yielded) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool) · Virtual vs Platform Thread benchmark |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
-| — | **PostgreSQL** | 5432 | System logs · risk data (shared) |
-| — | **PostgreSQL** (`db-postgres`) | 5432 | `loom-java` order persistence (isolated) |
+| — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
 
 ---
@@ -145,7 +144,7 @@ CREATE TABLE risk_reports (
     avg_risk_score FLOAT, total_records INT, max_risk_score FLOAT, min_risk_score FLOAT
 );
 
--- orders (Java Loom · db-postgres :5432/loom_db, auto-created on startup via initSchema())
+-- orders (Java Loom · postgres :5432, auto-created on startup)
 CREATE TABLE IF NOT EXISTS orders (
     id         VARCHAR(255) PRIMARY KEY,
     status     VARCHAR(32)  NOT NULL,
@@ -156,60 +155,24 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ---
 
-## CI/CD
-
-### GitHub Actions — `.github/workflows/main.yml`
-
-Triggered on every push to the `main` branch. The pipeline consists of two jobs.
-
-**Job 1: `build-verify`** (required)
-
-| Step | Action |
-|:---|:---|
-| Disk cleanup | Removes `/usr/share/dotnet`, Android SDK, GHC, CodeQL to reclaim several GB on the runner |
-| `docker compose config` | Validates YAML schema before any image pull |
-| BuildKit layer cache | `actions/cache@v4` persists `/tmp/.buildx-cache` across runs |
-| `docker compose build --parallel` | Parallel build of the 6 Dockerfile-based services: `go-hub`, `python-brain`, `rust-pipeline`, `cpp-core`, `zig-core`, `terminal-elm` |
-| `docker compose pull --ignore-buildable` | Pulls registry images for the remaining 22 application + 2 infrastructure services |
-| `docker compose up --no-start` | Creates all containers without starting them; fails immediately if any image cannot be resolved |
-| Container count check | Counts lines from `docker compose ps -a --quiet`; exits with code 1 if count is below 28 |
-
-**Job 2: `load-test`** (optional, `needs: build-verify`)
-
-Starts only the three core backends (postgres, redis, go-hub, python-brain, rust-pipeline) to stay within runner memory limits.
-
-| Step | Action |
-|:---|:---|
-| Health wait loop | `pg_isready`, `redis-cli ping`, and `curl /health` loops with `timeout 120` each |
-| k6 installation | Official Grafana APT repository |
-| Smoke test script | 10 VUs for 30 seconds, round-robin across`:8080/health`, `:8000/health`, `:8081/health` |
-| Background execution | `k6 run ... &` — container logs streamed in parallel; `wait $K6_PID` collects exit code |
-| Thresholds | `http_req_failed < 5%`, `p(95) < 2000 ms` |
-| Artifact upload | `k6-results-run-N.json` uploaded via `actions/upload-artifact@v4` (`if: always()`) |
-
----
-
 ## Changelog
 
-### 2026-04-08 (latest)
+### 2026-04-09
 
-**Java Loom — dedicated PostgreSQL instance** (`loom-java` / `docker-compose.yml`)
+**Go Gateway — Circuit Breaker hardening** (`server-go`)
 
-- `docker-compose.yml` — Added `db-postgres` service (`postgres:16-alpine`, DB `loom_db`) isolated from the shared `postgres` instance (`polyglot_db`); prevents order-workload I/O from impacting other services
-  - Healthcheck: `pg_isready -U dev -d loom_db` (interval 5s, retries 10)
-  - Named volume: `db_postgres_data` — separate persistence from `postgres_data`
-  - Network: `polyglot` bridge (same as all other containers)
-- `java-loom` service — `DB_URL` updated to `jdbc:postgresql://db-postgres:5432/loom_db`; `depends_on` updated from `postgres` to `db-postgres: { condition: service_healthy }`
+- `main.go` — Replaced all `newReverseProxy` calls (27 routes) with `newCBProxy`, a circuit-breaker-guarded reverse proxy
+  - `newCBProxy(serviceName, target)` — wraps `httputil.ReverseProxy` with a named `CircuitBreaker` instance and a `5 s` per-request `context.WithTimeout` deadline
+  - Request lifecycle: `Allow()==false` → `writeFallback` (no upstream dial); transport error / timeout → `ErrorHandler` → `RecordFailure` + `writeFallback`; HTTP 5xx → `ModifyResponse` → `RecordFailure`; 2xx/3xx/4xx → `RecordSuccess`
+  - `writeFallback` — writes `200 OK` `{"status":"degraded","message":"Service temporarily unavailable"}` instead of 504, so cold-start bursts no longer propagate errors to clients
+  - Role aliases share the same `*CircuitBreaker` instance as their canonical route (same `serviceName` key in `getOrCreateCB`)
+- Fixed `getOrCreateCB` — added double-checked locking (inner check after acquiring write-lock prevents duplicate `CircuitBreaker` allocation)
+- Fixed `Allow()` — replaced cascading `if` with `switch` + `defer cb.mu.Unlock()` to eliminate dual manual-unlock paths
+- Fixed `RecordSuccess()` — replaced non-atomic `StoreInt32(Load+1)` read-modify-write with `atomic.AddInt32`
 
 ---
 
 ### 2026-04-08
-
-**GitHub Actions CI/CD pipeline** (`.github/workflows/main.yml`)
-
-- Trigger: push to `main` branch
-- Job `build-verify`: validates compose config, builds 6 Dockerfile services in parallel, pulls 22 remaining images, instantiates all containers (`--no-start`), and asserts container count >= 28
-- Job `load-test` (optional, `needs: build-verify`): starts core 3 backends, runs k6 smoke test (10 VU / 30 s, thresholds `http_req_failed < 5%` and `p(95) < 2000 ms`), uploads raw JSON results as a workflow artifact
 
 **Java Loom — HikariCP JDBC persistence** (`loom-java`)
 

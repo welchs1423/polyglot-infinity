@@ -50,33 +50,35 @@ func getOrCreateCB(name string) *CircuitBreaker {
 	}
 	cbMu.Lock()
 	defer cbMu.Unlock()
+	// Double-checked locking: another goroutine may have inserted between RUnlock and Lock.
+	if cb, ok = circuitBreakers[name]; ok {
+		return cb
+	}
 	cb = &CircuitBreaker{name: name, threshold: 3, resetAfter: 30 * time.Second}
 	circuitBreakers[name] = cb
 	return cb
 }
 
 func (cb *CircuitBreaker) Allow() bool {
-	state := atomic.LoadInt32(&cb.state)
-	if state == cbClosed {
+	switch atomic.LoadInt32(&cb.state) {
+	case cbClosed:
 		return true
-	}
-	if state == cbOpen {
+	case cbOpen:
 		cb.mu.Lock()
+		defer cb.mu.Unlock()
 		if time.Since(cb.lastFailure) > cb.resetAfter {
 			atomic.StoreInt32(&cb.state, cbHalfOpen)
-			cb.mu.Unlock()
 			return true
 		}
-		cb.mu.Unlock()
 		return false
+	default: // HalfOpen: allow one probe request
+		return true
 	}
-	// HalfOpen: 1회 허용
-	return true
 }
 
 func (cb *CircuitBreaker) RecordSuccess() {
 	atomic.StoreInt32(&cb.failures, 0)
-	atomic.StoreInt32(&cb.successes, atomic.LoadInt32(&cb.successes)+1)
+	atomic.AddInt32(&cb.successes, 1)
 	atomic.StoreInt32(&cb.state, cbClosed)
 }
 
@@ -90,7 +92,19 @@ func (cb *CircuitBreaker) RecordFailure() {
 	}
 }
 
-// cbGet — 서킷 브레이커를 통한 HTTP GET
+// writeFallback writes a 200 OK degraded JSON body.
+// Called when the circuit is open or a transport error occurs before any
+// upstream response header has been sent to the client.
+func writeFallback(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "degraded",
+		"message": "Service temporarily unavailable",
+	})
+}
+
+// cbGet issues an HTTP GET through the named circuit breaker using httpClient.
 func cbGet(name, url string) (*http.Response, error) {
 	cb := getOrCreateCB(name)
 	if !cb.Allow() {
@@ -153,16 +167,56 @@ func resolveBackend(dockerName string, port int) string {
 	return fmt.Sprintf("http://localhost:%d", port)
 }
 
-// newReverseProxy builds a single-host reverse proxy to target.
-// The full request path is forwarded unchanged; no prefix stripping is applied.
-func newReverseProxy(target string) *httputil.ReverseProxy {
+// proxyTimeout is the per-request upstream deadline applied by newCBProxy.
+// Requests that do not receive a first response header byte within this window
+// trigger ErrorHandler, which records a CB failure and writes writeFallback
+// instead of the default 502 Bad Gateway.
+const proxyTimeout = 5 * time.Second
+
+// newCBProxy constructs a single-host reverse proxy guarded by a circuit breaker.
+//
+// Request lifecycle:
+//  1. cb.Allow() == false → writeFallback (200 degraded); no upstream dial.
+//  2. cb.Allow() == true  → request forwarded with a proxyTimeout context deadline.
+//  3. Transport error (timeout, refused) → ErrorHandler: RecordFailure + writeFallback.
+//  4. Backend HTTP 5xx  → ModifyResponse: RecordFailure, response forwarded unchanged.
+//  5. Backend 2xx/3xx/4xx → ModifyResponse: RecordSuccess, response forwarded unchanged.
+func newCBProxy(serviceName, target string) http.Handler {
 	u, err := url.Parse(target)
 	if err != nil {
 		log.Fatalf("invalid proxy target %q: %v", target, err)
 	}
-	p := httputil.NewSingleHostReverseProxy(u)
-	p.Transport = proxyTransport
-	return p
+
+	cb := getOrCreateCB(serviceName)
+	proxy := httputil.NewSingleHostReverseProxy(u)
+	proxy.Transport = proxyTransport
+
+	// ModifyResponse: upstream returned a response; classify by HTTP status.
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.StatusCode >= 500 {
+			cb.RecordFailure()
+		} else {
+			cb.RecordSuccess()
+		}
+		return nil
+	}
+
+	// ErrorHandler: transport-level error (timeout, connection refused, reset, etc.).
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		cb.RecordFailure()
+		writeFallback(w)
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !cb.Allow() {
+			writeFallback(w)
+			return
+		}
+		// Bound upstream wait to proxyTimeout so cold-start delays trip the breaker.
+		rctx, cancel := context.WithTimeout(r.Context(), proxyTimeout)
+		defer cancel()
+		proxy.ServeHTTP(w, r.WithContext(rctx))
+	})
 }
 
 // withCORS wraps a handler to emit CORS headers on every response
@@ -240,39 +294,40 @@ func main() {
 	http.HandleFunc("/api/circuit/status", circuitStatusHandler)
 
 	// ── Reverse proxy routes: 22 canonical + 5 role-based aliases = 27 total ──
-	// Each route forwards the full path unchanged to the target backend.
-	// Backends must be reachable at resolveBackend(name, port).
+	// Each route is guarded by newCBProxy (circuit breaker + 5 s context timeout).
+	// Role aliases share CB state with their canonical counterpart because
+	// getOrCreateCB returns the same instance for the same service-name key.
 	// Set SVC_<UPPER_SNAKE> env vars for Docker Compose internal DNS resolution.
 	//
 	// Canonical routes (one per language service)
-	http.Handle("/api/python/", withCORS(newReverseProxy(resolveBackend("python-brain", portPythonBrain))))
-	http.Handle("/api/rust/", withCORS(newReverseProxy(resolveBackend("rust-pipeline", portRustPipeline))))
-	http.Handle("/api/julia/", withCORS(newReverseProxy(resolveBackend("julia-engine", portJuliaEngine))))
-	http.Handle("/api/r/", withCORS(newReverseProxy(resolveBackend("r-stats", portRStats))))
-	http.Handle("/api/fsharp/", withCORS(newReverseProxy(resolveBackend("fsharp-pricer", portFSharpPricer))))
-	http.Handle("/api/ocaml/", withCORS(newReverseProxy(resolveBackend("ocaml-risk", portOCamlRisk))))
-	http.Handle("/api/crystal/", withCORS(newReverseProxy(resolveBackend("crystal-gateway", portCrystalGateway))))
-	http.Handle("/api/nim/", withCORS(newReverseProxy(resolveBackend("nim-analytics", portNimAnalytics))))
-	http.Handle("/api/scala/", withCORS(newReverseProxy(resolveBackend("scala-streamer", portScalaStreamer))))
-	http.Handle("/api/haskell/", withCORS(newReverseProxy(resolveBackend("haskell-pricer", portHaskellPricer))))
-	http.Handle("/api/ruby/", withCORS(newReverseProxy(resolveBackend("ruby-scorer", portRubyScorer))))
-	http.Handle("/api/dart/", withCORS(newReverseProxy(resolveBackend("dart-engine", portDartEngine))))
-	http.Handle("/api/gleam/", withCORS(newReverseProxy(resolveBackend("gleam-hub", portGleamHub))))
-	http.Handle("/api/v/", withCORS(newReverseProxy(resolveBackend("v-quant", portVQuant))))
-	http.Handle("/api/erlang/", withCORS(newReverseProxy(resolveBackend("erlang-hot", portErlangHot))))
-	http.Handle("/api/elixir/", withCORS(newReverseProxy(resolveBackend("elixir-hub", portElixirHub))))
-	http.Handle("/api/clojure/", withCORS(newReverseProxy(resolveBackend("clojure-stm", portClojureSTM))))
-	http.Handle("/api/java/", withCORS(newReverseProxy(resolveBackend("java-loom", portJavaLoom))))
-	http.Handle("/api/prolog/", withCORS(newReverseProxy(resolveBackend("prolog-solver", portPrologSolver))))
-	http.Handle("/api/lua/", withCORS(newReverseProxy(resolveBackend("lua-stream", portLuaStream))))
-	http.Handle("/api/swift/", withCORS(newReverseProxy(resolveBackend("swift-actor", portSwiftActor))))
-	http.Handle("/api/kotlin/", withCORS(newReverseProxy(resolveBackend("kotlin-scheduler", portKotlinScheduler))))
-	// Role-based aliases: 5 unambiguous functional namespaces from the architecture doc
-	http.Handle("/api/risk/", withCORS(newReverseProxy(resolveBackend("ocaml-risk", portOCamlRisk))))                  // risk-ocaml
-	http.Handle("/api/pricer/", withCORS(newReverseProxy(resolveBackend("fsharp-pricer", portFSharpPricer))))          // pricer-fsharp
-	http.Handle("/api/analytics/", withCORS(newReverseProxy(resolveBackend("nim-analytics", portNimAnalytics))))       // analytics-nim
-	http.Handle("/api/ledger/", withCORS(newReverseProxy(resolveBackend("clojure-stm", portClojureSTM))))              // ledger-clojure
-	http.Handle("/api/scheduler/", withCORS(newReverseProxy(resolveBackend("kotlin-scheduler", portKotlinScheduler)))) // scheduler-kotlin
+	http.Handle("/api/python/", withCORS(newCBProxy("python-brain", resolveBackend("python-brain", portPythonBrain))))
+	http.Handle("/api/rust/", withCORS(newCBProxy("rust-pipeline", resolveBackend("rust-pipeline", portRustPipeline))))
+	http.Handle("/api/julia/", withCORS(newCBProxy("julia-engine", resolveBackend("julia-engine", portJuliaEngine))))
+	http.Handle("/api/r/", withCORS(newCBProxy("r-stats", resolveBackend("r-stats", portRStats))))
+	http.Handle("/api/fsharp/", withCORS(newCBProxy("fsharp-pricer", resolveBackend("fsharp-pricer", portFSharpPricer))))
+	http.Handle("/api/ocaml/", withCORS(newCBProxy("ocaml-risk", resolveBackend("ocaml-risk", portOCamlRisk))))
+	http.Handle("/api/crystal/", withCORS(newCBProxy("crystal-gateway", resolveBackend("crystal-gateway", portCrystalGateway))))
+	http.Handle("/api/nim/", withCORS(newCBProxy("nim-analytics", resolveBackend("nim-analytics", portNimAnalytics))))
+	http.Handle("/api/scala/", withCORS(newCBProxy("scala-streamer", resolveBackend("scala-streamer", portScalaStreamer))))
+	http.Handle("/api/haskell/", withCORS(newCBProxy("haskell-pricer", resolveBackend("haskell-pricer", portHaskellPricer))))
+	http.Handle("/api/ruby/", withCORS(newCBProxy("ruby-scorer", resolveBackend("ruby-scorer", portRubyScorer))))
+	http.Handle("/api/dart/", withCORS(newCBProxy("dart-engine", resolveBackend("dart-engine", portDartEngine))))
+	http.Handle("/api/gleam/", withCORS(newCBProxy("gleam-hub", resolveBackend("gleam-hub", portGleamHub))))
+	http.Handle("/api/v/", withCORS(newCBProxy("v-quant", resolveBackend("v-quant", portVQuant))))
+	http.Handle("/api/erlang/", withCORS(newCBProxy("erlang-hot", resolveBackend("erlang-hot", portErlangHot))))
+	http.Handle("/api/elixir/", withCORS(newCBProxy("elixir-hub", resolveBackend("elixir-hub", portElixirHub))))
+	http.Handle("/api/clojure/", withCORS(newCBProxy("clojure-stm", resolveBackend("clojure-stm", portClojureSTM))))
+	http.Handle("/api/java/", withCORS(newCBProxy("java-loom", resolveBackend("java-loom", portJavaLoom))))
+	http.Handle("/api/prolog/", withCORS(newCBProxy("prolog-solver", resolveBackend("prolog-solver", portPrologSolver))))
+	http.Handle("/api/lua/", withCORS(newCBProxy("lua-stream", resolveBackend("lua-stream", portLuaStream))))
+	http.Handle("/api/swift/", withCORS(newCBProxy("swift-actor", resolveBackend("swift-actor", portSwiftActor))))
+	http.Handle("/api/kotlin/", withCORS(newCBProxy("kotlin-scheduler", resolveBackend("kotlin-scheduler", portKotlinScheduler))))
+	// Role-based aliases (share CB state with canonical routes via same service-name key)
+	http.Handle("/api/risk/", withCORS(newCBProxy("ocaml-risk", resolveBackend("ocaml-risk", portOCamlRisk))))
+	http.Handle("/api/pricer/", withCORS(newCBProxy("fsharp-pricer", resolveBackend("fsharp-pricer", portFSharpPricer))))
+	http.Handle("/api/analytics/", withCORS(newCBProxy("nim-analytics", resolveBackend("nim-analytics", portNimAnalytics))))
+	http.Handle("/api/ledger/", withCORS(newCBProxy("clojure-stm", resolveBackend("clojure-stm", portClojureSTM))))
+	http.Handle("/api/scheduler/", withCORS(newCBProxy("kotlin-scheduler", resolveBackend("kotlin-scheduler", portKotlinScheduler))))
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

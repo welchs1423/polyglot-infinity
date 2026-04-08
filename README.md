@@ -155,14 +155,14 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ### 2026-04-08
 
-**Elixir WebSocket 확장** (`hub-elixir`)
-- `lib/hub_elixir/websocket/registry.ex` — Elixir 내장 `Registry` `:duplicate` 모드로 모든 Cowboy WS 핸들러 프로세스 추적; 프로세스 종료 시 자동 해제
-- `lib/hub_elixir/websocket/handler.ex` — Cowboy 2.14 `:cowboy_websocket` 비헤이비어; 클라이언트별 독립 BEAM 프로세스 (`init` → `websocket_init` → `websocket_handle` → `websocket_info` → `terminate`); 접속 직후 최신 스냅숏 push; `ping`/`pong` 양방향 JSON 프레임 처리
-- `lib/hub_elixir/websocket/broadcaster.ex` — JSON 인코딩 후 `Registry.dispatch`로 전체 클라이언트에 전파
-- `lib/hub_elixir/redis_subscriber.ex` — `Redix.PubSub` 전용 커넥션으로 `polyglot:events` 구독; 수신 이벤트를 Phoenix PubSub(port 4000)과 `Broadcaster`(port 4001) 두 경로로 동시 방송; 지수 백오프 재연결 (5 s base → 30 s max)
-- `lib/hub_elixir/poller.ex` — 10 s 주기 스냅숏 브로드캐스트도 동일하게 양쪽 경로로 전파
-- `lib/hub_elixir/application.ex` — Supervisor 기동 후 `:cowboy.start_clear/3`로 Cowboy WS 리스너(port 4001) 시작; `Registry`를 첫 번째 child로 등록
-- `mix.exs` — `plug_cowboy` `optional: true` 제거
+**Elixir WebSocket Extension** (`hub-elixir`)
+- `lib/hub_elixir/websocket/registry.ex` — Tracks all Cowboy WS handler processes using Elixir's built-in `Registry` in `:duplicate` mode; auto-cleaned on process exit
+- `lib/hub_elixir/websocket/handler.ex` — Cowboy 2.14 `:cowboy_websocket` behavior; independent BEAM process per client (`init` → `websocket_init` → `websocket_handle` → `websocket_info` → `terminate`); pushes latest snapshot on connect; handles bidirectional `ping`/`pong` JSON frames
+- `lib/hub_elixir/websocket/broadcaster.ex` — JSON-encodes and fans out to all clients via `Registry.dispatch`
+- `lib/hub_elixir/redis_subscriber.ex` — Subscribes to `polyglot:events` via dedicated `Redix.PubSub` connection; broadcasts received events to both Phoenix PubSub (port 4000) and `Broadcaster` (port 4001) simultaneously; exponential backoff reconnect (5s base → 30s max)
+- `lib/hub_elixir/poller.ex` — 10s periodic snapshot broadcast propagated to both channels as well
+- `lib/hub_elixir/application.ex` — Starts Cowboy WS listener (port 4001) via `:cowboy.start_clear/3` after Supervisor boot; `Registry` registered as first child
+- `mix.exs` — Removed `optional: true` from `plug_cowboy`
 
 **Rust × C++ FFI pipeline** (`core-cpp` / `pipeline-rust`)
 - `core-cpp/src/matrix.cpp` — 4 new functions: `cholesky_decompose` (Cholesky-Banachiewicz O(n³/3), returns -1 on non-PD), `mat_vec_mul` (y=A·x zero-copy), `portfolio_variance` (v=wᵀΣw, internal tmp malloc/free), `mat_frobenius_norm` (‖A‖_F single-pass)
@@ -188,14 +188,14 @@ CREATE TABLE IF NOT EXISTS orders (
 - `dune`/`dune-project` — Dune 3.0 build config added
 
 **Java 21 Loom** (`loom-java`)
-- `VirtualServer.java` — `DbStore` 내부 클래스 추가: HikariCP 5.1 커넥션 풀 초기화 (`maximumPoolSize=20`, `connectionTimeout=3s`, `autoCommit=true`) · 환경변수 `DB_URL` / `DB_USER` / `DB_PASSWORD` 지원 (기본값 PostgreSQL `localhost:5432/orders`)
-- PostgreSQL: `INSERT INTO orders ... ON CONFLICT (id) DO UPDATE SET status, updated_at` (단일 문, 행 단위 락)
-- Oracle: `MERGE INTO orders USING DUAL` (단일 문, 행 단위 락); `ORA-00955` 무시 방식 테이블 자동 생성
-- DB 쓰기는 `ReentrantLock` 해제 후 스냅샷으로 수행 → 락 보유 시간 최소화
-- DB 비가용 시 서버가 인메모리 전용 모드로 폴백하여 정상 기동 유지
-- `GET /api/java/status` — `db_connected`, `db_url`, `redis_connected` 필드 추가
-- `build.sh` — Maven Central에서 `HikariCP-5.1.0.jar`, `slf4j-api-2.0.12.jar`, `slf4j-nop-2.0.12.jar`, `postgresql-42.7.3.jar` 신규 다운로드; 컴파일 후 `.classpath` 파일 생성
-- `run.sh` — `.classpath` 파일 읽어 런타임 클래스패스 구성
+- `VirtualServer.java` — Added `DbStore` inner class: HikariCP 5.1 connection pool init (`maximumPoolSize=20`, `connectionTimeout=3s`, `autoCommit=true`); supports env vars `DB_URL` / `DB_USER` / `DB_PASSWORD` (default: PostgreSQL `localhost:5432/orders`)
+- PostgreSQL: `INSERT INTO orders ... ON CONFLICT (id) DO UPDATE SET status, updated_at` (single statement, row-level lock)
+- Oracle: `MERGE INTO orders USING DUAL` (single statement, row-level lock); auto table creation ignoring `ORA-00955`
+- DB writes performed as a snapshot after releasing `ReentrantLock` — minimizes lock hold time
+- On DB unavailability, server falls back to in-memory-only mode and continues normal operation
+- `GET /api/java/status` — Added `db_connected`, `db_url`, `redis_connected` fields
+- `build.sh` — Downloads `HikariCP-5.1.0.jar`, `slf4j-api-2.0.12.jar`, `slf4j-nop-2.0.12.jar`, `postgresql-42.7.3.jar` from Maven Central; generates `.classpath` file after compilation
+- `run.sh` — Reads `.classpath` file to construct runtime classpath
 
 **Go reverse proxy** (`server-go`)
 - `main.go` — 22 canonical language routes + 5 role aliases (27 total) registered as `httputil.ReverseProxy`

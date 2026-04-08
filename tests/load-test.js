@@ -399,7 +399,7 @@ function scenarioCrystalPortfolio() {
     );
     check(res, {
         "crystal portfolio 200": (r) => r.status === 200,
-        "has sharpe": (r) => r.status === 200 && r.json("sharpe") !== undefined,
+        "has sharpe_ratio": (r) => r.status === 200 && r.json("sharpe_ratio") !== undefined,
     });
     errorRate.add(res.status >= 400);
 }
@@ -414,7 +414,7 @@ function scenarioScalaAggregate() {
     );
     check(res, {
         "scala aggregate 200": (r) => r.status === 200,
-        "has total_events": (r) => r.status === 200 && r.json("total_events") !== undefined,
+        "has n": (r) => r.status === 200 && r.json("n") !== undefined,
     });
     errorRate.add(res.status >= 400);
 }
@@ -430,7 +430,7 @@ function scenarioRubyScore() {
     );
     check(res, {
         "ruby score 200": (r) => r.status === 200,
-        "has credit_score": (r) => r.status === 200 && r.json("credit_score") !== undefined,
+        "has score": (r) => r.status === 200 && r.json("score") !== undefined,
     });
     errorRate.add(res.status >= 400);
 }
@@ -446,7 +446,7 @@ function scenarioDartBond() {
     );
     check(res, {
         "dart bond 200": (r) => r.status === 200,
-        "has duration": (r) => r.status === 200 && r.json("duration") !== undefined,
+        "has macaulay_duration": (r) => r.status === 200 && r.json("macaulay_duration") !== undefined,
     });
     errorRate.add(res.status >= 400);
 }
@@ -472,7 +472,7 @@ function scenarioVBacktest() {
     );
     check(res, {
         "v backtest 200": (r) => r.status === 200,
-        "has total_trades": (r) => r.status === 200 && r.json("total_trades") !== undefined,
+        "has trades": (r) => r.status === 200 && r.json("trades") !== undefined,
     });
     errorRate.add(res.status >= 400);
 }

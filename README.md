@@ -182,6 +182,19 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-09 (3)
+
+**k6 load test — JSON field name corrections** (`tests/load-test.js`)
+
+- `scenarioCrystalPortfolio` — check key changed from `sharpe` to `sharpe_ratio`; `gateway-crystal/server.cr` `build_portfolio_json()` serializes `"sharpe_ratio":` not `"sharpe"`
+- `scenarioRubyScore` — check key changed from `credit_score` to `score`; `scorer-ruby/server.rb` `credit_score()` returns `{ score:, grade:, pd: }` hash; the outer `score` key holds the integer value
+- `scenarioDartBond` — check key changed from `duration` to `macaulay_duration`; `engine-dart/bin/server.dart` `handleBond()` returns `'macaulay_duration'` (Macaulay duration in years)
+- `scenarioVBacktest` — check key changed from `total_trades` to `trades`; `quant-v/server.v` `handle_backtest()` JSON literal uses `"trades":${r.trades}`
+- `scenarioScalaAggregate` — check key changed from `total_events` to `n`; `streamer-scala/server.scala` `aggJson()` template uses `"n":${xs.size}`
+- `scenarioRStats` — `sharpe_ratio` unchanged; `engine-r/server.R` `/api/r/fit` already returns `sharpe_ratio =` in the response list
+
+---
+
 ### 2026-04-09 (2)
 
 **Java Loom — PostgreSQL-only persistence: full JDBC rewrite** (`loom-java`)

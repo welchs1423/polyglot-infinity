@@ -79,7 +79,7 @@ services:
     volumes:
       - ./apm-server:/app:ro
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:9009/health || exit 1" ]
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:9009/health || exit 1" ]
       interval: 5s
       timeout: 3s
       retries: 10

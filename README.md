@@ -216,6 +216,16 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-09 (7)
+
+**apm-server — fix unhealthy container (IPv6 localhost resolution)** (`docker-compose.yml`, `apm-server/server.js`)
+
+- Root cause: the `node:22-alpine` container's `/etc/hosts` maps `localhost` to `::1` (IPv6 only); there is no `127.0.0.1 localhost` entry. The server was bound to `0.0.0.0` (IPv4), so every `wget localhost:9009/health` inside the healthcheck resolved `::1` and received "Connection refused", driving the container into `unhealthy`.
+- `docker-compose.yml` — `apm-server` healthcheck target changed from `http://localhost:9009/health` to `http://127.0.0.1:9009/health`; avoids `/etc/hosts` hostname resolution entirely.
+- `apm-server/server.js` — `server.listen` bind address changed from `'0.0.0.0'` to `'::'` (IPv6 dual-stack); on Linux this accepts connections on both `0.0.0.0` and `::1`, so the server is reachable regardless of whether the caller uses IPv4 or IPv6.
+
+---
+
 ### 2026-04-09 (6)
 
 **Java Loom — Saga Pattern (two-phase compensating transaction)** (`loom-java/VirtualServer.java`)

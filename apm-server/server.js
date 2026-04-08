@@ -191,7 +191,7 @@ async function handleRequest(req, res) {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-server.listen(PORT, '0.0.0.0', function () {
+server.listen(PORT, '::', function () {
     process.stdout.write('[apm-server] listening on :' + PORT + '\n');
     process.stdout.write('[apm-server] POST /ingest  — batch metric ingest\n');
     process.stdout.write('[apm-server] GET  /metrics — aggregated stats\n');

@@ -71,3 +71,6 @@ wasm-zig/.zig-cache/
 loom-java/out/
 loom-java/.classpath
 changes.txt
+
+# Java compiled output
+*.class

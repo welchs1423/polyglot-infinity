@@ -1,17 +1,22 @@
-# Polyglot Infinity — 27-Language Microservices Platform
+# Polyglot Infinity — 28-Service Polyglot Platform
+# 26 language backends + 2 frontends (Svelte portal, Elm order terminal)
 # Usage: docker compose up -d
-# Prerequisites: Docker 24+, 16GB RAM recommended
+# Prerequisites: Docker 24+, 16 GB RAM recommended
 #
-# Service port map:
-#   8080 Go-Hub         8000 Python-Brain   8081 Rust-Pipeline
-#   8002 Julia-Engine   8003 R-Stats        9001 FSharp-Pricer
-#   8004 OCaml-Risk     9002 Crystal-GW     8005 Nim-Analytics
-#   9003 Scala-Stream   8006 Haskell-Pricer 9004 Ruby-Scorer
-#   9005 Dart-Engine    8007 Lua-Stream     8008 Swift-Actor
-#   8009 Clojure-STM    8010 Java-Loom      8011 Prolog-Solver
-#   4000 Elixir-Hub     4001 Gleam-Hub      4002 V-Quant
-#   4003 Erlang-Hot     9000 Kotlin-Sched   5173 Svelte-Portal
-#   8012 Cpp-Core       8013 Zig-Core       8014 Wasm-Zig (nginx:80)
+# Service port map (matches portal-svelte SERVICES registry exactly):
+#   8080 go-hub           8000 python-brain    8081 rust-pipeline
+#   8002 julia-engine     8003 r-stats         9001 fsharp-pricer
+#   8004 ocaml-risk       9002 crystal-gateway 8005 nim-analytics
+#   9003 scala-streamer   8006 haskell-pricer  9004 ruby-scorer
+#   9005 dart-engine      8007 lua-stream      8008 swift-actor
+#   8009 clojure-stm      8010 java-loom       8011 prolog-solver
+#   4000 elixir-hub       4001 gleam-hub       4002 v-quant
+#   4003 erlang-hot       9000 kotlin-scheduler
+#   8012 cpp-core         8013 zig-core        8014 wasm-zig (nginx:80)
+#   5173 svelte-portal    5174 terminal-elm    (nginx:80)
+#
+# Infrastructure (not exposed externally):
+#   5432 postgres         6379 redis
 #
 # Network: all containers share the "polyglot" bridge network.
 # Inter-service calls: http://<service-name>:<internal-port>/...

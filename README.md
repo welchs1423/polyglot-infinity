@@ -155,9 +155,48 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ---
 
+## CI/CD
+
+### GitHub Actions — `.github/workflows/main.yml`
+
+Triggered on every push to the `main` branch. The pipeline consists of two jobs.
+
+**Job 1: `build-verify`** (required)
+
+| Step | Action |
+|:---|:---|
+| Disk cleanup | Removes `/usr/share/dotnet`, Android SDK, GHC, CodeQL to reclaim several GB on the runner |
+| `docker compose config` | Validates YAML schema before any image pull |
+| BuildKit layer cache | `actions/cache@v4` persists `/tmp/.buildx-cache` across runs |
+| `docker compose build --parallel` | Parallel build of the 6 Dockerfile-based services: `go-hub`, `python-brain`, `rust-pipeline`, `cpp-core`, `zig-core`, `terminal-elm` |
+| `docker compose pull --ignore-buildable` | Pulls registry images for the remaining 22 application + 2 infrastructure services |
+| `docker compose up --no-start` | Creates all containers without starting them; fails immediately if any image cannot be resolved |
+| Container count check | Counts lines from `docker compose ps -a --quiet`; exits with code 1 if count is below 28 |
+
+**Job 2: `load-test`** (optional, `needs: build-verify`)
+
+Starts only the three core backends (postgres, redis, go-hub, python-brain, rust-pipeline) to stay within runner memory limits.
+
+| Step | Action |
+|:---|:---|
+| Health wait loop | `pg_isready`, `redis-cli ping`, and `curl /health` loops with `timeout 120` each |
+| k6 installation | Official Grafana APT repository |
+| Smoke test script | 10 VUs for 30 seconds, round-robin across`:8080/health`, `:8000/health`, `:8081/health` |
+| Background execution | `k6 run ... &` — container logs streamed in parallel; `wait $K6_PID` collects exit code |
+| Thresholds | `http_req_failed < 5%`, `p(95) < 2000 ms` |
+| Artifact upload | `k6-results-run-N.json` uploaded via `actions/upload-artifact@v4` (`if: always()`) |
+
+---
+
 ## Changelog
 
-### 2026-04-08 (5)
+### 2026-04-08
+
+**GitHub Actions CI/CD pipeline** (`.github/workflows/main.yml`)
+
+- Trigger: push to `main` branch
+- Job `build-verify`: validates compose config, builds 6 Dockerfile services in parallel, pulls 22 remaining images, instantiates all containers (`--no-start`), and asserts container count >= 28
+- Job `load-test` (optional, `needs: build-verify`): starts core 3 backends, runs k6 smoke test (10 VU / 30 s, thresholds `http_req_failed < 5%` and `p(95) < 2000 ms`), uploads raw JSON results as a workflow artifact
 
 **Java Loom — HikariCP JDBC persistence** (`loom-java`)
 
@@ -172,8 +211,6 @@ CREATE TABLE IF NOT EXISTS orders (
 - `main()` — initialized `DbStore` from env vars `DB_URL` / `DB_USER` / `DB_PASSWORD` before JedisPool init; JVM shutdown hook calls `dbStore.close()`
 - `GET /api/java/status` — added `db_connected` (bool) and `db_url` (string) fields
 - `docker-compose.yml` — `java-loom`: added `DB_URL`, `DB_USER`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT` env vars; added `depends_on: postgres (service_healthy), redis (service_healthy)`; volume changed from `:ro` to writable (run.sh writes `.classpath`)
-
-### 2026-04-08 (4)
 
 **Elm Order Terminal — micro-frontend** (`terminal-elm`)
 
@@ -194,7 +231,6 @@ CREATE TABLE IF NOT EXISTS orders (
 - `terminal-elm/build.sh` — `elm make src/Main.elm --output=elm.js --optimize`
 - `docker-compose.yml` — `terminal-elm` service added (port `5174:80`); multi-stage build: `node:22-alpine` compiles Elm, `nginx:1.27-alpine` serves static assets; no Node.js or JVM in runtime image
 
-### 2026-04-08 (3)
 
 **Svelte Portal — Health-check Dashboard Grid** (`portal-svelte`)
 
@@ -217,8 +253,6 @@ CREATE TABLE IF NOT EXISTS orders (
   - Status dot: green pulse when online, amber blink when loading, red when offline
   - Result line: monospace, single-line, ellipsis overflow; shows `"checking…"` / `"—"` placeholders
   - Single scoped `<style>` block (dark theme, no external dependencies)
-
-### 2026-04-08 (2)
 
 **Rust Pipeline Docker build fix** (`pipeline-rust`)
 - `pipeline-rust/Dockerfile` — Added `g++` to builder `apk` installs; switched all `COPY` paths to repo-root-relative (`pipeline-rust/...`, `core-cpp/src`) so `build.rs` can compile `matrix.cpp` into `libcppmatrix.a` during the image build

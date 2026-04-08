@@ -155,9 +155,40 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ---
 
+## CI / CD
+
+| Item | Value |
+|:---|:---|
+| Workflow file | `.github/workflows/main.yml` |
+| Trigger | `push` to `main`, `pull_request` targeting `main` |
+| Runner | `ubuntu-latest` |
+| Job | `build` (single job, `timeout-minutes: 90`) |
+
+**Steps executed on every run**
+
+1. `actions/checkout@v4` — full repository checkout.
+2. Free runner disk space — removes `/usr/share/dotnet`, Android SDK, GHC, CodeQL toolchains; prunes stale Docker images.
+3. `docker/setup-buildx-action@v3` — enables Buildx (required for `dockerfile_inline` in `cpp-core` and `zig-core`).
+4. `docker compose config --quiet` — validates `docker-compose.yml` syntax and schema before any build attempt.
+5. `actions/cache@v4` — restores BuildKit layer cache keyed on commit SHA.
+6. `docker compose build --parallel` — builds the 6 services with explicit Dockerfiles: `go-hub`, `python-brain`, `rust-pipeline`, `cpp-core`, `zig-core`, `terminal-elm`.
+7. `docker compose pull --ignore-buildable` — pulls registry images for the remaining 22 application services and 3 infrastructure services.
+8. `docker compose up --no-start` — creates all containers without starting them; fails if any image cannot be resolved.
+9. Container count assertion — `docker compose ps -a --quiet | grep -c .` must be >= 28; exits 1 otherwise.
+10. `docker compose down --remove-orphans` — cleanup (always runs).
+
+---
+
 ## Changelog
 
 ### 2026-04-09
+
+**GitHub Actions CI pipeline** (`.github/workflows/main.yml`)
+
+- Rewrote workflow: single `build` job triggering on `push` and `pull_request` to `main`
+- Removed the previous k6 `load-test` job (separate concern from build verification)
+- Build step explicitly names the 6 Dockerfile-based services; `--ignore-buildable` separates image pull from custom builds
+- Container count gate (>= 28) provides a quantitative build-success signal
 
 **Go Gateway — Circuit Breaker hardening** (`server-go`)
 

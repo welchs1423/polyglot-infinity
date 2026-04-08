@@ -33,7 +33,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
-| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool — publishes `{order_id, event, prev_status, new_status, timestamp}` JSON on every successful state transition) · Virtual vs Platform Thread benchmark |
+| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **HikariCP JDBC persistence** (PostgreSQL `INSERT ON CONFLICT` / Oracle `MERGE INTO DUAL`, `autoCommit=true`, pool 20, row-level lock only) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool) · Virtual vs Platform Thread benchmark |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
@@ -139,6 +139,14 @@ CREATE TABLE risk_reports (
     id SERIAL PRIMARY KEY, generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     avg_risk_score FLOAT, total_records INT, max_risk_score FLOAT, min_risk_score FLOAT
 );
+
+-- orders (Java Loom · postgres :5432, auto-created on startup)
+CREATE TABLE IF NOT EXISTS orders (
+    id         VARCHAR(255) PRIMARY KEY,
+    status     VARCHAR(32)  NOT NULL,
+    created_at BIGINT       NOT NULL,
+    updated_at BIGINT       NOT NULL
+);
 ```
 
 ---
@@ -180,15 +188,14 @@ CREATE TABLE risk_reports (
 - `dune`/`dune-project` — Dune 3.0 build config added
 
 **Java 21 Loom** (`loom-java`)
-- `VirtualServer.java` full rewrite
-- `OrderStatus` enum state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`)
-- `OrderEvent`-based transition validation
-- `LinkedBlockingQueue` + 16 Virtual Thread workers for async event processing
-- `ReentrantLock` to prevent Virtual Thread pinning
-- Virtual vs Platform Thread benchmark
-- REST endpoints: `POST/PUT/GET /api/java/order`, `GET /api/java/benchmark`
-- **Redis Pub/Sub** — Jedis 5 `JedisPool` (`libs/jedis-5.2.0.jar` + `commons-pool2`) · 상태 전이 성공 직후 `order-events` 채널로 `{order_id, event, prev_status, new_status, channel, timestamp}` JSON 발행 · `REDIS_HOST`/`REDIS_PORT` 환경변수 지원 · Redis 비가용 시 서버 정상 기동 유지
-- `build.sh` / `run.sh` — `-cp libs/` 클래스패스 추가
+- `VirtualServer.java` — `DbStore` 내부 클래스 추가: HikariCP 5.1 커넥션 풀 초기화 (`maximumPoolSize=20`, `connectionTimeout=3s`, `autoCommit=true`) · 환경변수 `DB_URL` / `DB_USER` / `DB_PASSWORD` 지원 (기본값 PostgreSQL `localhost:5432/orders`)
+- PostgreSQL: `INSERT INTO orders ... ON CONFLICT (id) DO UPDATE SET status, updated_at` (단일 문, 행 단위 락)
+- Oracle: `MERGE INTO orders USING DUAL` (단일 문, 행 단위 락); `ORA-00955` 무시 방식 테이블 자동 생성
+- DB 쓰기는 `ReentrantLock` 해제 후 스냅샷으로 수행 → 락 보유 시간 최소화
+- DB 비가용 시 서버가 인메모리 전용 모드로 폴백하여 정상 기동 유지
+- `GET /api/java/status` — `db_connected`, `db_url`, `redis_connected` 필드 추가
+- `build.sh` — Maven Central에서 `HikariCP-5.1.0.jar`, `slf4j-api-2.0.12.jar`, `slf4j-nop-2.0.12.jar`, `postgresql-42.7.3.jar` 신규 다운로드; 컴파일 후 `.classpath` 파일 생성
+- `run.sh` — `.classpath` 파일 읽어 런타임 클래스패스 구성
 
 **Go reverse proxy** (`server-go`)
 - `main.go` — 22 canonical language routes + 5 role aliases (27 total) registered as `httputil.ReverseProxy`

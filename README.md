@@ -34,7 +34,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
-| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **HikariCP JDBC persistence** (PostgreSQL `INSERT ON CONFLICT` / Oracle `MERGE INTO DUAL`, `autoCommit=true`, pool 20, row-level lock only) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool) · Virtual vs Platform Thread benchmark |
+| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **HikariCP JDBC persistence** (PostgreSQL `INSERT ON CONFLICT DO NOTHING` + `UPDATE`, `autoCommit=true`, pool 20) · `DbStore` inner class — `initSchema` / `insertOrder` / `updateOrder` via pure JDBC · DB write inside Virtual Thread (blocking JDBC acceptable; OS thread yielded) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool) · Virtual vs Platform Thread benchmark |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
@@ -156,6 +156,22 @@ CREATE TABLE IF NOT EXISTS orders (
 ---
 
 ## Changelog
+
+### 2026-04-08 (5)
+
+**Java Loom — HikariCP JDBC persistence** (`loom-java`)
+
+- `VirtualServer.java` — Added `DbStore` inner class (pure JDBC, no ORM)
+  - `HikariDataSource` pool: `maximumPoolSize=20`, `minimumIdle=2`, `connectionTimeout=3s`, `autoCommit=true`
+  - `initSchema()`: `CREATE TABLE IF NOT EXISTS orders (id VARCHAR(255) PRIMARY KEY, status VARCHAR(32) NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL)` — called once at startup
+  - `insertOrder(id, status, createdAt)`: `INSERT ... ON CONFLICT (id) DO NOTHING` — idempotent, called in `POST /api/java/order` handler inside Virtual Thread
+  - `updateOrder(id, status, updatedAt)`: `UPDATE orders SET status, updated_at WHERE id` — called in event worker after every successful state transition inside Virtual Thread
+  - Blocking JDBC is used directly inside Virtual Thread; JVM scheduler yields the carrier OS thread during socket I/O wait, so throughput is not degraded
+  - DB unavailability (no `DB_URL` env var, or connection failure) causes graceful fallback to in-memory-only mode; state management continues normally
+  - `isRunning()` / `close()` guarded by null check on every call path
+- `main()` — initialized `DbStore` from env vars `DB_URL` / `DB_USER` / `DB_PASSWORD` before JedisPool init; JVM shutdown hook calls `dbStore.close()`
+- `GET /api/java/status` — added `db_connected` (bool) and `db_url` (string) fields
+- `docker-compose.yml` — `java-loom`: added `DB_URL`, `DB_USER`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT` env vars; added `depends_on: postgres (service_healthy), redis (service_healthy)`; volume changed from `:ro` to writable (run.sh writes `.classpath`)
 
 ### 2026-04-08 (4)
 

@@ -54,7 +54,9 @@ CP="${CP}:${LIB_DIR}/jedis-${JEDIS_VER}.jar"
 CP="${CP}:${LIB_DIR}/commons-pool2-${POOL_VER}.jar"
 
 echo "Compiling Java 21 Virtual Thread Server..."
-javac -cp "$CP" "$SCRIPT_DIR/VirtualServer.java" -d "$SCRIPT_DIR/out"
+# Compile all .java files in the directory so that ApmCollector.java and any
+# future additions are included in the same compilation unit.
+javac -cp "$CP" "$SCRIPT_DIR"/*.java -d "$SCRIPT_DIR/out"
 echo "Build complete"
 
 # 런타임 실행 시 동일한 클래스패스를 참조할 수 있도록 .classpath 파일에 기록한다.

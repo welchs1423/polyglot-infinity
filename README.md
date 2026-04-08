@@ -218,6 +218,32 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ### 2026-04-09
 
+**Custom APM infrastructure** (`apm-server/`, `loom-java/`, `server-go/`)
+
+- `apm-server/server.js` — New lightweight Node.js (`node:22-alpine`) APM ingestion server on port 9009; zero external dependencies
+  - `POST /ingest` — accepts JSON array of `TransactionMetric`, appends to a 100 000-entry circular buffer (oldest evicted on overflow); returns `{ accepted, total }` 202
+  - `GET /metrics?limit=N` — per-service p50/p95/p99/avg/max computed from in-memory array at read time; includes `N` most recent raw events (capped 1–1000)
+  - `GET /health` — liveness probe consumed by Docker Compose `healthcheck` (`wget -qO-`)
+- `loom-java/ApmCollector.java` — New non-blocking APM collector class; business logic path never blocked
+  - `ConcurrentLinkedQueue<TransactionMetric>` (Michael-Scott wait-free offer) as producer queue
+  - Single `apm-drain` virtual thread drains up to 200 events every 500 ms via `java.net.http.HttpClient` POST
+  - `MAX_QUEUE_SIZE = 10 000`: silent drop on overflow (APM observability is subordinate to throughput)
+  - `record()` returns in constant time; no lock, no park, no syscall on the hot path
+- `loom-java/VirtualServer.java` — Integrated `ApmCollector` into the HTTP handler
+  - `main()` calls `ApmCollector.init(System.getenv("APM_URL"))` at startup
+  - Handler entry: `t0 = currentTimeMillis()`, `X-Correlation-Id` header extracted (or UUID v4 generated), header echoed on response
+  - Per-branch `long dbStart` + `queryMs[0]` measures JDBC-only time for status/order/orders endpoints
+  - `finally` block: `Thread.ofVirtual().start(() -> ApmCollector.record(...))` — fire-and-forget so response I/O is fully decoupled from metric enqueue
+- `loom-java/build.sh` — `javac` target changed from single-file to glob (`*.java`) to include `ApmCollector.java`
+- `server-go/main.go` — APM instrumentation at the gateway level
+  - `newCorrelationID()` — UUID v4 from `crypto/rand`; nanosecond fallback if entropy source fails
+  - `withAPM(h http.Handler) http.Handler` — middleware: reads/generates `X-Correlation-Id`, sets it on the forwarded request (ReverseProxy propagates downstream) and on the response; enqueues `apmEvent` via non-blocking `select` (8 192-slot buffered channel)
+  - `startAPMDrainer()` — single background goroutine; 500 ms `time.Ticker` + 100-event flush threshold; separate `http.Client` (3 s timeout); APM server errors silently discarded
+  - `http.ListenAndServe` wrapped: `withAPM(http.DefaultServeMux)` so all 27 proxy routes and 11 native handlers are instrumented uniformly
+- `docker-compose.yml`
+  - `apm-server` service added (`node:22-alpine`, port 9009, `healthcheck` via `wget`)
+  - `go-hub` and `java-loom` gain `APM_URL: http://apm-server:9009/ingest` env var and `apm-server: { condition: service_healthy }` `depends_on` entry
+
 **Event-Driven WebSocket pipeline — real-time order feed** (`server-go`, `loom-java`, `portal-svelte`)
 
 Data flow: `Java Loom POST/PUT → Redis Pub/Sub (order-events) → Go WS Hub → WebSocket → Svelte`

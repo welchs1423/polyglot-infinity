@@ -66,6 +66,25 @@ services:
       retries: 10
     networks: [ polyglot ]
 
+  # ── APM Server (:9009) ──────────────────────────────────────────────────────
+  # Central APM ingestion and metrics server.
+  # POST /ingest  receives batched TransactionMetric payloads from all services.
+  # GET  /metrics exposes p50/p95/p99/avg latency stats aggregated per service.
+  # GET  /health  is the liveness probe used by docker compose healthcheck.
+  apm-server:
+    image: node:22-alpine
+    working_dir: /app
+    command: node server.js
+    ports: [ "9009:9009" ]
+    volumes:
+      - ./apm-server:/app:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:9009/health || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [ polyglot ]
+
   # ── Go Hub / Gateway (:8080) ────────────────────────────────────────────────
   go-hub:
     build:
@@ -75,9 +94,11 @@ services:
     environment:
       DATABASE_URL: postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
       REDIS_URL: redis:6379
+      APM_URL: http://apm-server:9009/ingest
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      apm-server: { condition: service_healthy }
     networks: [ polyglot ]
 
   # ── Python Brain (:8000) ────────────────────────────────────────────────────
@@ -283,11 +304,13 @@ services:
       DB_PASSWORD: polyglot
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      APM_URL: http://apm-server:9009/ingest
     volumes:
       - ./loom-java:/app:ro
     depends_on:
       db-postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      apm-server: { condition: service_healthy }
     networks: [ polyglot ]
 
   # ── Prolog Solver (:8011) ───────────────────────────────────────────────────

@@ -1,490 +1,542 @@
 <script>
-	import { onMount, onDestroy } from "svelte";
-	import SystemStatusPanel from "$lib/components/panels/SystemStatusPanel.svelte";
-	import RustPipelinePanel from "$lib/components/panels/RustPipelinePanel.svelte";
-	import PythonBrainPanel from "$lib/components/panels/PythonBrainPanel.svelte";
-	import LuaCachePanel from "$lib/components/panels/LuaCachePanel.svelte";
-	import JuliaPanel from "$lib/components/panels/JuliaPanel.svelte";
-	import KotlinPanel from "$lib/components/panels/KotlinPanel.svelte";
-	import ElixirPanel from "$lib/components/panels/ElixirPanel.svelte";
-	import RPanel from "$lib/components/panels/RPanel.svelte";
-	import FSharpPanel from "$lib/components/panels/FSharpPanel.svelte";
-	import WasmPanel from "$lib/components/panels/WasmPanel.svelte";
-	import OCamlPanel from "$lib/components/panels/OCamlPanel.svelte";
-	import CrystalPanel from "$lib/components/panels/CrystalPanel.svelte";
-	import NimPanel from "$lib/components/panels/NimPanel.svelte";
-	import ScalaPanel from "$lib/components/panels/ScalaPanel.svelte";
-	import HaskellPanel from "$lib/components/panels/HaskellPanel.svelte";
-	import RubyPanel from "$lib/components/panels/RubyPanel.svelte";
-	import DartPanel from "$lib/components/panels/DartPanel.svelte";
-	import GleamPanel from "$lib/components/panels/GleamPanel.svelte";
-	import VPanel from "$lib/components/panels/VPanel.svelte";
-	import ErlangPanel from "$lib/components/panels/ErlangPanel.svelte";
-	import LuaStreamPanel from "$lib/components/panels/LuaStreamPanel.svelte";
-	import SwiftActorPanel from "$lib/components/panels/SwiftActorPanel.svelte";
-	import ClojureSTMPanel from "$lib/components/panels/ClojureSTMPanel.svelte";
-	import JavaLoomPanel from "$lib/components/panels/JavaLoomPanel.svelte";
-	import PrologPanel from "$lib/components/panels/PrologPanel.svelte";
-	import BSComparePanel from "$lib/components/panels/BSComparePanel.svelte";
-	import WorkflowPanel from "$lib/components/panels/WorkflowPanel.svelte";
-	import ChartsPanel from "$lib/components/panels/ChartsPanel.svelte";
-	import DependencyMapPanel from "$lib/components/panels/DependencyMapPanel.svelte";
-	import LogsPanel from "$lib/components/panels/LogsPanel.svelte";
+	import { onMount } from "svelte";
+	import ServiceCard from "$lib/components/ServiceCard.svelte";
 
-	// Go gateway base URL. Points to the central reverse proxy server.
-	const GO_HUB = "http://localhost:8080";
+	// Base URL of the Go gateway. All API calls are routed through it.
+	const API_BASE = "http://localhost:8080";
 
-	// Tab definitions. Each tab filters the visible panel set.
-	const TABS = [
-		{ id: "all",         label: "전체",    emoji: "all" },
-		{ id: "infra",       label: "인프라",   emoji: "infra" },
-		{ id: "finance",     label: "금융분석", emoji: "finance" },
-		{ id: "concurrency", label: "동시성",   emoji: "concurrency" },
-		{ id: "functional",  label: "함수형",   emoji: "functional" },
-		{ id: "paradigm",    label: "패러다임", emoji: "paradigm" },
-		{ id: "monitor",     label: "모니터링", emoji: "monitor" },
+	// Static service registry. Defines every language microservice in this platform.
+	// aggregateName: the exact 'name' value returned by GET /api/aggregate, or null for
+	// services not covered by that endpoint (the gateway itself and artifact servers).
+	const SERVICES = [
+		{
+			key: "go",
+			name: "Go-Hub",
+			aggregateName: null,
+			lang: "Go",
+			port: 8080,
+			role: "Gateway / Orchestrator",
+		},
+		{
+			key: "python",
+			name: "Python-Brain",
+			aggregateName: "Python-Brain",
+			lang: "Python",
+			port: 8000,
+			role: "ML Engine / Redis Cache",
+		},
+		{
+			key: "rust",
+			name: "Rust-Pipeline",
+			aggregateName: "Rust-Pipeline",
+			lang: "Rust",
+			port: 8081,
+			role: "VaR Risk Pipeline",
+		},
+		{
+			key: "julia",
+			name: "Julia-Engine",
+			aggregateName: "Julia-Engine",
+			lang: "Julia",
+			port: 8002,
+			role: "Monte Carlo Engine",
+		},
+		{
+			key: "r",
+			name: "R-Stats",
+			aggregateName: "R-Stats",
+			lang: "R",
+			port: 8003,
+			role: "Statistical Analysis",
+		},
+		{
+			key: "fsharp",
+			name: "FSharp-Pricer",
+			aggregateName: "FSharp-Pricer",
+			lang: "F#",
+			port: 9001,
+			role: "Implied Volatility (NR)",
+		},
+		{
+			key: "ocaml",
+			name: "OCaml-Risk",
+			aggregateName: "OCaml-Risk",
+			lang: "OCaml",
+			port: 8004,
+			role: "Risk Engine",
+		},
+		{
+			key: "crystal",
+			name: "Crystal-GW",
+			aggregateName: "Crystal-Gateway",
+			lang: "Crystal",
+			port: 9002,
+			role: "High-Perf Gateway",
+		},
+		{
+			key: "nim",
+			name: "Nim-Analytics",
+			aggregateName: "Nim-Analytics",
+			lang: "Nim",
+			port: 8005,
+			role: "GARCH Volatility",
+		},
+		{
+			key: "scala",
+			name: "Scala-Streamer",
+			aggregateName: "Scala-Streamer",
+			lang: "Scala",
+			port: 9003,
+			role: "Akka Streams",
+		},
+		{
+			key: "haskell",
+			name: "Haskell-Pricer",
+			aggregateName: "Haskell-Pricer",
+			lang: "Haskell",
+			port: 8006,
+			role: "Black-Scholes Pricer",
+		},
+		{
+			key: "ruby",
+			name: "Ruby-Scorer",
+			aggregateName: "Ruby-Scorer",
+			lang: "Ruby",
+			port: 9004,
+			role: "Credit Scorer",
+		},
+		{
+			key: "dart",
+			name: "Dart-Engine",
+			aggregateName: "Dart-Engine",
+			lang: "Dart",
+			port: 9005,
+			role: "Async HTTP Engine",
+		},
+		{
+			key: "gleam",
+			name: "Gleam-Hub",
+			aggregateName: "Gleam-Hub",
+			lang: "Gleam",
+			port: 4001,
+			role: "Type-Safe Hub",
+		},
+		{
+			key: "v",
+			name: "V-Quant",
+			aggregateName: "V-Quant",
+			lang: "V",
+			port: 4002,
+			role: "Quant Finance",
+		},
+		{
+			key: "erlang",
+			name: "Erlang-Hot",
+			aggregateName: "Erlang-Hot",
+			lang: "Erlang",
+			port: 4003,
+			role: "Hot Code Reload",
+		},
+		{
+			key: "elixir",
+			name: "Elixir-Hub",
+			aggregateName: "Elixir-Hub",
+			lang: "Elixir",
+			port: 4000,
+			role: "Phoenix PubSub",
+		},
+		{
+			key: "clojure",
+			name: "Clojure-STM",
+			aggregateName: "Clojure-STM",
+			lang: "Clojure",
+			port: 8009,
+			role: "STM Ledger",
+		},
+		{
+			key: "java",
+			name: "Java-Loom",
+			aggregateName: "Java-Loom",
+			lang: "Java",
+			port: 8010,
+			role: "Virtual Threads",
+		},
+		{
+			key: "prolog",
+			name: "Prolog-Solver",
+			aggregateName: "Prolog-Solver",
+			lang: "Prolog",
+			port: 8011,
+			role: "Logic Solver",
+		},
+		{
+			key: "lua",
+			name: "Lua-Stream",
+			aggregateName: "Lua-Stream",
+			lang: "Lua",
+			port: 8007,
+			role: "Coroutine Mux",
+		},
+		{
+			key: "swift",
+			name: "Swift-Actor",
+			aggregateName: "Swift-Actor",
+			lang: "Swift",
+			port: 8008,
+			role: "Actor Concurrency",
+		},
+		{
+			key: "kotlin",
+			name: "Kotlin-Sched",
+			aggregateName: "Kotlin-Scheduler",
+			lang: "Kotlin",
+			port: 9000,
+			role: "Coroutine Scheduler",
+		},
+		{
+			key: "cpp",
+			name: "C++-Core",
+			aggregateName: null,
+			lang: "C++",
+			port: 8012,
+			role: "Compute Library (FFI)",
+		},
+		{
+			key: "zig",
+			name: "Zig-Core",
+			aggregateName: null,
+			lang: "Zig",
+			port: 8013,
+			role: "Systems Core (FFI)",
+		},
+		{
+			key: "wasm",
+			name: "Wasm-Finance",
+			aggregateName: null,
+			lang: "WASM",
+			port: 8014,
+			role: "WebAssembly Module",
+		},
 	];
 
-	// Maps each panel key to the tabs under which it is visible.
-	const PANEL_TABS = /** @type {Record<string, string[]>} */ ({
-		SystemStatus: ["all", "infra", "monitor"],
-		RustPipeline: ["all", "infra"],
-		PythonBrain:  ["all", "infra"],
-		LuaCache:     ["all", "infra"],
-		Julia:        ["all", "finance"],
-		Kotlin:       ["all", "concurrency"],
-		Elixir:       ["all", "concurrency", "functional"],
-		R:            ["all", "finance"],
-		FSharp:       ["all", "finance", "functional"],
-		Wasm:         ["all", "finance"],
-		OCaml:        ["all", "finance", "functional"],
-		Crystal:      ["all", "concurrency"],
-		Nim:          ["all", "finance", "paradigm"],
-		Scala:        ["all", "finance", "functional", "concurrency"],
-		Haskell:      ["all", "finance", "functional"],
-		Ruby:         ["all", "paradigm"],
-		Dart:         ["all", "finance"],
-		Gleam:        ["all", "functional"],
-		V:            ["all", "finance", "paradigm"],
-		Erlang:       ["all", "concurrency", "paradigm"],
-		LuaStream:    ["all", "concurrency"],
-		SwiftActor:   ["all", "concurrency"],
-		ClojureSTM:   ["all", "concurrency"],
-		JavaLoom:     ["all", "concurrency"],
-		Prolog:       ["all", "paradigm"],
-		BSCompare:    ["all", "finance"],
-		Workflow:     ["all", "infra", "monitor"],
-		Charts:       ["all", "finance", "monitor"],
-		DependencyMap:["all", "monitor"],
-		Logs:         ["all", "monitor"],
-	});
+	// Dynamic status for each service, keyed by SERVICES[i].key.
+	// status:    "loading" | "online" | "offline"
+	// latencyMs: round-trip milliseconds measured client-side, or null
+	// result:    short summary string for display in the card, or null
+	/** @type {Record<string, { status: string, latencyMs: number | null, result: string | null }>} */
+	let statuses = $state(
+		Object.fromEntries(
+			SERVICES.map((s) => [
+				s.key,
+				{ status: "loading", latencyMs: null, result: null },
+			]),
+		),
+	);
 
-	/**
-	 * Returns true when the given panel key is included in the active tab.
-	 * @param {string} panel
-	 */
-	function show(panel) {
-		return PANEL_TABS[panel]?.includes(activeTab) ?? true;
+	// Derived count of services currently reporting "online".
+	let onlineCount = $derived(
+		Object.values(statuses).filter((s) => s.status === "online").length,
+	);
+
+	// True while the initial (or manual) fetch cycle is in-flight.
+	let loading = $state(true);
+
+	// Non-null when the aggregate fetch fails and the gateway is unreachable.
+	/** @type {string | null} */
+	let fetchError = $state(null);
+
+	// Resets all service statuses to "loading" and re-fetches from all sources concurrently.
+	async function fetchStatus() {
+		loading = true;
+		fetchError = null;
+
+		for (const svc of SERVICES) {
+			statuses[svc.key] = {
+				status: "loading",
+				latencyMs: null,
+				result: null,
+			};
+		}
+
+		await Promise.allSettled([
+			fetchAggregate(),
+			fetchGoHub(),
+			fetchArtifactServer("cpp", 8012),
+			fetchArtifactServer("zig", 8013),
+			fetchArtifactServer("wasm", 8014),
+		]);
+
+		loading = false;
 	}
 
-	// Active tab key. Drives conditional rendering of all panel components.
-	let activeTab = $state("all");
-
-	// DB system-log rows fetched from GET /api/history.
-	/** @type {any[]} */
-	let logs = $state([]);
-
-	// Counts derived from SSE aggregate stream (GET /api/aggregate/stream).
-	let onlineCount = $state(0);
-	let totalCount  = $state(22);
-	let sseConnected = $state(false);
-
-	/** @type {EventSource | null} */
-	let sse = null;
-
-	// Transient notification banners displayed at the top of the page.
-	/** @type {{ id: number, type: string, msg: string }[]} */
-	let notifications = $state([]);
-	let notifId = 0;
-
-	/**
-	 * Pushes a notification banner and auto-dismisses it after 4 seconds.
-	 * @param {"info"|"ok"|"error"} type - Controls the banner colour class.
-	 * @param {string} msg
-	 */
-	function addNotif(type, msg) {
-		const id = ++notifId;
-		notifications = [...notifications, { id, type, msg }];
-		setTimeout(() => {
-			notifications = notifications.filter((n) => n.id !== id);
-		}, 4000);
-	}
-
-	/**
-	 * Fetches the 10 most recent system-log rows from the Go gateway and
-	 * stores them in the logs reactive variable for the LogsPanel.
-	 */
-	async function fetchLogs() {
+	// Calls GET /api/aggregate and maps each returned service entry onto statuses.
+	// The aggregate endpoint covers all 22 language services managed by the Go gateway.
+	async function fetchAggregate() {
 		try {
-			const res = await fetch(`${GO_HUB}/api/history`);
-			if (res.ok) logs = await res.json();
+			const res = await fetch(`${API_BASE}/api/aggregate`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+			/** @type {{ services?: Array<{ name: string, port: number, status: string, latency_ms: number }> }} */
+			const data = await res.json();
+
+			// Index remote results by name for O(1) lookup.
+			/** @type {Map<string, { name: string, port: number, status: string, latency_ms: number }>} */
+			const byName = new Map(
+				(data.services ?? []).map((s) => [s.name, s]),
+			);
+
+			for (const svc of SERVICES) {
+				if (!svc.aggregateName) continue;
+				const remote = byName.get(svc.aggregateName);
+				if (!remote) continue;
+				statuses[svc.key] = {
+					status: remote.status,
+					latencyMs: remote.latency_ms,
+					result:
+						remote.status === "online"
+							? `${remote.latency_ms}ms`
+							: null,
+				};
+			}
 		} catch {
-			// History fetch failure is non-critical; leave existing rows visible.
+			fetchError = "Gateway unreachable";
+			for (const svc of SERVICES) {
+				if (!svc.aggregateName) continue;
+				statuses[svc.key] = {
+					status: "offline",
+					latencyMs: null,
+					result: null,
+				};
+			}
 		}
 	}
 
-	/**
-	 * Opens a persistent EventSource connection to GET /api/aggregate/stream.
-	 * The Go server pushes a full service-health snapshot every 10 seconds.
-	 * Each message updates onlineCount, totalCount, and sseConnected.
-	 */
-	function connectSSE() {
-		if (sse) return;
-		sse = new EventSource(`${GO_HUB}/api/aggregate/stream`);
-		sseConnected = true;
-
-		sse.onmessage = (event) => {
-			try {
-				const data = JSON.parse(event.data);
-				// data.online and data.total are set by buildAggregate in Go.
-				onlineCount  = data.online  ?? onlineCount;
-				totalCount   = data.total   ?? totalCount;
-				sseConnected = true;
-			} catch {
-				// Malformed SSE frame; ignore and wait for next tick.
+	// Health-checks the Go gateway itself via GET /api/status.
+	// Confirms the gateway is operational and surfaces the DB connection state.
+	async function fetchGoHub() {
+		const t0 = performance.now();
+		try {
+			const res = await fetch(`${API_BASE}/api/status`);
+			const latencyMs = Math.round(performance.now() - t0);
+			if (res.ok) {
+				/** @type {{ database?: string }} */
+				const data = await res.json();
+				statuses["go"] = {
+					status: "online",
+					latencyMs,
+					result: data.database
+						? `db: ${data.database}`
+						: `${latencyMs}ms`,
+				};
+			} else {
+				statuses["go"] = { status: "offline", latencyMs, result: null };
 			}
-		};
-
-		sse.onerror = () => {
-			sseConnected = false;
-			sse?.close();
-			sse = null;
-			// Reconnect after 5 seconds if the connection drops.
-			setTimeout(connectSSE, 5000);
-		};
+		} catch {
+			statuses["go"] = {
+				status: "offline",
+				latencyMs: null,
+				result: null,
+			};
+		}
 	}
 
-	/**
-	 * Called by SystemStatusPanel when a manual sync completes.
-	 * Refreshes the log panel to reflect any new DB entries.
-	 */
-	function handleSync() {
-		fetchLogs();
-		addNotif("ok", "Go 게이트웨이 동기화 완료");
+	// Health-checks an artifact HTTP server by issuing a HEAD request to its root.
+	// These containers serve static binary files via python http.server or nginx;
+	// they have no JSON API. A 200 or 405 response confirms the server is reachable.
+	/** @param {string} key @param {number} port */
+	async function fetchArtifactServer(key, port) {
+		const t0 = performance.now();
+		try {
+			const res = await fetch(`http://localhost:${port}/`, {
+				method: "HEAD",
+			});
+			const latencyMs = Math.round(performance.now() - t0);
+			const up = res.ok || res.status === 405;
+			statuses[key] = {
+				status: up ? "online" : "offline",
+				latencyMs: up ? latencyMs : null,
+				result: up ? `${latencyMs}ms` : null,
+			};
+		} catch {
+			statuses[key] = {
+				status: "offline",
+				latencyMs: null,
+				result: null,
+			};
+		}
 	}
 
-	// Initial data load and SSE connection start on component mount.
 	onMount(() => {
-		fetchLogs();
-		connectSSE();
-	});
-
-	// Close the SSE connection when the component is removed from the DOM.
-	onDestroy(() => {
-		sse?.close();
-		sse = null;
+		fetchStatus();
 	});
 </script>
 
-<!-- Notification banners rendered above all content. -->
-<div class="notif-container">
-	{#each notifications as n (n.id)}
-		<div class="notif notif-{n.type}">{n.msg}</div>
-	{/each}
-</div>
-
-<div class="container">
-	<!-- Page header: title and live service counter. -->
+<div class="page">
 	<header class="page-header">
-		<h1 class="title">Polyglot Infinity</h1>
-		<div class="service-counter">
-			<span class="counter-label">Services</span>
-			<span class="counter-online">{onlineCount}</span>
-			<span class="counter-sep">/</span>
-			<span class="counter-total">{totalCount}</span>
-			<span class="sse-dot" class:sse-dot-live={sseConnected} title={sseConnected ? "SSE connected" : "SSE disconnected"}></span>
+		<div class="header-left">
+			<h1 class="page-title">Polyglot Infinity</h1>
+			<span class="page-subtitle"
+				>Multi-Language Microservices Dashboard</span
+			>
+		</div>
+
+		<div class="header-right">
+			{#if fetchError}
+				<span class="error-banner">{fetchError}</span>
+			{/if}
+
+			<div class="counter-badge">
+				<span class="count-online">{onlineCount}</span>
+				<span class="count-sep">/</span>
+				<span class="count-total">{SERVICES.length}</span>
+				<span class="count-label">online</span>
+			</div>
+
+			<button
+				class="btn-refresh"
+				onclick={fetchStatus}
+				disabled={loading}
+			>
+				{loading ? "Loading…" : "Refresh"}
+			</button>
 		</div>
 	</header>
 
-	<!-- Tab bar: filters the visible panel set. -->
-	<nav class="tab-bar" role="tablist">
-		{#each TABS as tab}
-			<button
-				role="tab"
-				aria-selected={activeTab === tab.id}
-				class="tab-btn"
-				class:tab-active={activeTab === tab.id}
-				onclick={() => (activeTab = tab.id)}
-			>
-				{tab.label}
-			</button>
+	<div class="grid">
+		{#each SERVICES as svc (svc.key)}
+			<ServiceCard
+				name={svc.name}
+				lang={svc.lang}
+				port={svc.port}
+				role={svc.role}
+				status={statuses[svc.key].status}
+				latencyMs={statuses[svc.key].latencyMs}
+				result={statuses[svc.key].result}
+			/>
 		{/each}
-	</nav>
-
-	<!-- Panel grid: each panel is self-contained and manages its own API calls. -->
-	<!-- Panels are hidden via display:none rather than destroyed to preserve state across tab switches. -->
-
-	{#if show("SystemStatus")}
-		<SystemStatusPanel onSync={handleSync} />
-	{/if}
-
-	{#if show("RustPipeline")}
-		<RustPipelinePanel />
-	{/if}
-
-	{#if show("PythonBrain")}
-		<PythonBrainPanel />
-	{/if}
-
-	{#if show("LuaCache")}
-		<LuaCachePanel />
-	{/if}
-
-	{#if show("Julia")}
-		<JuliaPanel />
-	{/if}
-
-	{#if show("Kotlin")}
-		<KotlinPanel />
-	{/if}
-
-	{#if show("Elixir")}
-		<ElixirPanel />
-	{/if}
-
-	{#if show("R")}
-		<RPanel />
-	{/if}
-
-	{#if show("FSharp")}
-		<FSharpPanel />
-	{/if}
-
-	{#if show("Wasm")}
-		<WasmPanel />
-	{/if}
-
-	{#if show("OCaml")}
-		<OCamlPanel />
-	{/if}
-
-	{#if show("Crystal")}
-		<CrystalPanel />
-	{/if}
-
-	{#if show("Nim")}
-		<NimPanel />
-	{/if}
-
-	{#if show("Scala")}
-		<ScalaPanel />
-	{/if}
-
-	{#if show("Haskell")}
-		<HaskellPanel />
-	{/if}
-
-	{#if show("Ruby")}
-		<RubyPanel />
-	{/if}
-
-	{#if show("Dart")}
-		<DartPanel />
-	{/if}
-
-	{#if show("Gleam")}
-		<GleamPanel />
-	{/if}
-
-	{#if show("V")}
-		<VPanel />
-	{/if}
-
-	{#if show("Erlang")}
-		<ErlangPanel />
-	{/if}
-
-	{#if show("LuaStream")}
-		<LuaStreamPanel />
-	{/if}
-
-	{#if show("SwiftActor")}
-		<SwiftActorPanel />
-	{/if}
-
-	{#if show("ClojureSTM")}
-		<ClojureSTMPanel />
-	{/if}
-
-	{#if show("JavaLoom")}
-		<JavaLoomPanel />
-	{/if}
-
-	{#if show("Prolog")}
-		<PrologPanel />
-	{/if}
-
-	{#if show("BSCompare")}
-		<BSComparePanel />
-	{/if}
-
-	{#if show("Workflow")}
-		<WorkflowPanel />
-	{/if}
-
-	{#if show("Charts")}
-		<ChartsPanel />
-	{/if}
-
-	{#if show("DependencyMap")}
-		<DependencyMapPanel />
-	{/if}
-
-	{#if show("Logs")}
-		<!-- LogsPanel receives log rows as a prop; rows are owned by +page.svelte. -->
-		<LogsPanel {logs} />
-	{/if}
+	</div>
 </div>
 
 <style>
-	/* Page-level header: title on the left, service counter on the right. */
+	.page {
+		max-width: 1600px;
+		margin: 0 auto;
+	}
+
 	.page-header {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
+		align-items: flex-end;
 		flex-wrap: wrap;
-		gap: 0.75rem;
+		gap: 1rem;
+		margin-bottom: 2rem;
+		padding-bottom: 1.5rem;
+		border-bottom: 1px solid #1e293b;
 	}
 
-	/* Service counter badge displayed next to the page title. */
-	.service-counter {
+	.header-left {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	/* Override the global .title gradient with a flat page-specific style. */
+	.page-title {
+		margin: 0;
+		font-size: 1.8rem;
+		font-weight: 700;
+		letter-spacing: -0.025em;
+		color: #f1f5f9;
+		background: none;
+		-webkit-background-clip: unset;
+		background-clip: unset;
+		-webkit-text-fill-color: unset;
+	}
+
+	.page-subtitle {
+		font-size: 0.75rem;
+		color: #64748b;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+	}
+
+	.header-right {
 		display: flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.875rem;
+		flex-wrap: wrap;
+	}
+
+	.error-banner {
+		font-size: 0.75rem;
+		color: #fca5a5;
+		background: #450a0a2a;
+		border: 1px solid #ef444430;
+		border-radius: 6px;
+		padding: 0.3rem 0.8rem;
+	}
+
+	.counter-badge {
+		display: flex;
+		align-items: baseline;
+		gap: 0.28rem;
 		background: #1e293b;
 		border: 1px solid #334155;
 		border-radius: 8px;
 		padding: 0.5rem 1rem;
-		font-size: 0.9rem;
 	}
 
-	.counter-label {
-		color: #64748b;
-		font-size: 0.8rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.counter-online {
-		font-weight: bold;
+	.count-online {
+		font-size: 1.4rem;
+		font-weight: 700;
 		color: #22c55e;
-		font-size: 1.2rem;
+		line-height: 1;
 	}
 
-	.counter-sep {
+	.count-sep {
 		color: #475569;
 	}
 
-	.counter-total {
-		color: #94a3b8;
+	.count-total {
 		font-size: 1rem;
-	}
-
-	/* SSE connection status indicator dot. */
-	.sse-dot {
-		display: inline-block;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: #475569;
-		margin-left: 0.3rem;
-		transition: background 0.4s;
-	}
-
-	.sse-dot-live {
-		background: #22c55e;
-		/* Pulse animation signals that the SSE stream is actively receiving data. */
-		animation: pulse 2s infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50%       { opacity: 0.4; }
-	}
-
-	/* Tab navigation bar. */
-	.tab-bar {
-		display: flex;
-		gap: 0.4rem;
-		flex-wrap: wrap;
-		margin-bottom: 1.5rem;
-	}
-
-	.tab-btn {
-		background: #1e293b;
 		color: #94a3b8;
-		border: 1px solid #334155;
-		padding: 0.45rem 1rem;
-		border-radius: 6px;
-		font-size: 0.85rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.15s, color 0.15s, border-color 0.15s;
 	}
 
-	.tab-btn:hover {
+	.count-label {
+		font-size: 0.68rem;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		margin-left: 0.15rem;
+	}
+
+	.btn-refresh {
+		background: #1e293b;
+		border: 1px solid #334155;
+		border-radius: 8px;
+		color: #94a3b8;
+		font-size: 0.8rem;
+		padding: 0.5rem 1.1rem;
+		cursor: pointer;
+		transition:
+			background 0.15s ease,
+			color 0.15s ease;
+	}
+
+	.btn-refresh:hover:not(:disabled) {
 		background: #334155;
 		color: #e2e8f0;
 	}
 
-	.tab-active {
-		background: #2563eb;
-		color: #fff;
-		border-color: #2563eb;
+	.btn-refresh:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 
-	/* Notification banner container anchored to the top of the viewport. */
-	.notif-container {
-		position: fixed;
-		top: 1rem;
-		right: 1rem;
-		z-index: 1000;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		pointer-events: none;
-	}
-
-	.notif {
-		padding: 0.7rem 1.2rem;
-		border-radius: 8px;
-		font-size: 0.85rem;
-		font-weight: 600;
-		max-width: 320px;
-		animation: slidein 0.2s ease-out;
-	}
-
-	@keyframes slidein {
-		from { opacity: 0; transform: translateX(20px); }
-		to   { opacity: 1; transform: translateX(0); }
-	}
-
-	.notif-ok {
-		background: #052e16;
-		border: 1px solid #16a34a;
-		color: #86efac;
-	}
-
-	.notif-error {
-		background: #450a0a;
-		border: 1px solid #dc2626;
-		color: #fca5a5;
-	}
-
-	.notif-info {
-		background: #1e1b4b;
-		border: 1px solid #6366f1;
-		color: #a5b4fc;
+	/* Responsive grid: minimum card width 210px, fills all available columns. */
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+		gap: 1rem;
 	}
 </style>

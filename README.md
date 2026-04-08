@@ -153,7 +153,31 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
-### 2026-04-08
+### 2026-04-08 (3)
+
+**Svelte Portal — Health-check Dashboard Grid** (`portal-svelte`)
+
+- `src/routes/+page.svelte` — Full rewrite as a self-contained 26-service health dashboard
+  - `SERVICES` static registry (26 entries: key, name, aggregateName, lang, port, role)
+  - `statuses` — `$state` record keyed by service key; each holds `{ status, latencyMs, result }`
+  - `onlineCount` — `$derived` count of `"online"` entries, displayed live in the header
+  - `fetchStatus()` — resets all cards to `"loading"`, then fires three parallel tracks via `Promise.allSettled`:
+    - `fetchAggregate()` → `GET /api/aggregate` — maps 22 gateway-managed language services by name
+    - `fetchGoHub()` → `GET /api/status` — confirms gateway liveness; surfaces `db: connected` in result field
+    - `fetchArtifactServer(key, port)` × 3 — `HEAD /` for C++ (:8012), Zig (:8013), Wasm (:8014) artifact containers
+  - `onMount` triggers `fetchStatus()` on page load; manual Refresh button triggers re-fetch
+  - Responsive `auto-fill` CSS grid (`minmax(210px, 1fr)`) — no external CSS library
+  - Dark-theme header: service counter badge, error banner, Refresh button (disabled while loading)
+  - Removed all old panel component imports and tab/SSE/notification logic
+
+- `src/lib/components/ServiceCard.svelte` — Rewritten to match new prop contract
+  - Props: `name`, `lang`, `port`, `status`, `latencyMs`, `result`, `role`
+  - Card border / opacity driven by `.card-online` / `.card-offline` / `.card-loading` class variants
+  - Status dot: green pulse when online, amber blink when loading, red when offline
+  - Result line: monospace, single-line, ellipsis overflow; shows `"checking…"` / `"—"` placeholders
+  - Single scoped `<style>` block (dark theme, no external dependencies)
+
+### 2026-04-08 (2)
 
 **Rust Pipeline Docker build fix** (`pipeline-rust`)
 - `pipeline-rust/Dockerfile` — Added `g++` to builder `apk` installs; switched all `COPY` paths to repo-root-relative (`pipeline-rust/...`, `core-cpp/src`) so `build.rs` can compile `matrix.cpp` into `libcppmatrix.a` during the image build

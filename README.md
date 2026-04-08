@@ -1,6 +1,6 @@
 # 🌈 Polyglot Infinity
 
-A **real-time multi-currency micro-loan risk analysis platform** built with 28 languages/runtimes and 2 databases (PostgreSQL · Redis).
+A **real-time multi-currency micro-loan risk analysis platform** built with 28 languages/runtimes and 2 databases (PostgreSQL · Redis), featuring 2 independent frontend micro-apps (Svelte 5 dashboard · Elm order terminal).
 
 ---
 
@@ -9,6 +9,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | # | Language | Port | Key Feature |
 |:-:|:---|:---:|:---|
 | 1 | **Svelte 5** (SvelteKit + Bun) | 5173 | Real-time dashboard UI |
+| 28 | **Elm 0.19.1** (TEA) | 5174 | Order entry terminal · live Greeks (F#) · VaR (Rust) · no runtime exceptions |
 | 2 | **Go** `net/http` | 8080 | API Hub · Reverse proxy gateway (27 backends) · Redis caching · SSE stream · Circuit breaker |
 | 3 | **Python** FastAPI | 8000 | FX rate collection · C++/Zig FFI · Julia HTTP |
 | 4 | **Rust** Axum + sqlx | 8081 | High-performance bulk insert pipeline |
@@ -62,7 +63,10 @@ Standalone services: Kotlin · Elixir · R · F# · OCaml · Crystal · Nim · S
 
 [Wasm-Zig :8014] — nginx serves finance.wasm; browser fetches and instantiates (no server round-trip)
 
-All 29 containers share the "polyglot" bridge network.
+[Elm Terminal :5174] — pure TEA micro-frontend; consumes go-hub :8080, fsharp-pricer :9001, rust-pipeline :8081;
+  compiled to elm.js (no runtime), served by nginx; no Node.js in the final image
+
+All 30 containers share the "polyglot" bridge network.
 Inter-service DNS: http://<service-name>:<port>/ (e.g. http://risk-ocaml:8004)
 
 Reverse proxy routes registered on Go Hub (:8080):
@@ -152,6 +156,27 @@ CREATE TABLE IF NOT EXISTS orders (
 ---
 
 ## Changelog
+
+### 2026-04-08 (4)
+
+**Elm Order Terminal — micro-frontend** (`terminal-elm`)
+
+- Selected Elm 0.19.1 over HTMX and ClojureScript as the additive micro-frontend paradigm
+  - HTMX rejected: all 26 backends emit JSON; HTMX value requires HTML-fragment servers
+  - ClojureScript rejected: Lisp paradigm already represented by `ledger-clojure` (:8009)
+  - Elm chosen: TEA (unidirectional state machine + managed effects) is absent from the polyglot stack; compiler-enforced exhaustive pattern matching eliminates runtime exceptions at the type level
+- `terminal-elm/elm.json` — Elm 0.19.1 package manifest; direct deps: `elm/browser`, `elm/core`, `elm/html`, `elm/http`, `elm/json`, `elm/time`
+- `terminal-elm/src/Main.elm` — full TEA implementation
+  - `RemoteData e a` custom type (`NotAsked | Loading | Failure | Success`) used for every remote call; all branches handled exhaustively or the build fails
+  - `Model`: order form state, risk snapshot, Greeks, submission status, live UTC clock
+  - `Msg`: 10 variants covering form input, order type selection, submit, HTTP responses, 1s tick
+  - `update`: pure function; no in-place mutation
+  - HTTP: `fetchRisk` → `rust-pipeline :8081/api/risk`; `fetchGreeks` → `fsharp-pricer :9001/api/fsharp/iv`; `submitOrder` → `go-hub :8080/api/orders`
+  - `subscriptions`: `Time.every 1000 Tick` drives live UTC clock in header
+  - `view`: renders order form, risk metrics, Greeks panel, paradigm guarantees card
+- `terminal-elm/index.html` — static shell; dark monospace CSS (CSS custom properties, no external dep); `Elm.Main.init` entry point
+- `terminal-elm/build.sh` — `elm make src/Main.elm --output=elm.js --optimize`
+- `docker-compose.yml` — `terminal-elm` service added (port `5174:80`); multi-stage build: `node:22-alpine` compiles Elm, `nginx:1.27-alpine` serves static assets; no Node.js or JVM in runtime image
 
 ### 2026-04-08 (3)
 

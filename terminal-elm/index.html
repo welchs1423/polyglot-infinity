@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Polyglot Order Terminal</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0c0c0e;
+            --bg-card: #111116;
+            --bg-input: #18181f;
+            --border: #2a2a35;
+            --border-focus: #4a90d9;
+            --text: #d0d0dc;
+            --text-dim: #666680;
+            --text-label: #9090a8;
+            --accent: #4a90d9;
+            --green: #3dba74;
+            --red: #d95858;
+            --amber: #d9a03d;
+            --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+        }
+
+        html,
+        body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .terminal {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* top bar */
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 0.6rem 1.25rem;
+            background: #080810;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .topbar-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            color: var(--accent);
+            text-transform: uppercase;
+        }
+
+        .topbar-tag {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.06em;
+        }
+
+        .topbar-clock {
+            margin-left: auto;
+            font-size: 11px;
+            color: var(--text-label);
+            letter-spacing: 0.08em;
+        }
+
+        /* layout */
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            flex: 1;
+            align-items: start;
+        }
+
+        .col {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        /* cards */
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1rem;
+        }
+
+        .card--note {
+            border-color: #2a2a40;
+        }
+
+        .card-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-label);
+            margin-bottom: 0.75rem;
+        }
+
+        .card-source {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-bottom: 0.75rem;
+        }
+
+        /* form fields */
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .field-label {
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-label);
+        }
+
+        .field-input {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            padding: 0.45rem 0.6rem;
+            outline: none;
+            transition: border-color 0.15s;
+            width: 100%;
+        }
+
+        .field-input:focus {
+            border-color: var(--border-focus);
+        }
+
+        .field-input:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        /* order type buttons */
+
+        .order-type-group {
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .ot-btn {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            color: var(--text-label);
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 0.35rem 0.7rem;
+            transition: border-color 0.15s, color 0.15s;
+        }
+
+        .ot-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .ot-btn--active {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* submit button */
+
+        .submit-btn {
+            background: var(--accent);
+            border: none;
+            border-radius: 3px;
+            color: #fff;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            padding: 0.6rem 1.2rem;
+            text-transform: uppercase;
+            width: 100%;
+            transition: opacity 0.15s;
+        }
+
+        .submit-btn:hover {
+            opacity: 0.85;
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* notices */
+
+        .notice {
+            border-radius: 3px;
+            font-size: 11px;
+            margin-top: 0.6rem;
+            padding: 0.45rem 0.7rem;
+        }
+
+        .notice--pending {
+            background: rgba(217, 160, 61, 0.1);
+            border: 1px solid rgba(217, 160, 61, 0.3);
+            color: var(--amber);
+        }
+
+        .notice--ok {
+            background: rgba(61, 186, 116, 0.1);
+            border: 1px solid rgba(61, 186, 116, 0.3);
+            color: var(--green);
+        }
+
+        .notice--err {
+            background: rgba(217, 88, 88, 0.1);
+            border: 1px solid rgba(217, 88, 88, 0.3);
+            color: var(--red);
+        }
+
+        /* loading */
+
+        .loading {
+            color: var(--text-dim);
+            font-size: 11px;
+            font-style: italic;
+        }
+
+        /* metrics */
+
+        .metrics {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.4rem;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: var(--text-label);
+        }
+
+        .metric-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        /* paradigm guarantees panel */
+
+        .guarantee-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .guarantee {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .guarantee-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .guarantee-body {
+            font-size: 11px;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+
+        /* responsive */
+
+        @media (max-width: 800px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main id="app"></main>
+    <script src="elm.js"></script>
+    <script>
+        var node = document.getElementById("app");
+        var app = Elm.Main.init({ node: node });
+    </script>
+</body>
+
+</html>

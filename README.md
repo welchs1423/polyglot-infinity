@@ -216,6 +216,22 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-09 (5)
+
+**brain-python — SMA crossover autobot** (`brain-python/`)
+
+- `brain-python/autobot.py` — New autonomous trading bot script
+  - Connects to `ws://localhost:8080/ws` (Go gateway WebSocket) via the `websockets` library; receives live `order-events` JSON payloads broadcast from the Redis `order-events` channel
+  - Extracts the `"price"` field from each frame; frames without a numeric `"price"` are silently skipped
+  - Maintains a `collections.deque(maxlen=10)` rolling window of recent prices; computes the simple moving average (SMA-10) once the window is full
+  - Crossover detection: compares `price > sma` on the current tick against the previous tick; a direction change fires a BUY (upward cross) or SELL (downward cross) signal
+  - `ORDER_COOLDOWN_S = 2.0` suppresses duplicate signals when price oscillates around the SMA across consecutive ticks
+  - On a signal, calls `place_order()` which fires `POST http://localhost:8080/api/java/order?id=<uuid4>&type=BUY|SELL` via `httpx.AsyncClient` (5 s timeout); the Go gateway reverse-proxies the request to Java Loom on port 8010
+  - Reconnect policy: exponential back-off starting at 1 s, capped at 30 s; resets on each successful connection; handles `ConnectionClosedError`, `ConnectionClosedOK`, `OSError`, and unexpected exceptions uniformly
+- `brain-python/requirements.txt` — added `httpx>=0.27.0` and `websockets>=12.0`
+
+---
+
 ### 2026-04-09 (4)
 
 **Chaos Monkey script** (`chaos.sh`)

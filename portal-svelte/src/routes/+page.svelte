@@ -31,515 +31,421 @@
 	import DependencyMapPanel from "$lib/components/panels/DependencyMapPanel.svelte";
 	import LogsPanel from "$lib/components/panels/LogsPanel.svelte";
 
-	// ── 탭 정의 ──────────────────────────────────────────────
+	// Go gateway base URL. Points to the central reverse proxy server.
+	const GO_HUB = "http://localhost:8080";
+
+	// Tab definitions. Each tab filters the visible panel set.
 	const TABS = [
-		{ id: "all", label: "전체", emoji: "🌈" },
-		{ id: "infra", label: "인프라", emoji: "⚙️" },
-		{ id: "finance", label: "금융분석", emoji: "📈" },
-		{ id: "concurrency", label: "동시성", emoji: "⚡" },
-		{ id: "functional", label: "함수형", emoji: "λ" },
-		{ id: "paradigm", label: "패러다임", emoji: "🧠" },
-		{ id: "monitor", label: "모니터링", emoji: "📊" },
+		{ id: "all",         label: "전체",    emoji: "all" },
+		{ id: "infra",       label: "인프라",   emoji: "infra" },
+		{ id: "finance",     label: "금융분석", emoji: "finance" },
+		{ id: "concurrency", label: "동시성",   emoji: "concurrency" },
+		{ id: "functional",  label: "함수형",   emoji: "functional" },
+		{ id: "paradigm",    label: "패러다임", emoji: "paradigm" },
+		{ id: "monitor",     label: "모니터링", emoji: "monitor" },
 	];
 
-	// 패널 → 탭 매핑
+	// Maps each panel key to the tabs under which it is visible.
 	const PANEL_TABS = /** @type {Record<string, string[]>} */ ({
 		SystemStatus: ["all", "infra", "monitor"],
 		RustPipeline: ["all", "infra"],
-		PythonBrain: ["all", "infra"],
-		LuaCache: ["all", "infra"],
-		Julia: ["all", "finance"],
-		Kotlin: ["all", "concurrency"],
-		Elixir: ["all", "concurrency", "functional"],
-		R: ["all", "finance"],
-		FSharp: ["all", "finance", "functional"],
-		Wasm: ["all", "finance"],
-		OCaml: ["all", "finance", "functional"],
-		Crystal: ["all", "concurrency"],
-		Nim: ["all", "finance", "paradigm"],
-		Scala: ["all", "finance", "functional", "concurrency"],
-		Haskell: ["all", "finance", "functional"],
-		Ruby: ["all", "paradigm"],
-		Dart: ["all", "finance"],
-		Gleam: ["all", "functional"],
-		V: ["all", "finance", "paradigm"],
-		Erlang: ["all", "concurrency", "paradigm"],
-		LuaStream: ["all", "concurrency"],
-		SwiftActor: ["all", "concurrency"],
-		ClojureSTM: ["all", "concurrency"],
-		JavaLoom: ["all", "concurrency"],
-		Prolog: ["all", "paradigm"],
-		BSCompare: ["all", "finance"],
-		Workflow: ["all", "infra", "monitor"],
-		Charts: ["all", "finance", "monitor"],
-		DependencyMap: ["all", "monitor"],
-		Logs: ["all", "monitor"],
+		PythonBrain:  ["all", "infra"],
+		LuaCache:     ["all", "infra"],
+		Julia:        ["all", "finance"],
+		Kotlin:       ["all", "concurrency"],
+		Elixir:       ["all", "concurrency", "functional"],
+		R:            ["all", "finance"],
+		FSharp:       ["all", "finance", "functional"],
+		Wasm:         ["all", "finance"],
+		OCaml:        ["all", "finance", "functional"],
+		Crystal:      ["all", "concurrency"],
+		Nim:          ["all", "finance", "paradigm"],
+		Scala:        ["all", "finance", "functional", "concurrency"],
+		Haskell:      ["all", "finance", "functional"],
+		Ruby:         ["all", "paradigm"],
+		Dart:         ["all", "finance"],
+		Gleam:        ["all", "functional"],
+		V:            ["all", "finance", "paradigm"],
+		Erlang:       ["all", "concurrency", "paradigm"],
+		LuaStream:    ["all", "concurrency"],
+		SwiftActor:   ["all", "concurrency"],
+		ClojureSTM:   ["all", "concurrency"],
+		JavaLoom:     ["all", "concurrency"],
+		Prolog:       ["all", "paradigm"],
+		BSCompare:    ["all", "finance"],
+		Workflow:     ["all", "infra", "monitor"],
+		Charts:       ["all", "finance", "monitor"],
+		DependencyMap:["all", "monitor"],
+		Logs:         ["all", "monitor"],
 	});
 
-	/** @param {string} panel */
+	/**
+	 * Returns true when the given panel key is included in the active tab.
+	 * @param {string} panel
+	 */
 	function show(panel) {
 		return PANEL_TABS[panel]?.includes(activeTab) ?? true;
 	}
 
-	// ── 상태 ─────────────────────────────────────────────────
+	// Active tab key. Drives conditional rendering of all panel components.
 	let activeTab = $state("all");
+
+	// DB system-log rows fetched from GET /api/history.
 	/** @type {any[]} */
 	let logs = $state([]);
 
-	// 상태바: SSE로 실시간 서비스 온라인 수 추적
+	// Counts derived from SSE aggregate stream (GET /api/aggregate/stream).
 	let onlineCount = $state(0);
-	let totalCount = $state(22);
+	let totalCount  = $state(22);
 	let sseConnected = $state(false);
+
 	/** @type {EventSource | null} */
 	let sse = null;
 
-	// ── 글로벌 알림 배너 ──────────────────────────────────────
-	/** @type {{id:number, type:string, msg:string}[]} */
+	// Transient notification banners displayed at the top of the page.
+	/** @type {{ id: number, type: string, msg: string }[]} */
 	let notifications = $state([]);
 	let notifId = 0;
 
-	/** @param {'warning'|'success'|'error'|'info'} type @param {string} msg */
-	function addNotification(type, msg) {
+	/**
+	 * Pushes a notification banner and auto-dismisses it after 4 seconds.
+	 * @param {"info"|"ok"|"error"} type - Controls the banner colour class.
+	 * @param {string} msg
+	 */
+	function addNotif(type, msg) {
 		const id = ++notifId;
 		notifications = [...notifications, { id, type, msg }];
 		setTimeout(() => {
 			notifications = notifications.filter((n) => n.id !== id);
-		}, 6000);
+		}, 4000);
 	}
 
-	/** @param {number} id */
-	function dismissNotif(id) {
-		notifications = notifications.filter((n) => n.id !== id);
-	}
-
-	// 리스크 임계값 모니터링: onlineCount가 전체의 50% 미만이면 경고
-	$effect(() => {
-		if (totalCount > 0 && onlineCount < totalCount * 0.5) {
-			addNotification(
-				"error",
-				`⚠️ 서비스 장애 감지: ${totalCount - onlineCount}개 오프라인 (${onlineCount}/${totalCount})`,
-			);
-		}
-	});
-
-	// auto-refresh: 상태바 폴백 폴링 주기 (SSE 연결 실패 시)
-	const REFRESH_OPTIONS = [
-		{ label: "수동", value: 0 },
-		{ label: "10s", value: 10 },
-		{ label: "30s", value: 30 },
-		{ label: "60s", value: 60 },
-	];
-	let refreshInterval = $state(30); // 기본 30초
-	/** @type {ReturnType<typeof setInterval> | null} */
-	let refreshTimer = null;
-
-	function startSSE() {
-		if (sse) sse.close();
-		sse = new EventSource("http://localhost:8080/api/aggregate/stream");
-		sse.onmessage = (e) => {
-			try {
-				const d = JSON.parse(e.data);
-				onlineCount = d.online ?? 0;
-				totalCount = d.total ?? 22;
-				sseConnected = true;
-			} catch {
-				/* ignore */
-			}
-		};
-		sse.onerror = () => {
-			sseConnected = false;
-		};
-	}
-
-	async function pollAggregate() {
-		try {
-			const res = await fetch("http://localhost:8080/api/aggregate");
-			if (res.ok) {
-				const d = await res.json();
-				onlineCount = d.online ?? 0;
-				totalCount = d.total ?? 22;
-			}
-		} catch {
-			/* offline */
-		}
-	}
-
-	function applyRefreshTimer() {
-		if (refreshTimer) {
-			clearInterval(refreshTimer);
-			refreshTimer = null;
-		}
-		if (refreshInterval > 0 && !sseConnected) {
-			refreshTimer = setInterval(pollAggregate, refreshInterval * 1000);
-		}
-	}
-
-	$effect(() => {
-		// sseConnected 또는 refreshInterval 변경 시 폴링 타이머 재설정
-		applyRefreshTimer();
-	});
-
+	/**
+	 * Fetches the 10 most recent system-log rows from the Go gateway and
+	 * stores them in the logs reactive variable for the LogsPanel.
+	 */
 	async function fetchLogs() {
 		try {
-			const res = await fetch("http://localhost:8080/api/history");
+			const res = await fetch(`${GO_HUB}/api/history`);
 			if (res.ok) logs = await res.json();
 		} catch {
-			/* ignore */
+			// History fetch failure is non-critical; leave existing rows visible.
 		}
 	}
 
+	/**
+	 * Opens a persistent EventSource connection to GET /api/aggregate/stream.
+	 * The Go server pushes a full service-health snapshot every 10 seconds.
+	 * Each message updates onlineCount, totalCount, and sseConnected.
+	 */
+	function connectSSE() {
+		if (sse) return;
+		sse = new EventSource(`${GO_HUB}/api/aggregate/stream`);
+		sseConnected = true;
+
+		sse.onmessage = (event) => {
+			try {
+				const data = JSON.parse(event.data);
+				// data.online and data.total are set by buildAggregate in Go.
+				onlineCount  = data.online  ?? onlineCount;
+				totalCount   = data.total   ?? totalCount;
+				sseConnected = true;
+			} catch {
+				// Malformed SSE frame; ignore and wait for next tick.
+			}
+		};
+
+		sse.onerror = () => {
+			sseConnected = false;
+			sse?.close();
+			sse = null;
+			// Reconnect after 5 seconds if the connection drops.
+			setTimeout(connectSSE, 5000);
+		};
+	}
+
+	/**
+	 * Called by SystemStatusPanel when a manual sync completes.
+	 * Refreshes the log panel to reflect any new DB entries.
+	 */
+	function handleSync() {
+		fetchLogs();
+		addNotif("ok", "Go 게이트웨이 동기화 완료");
+	}
+
+	// Initial data load and SSE connection start on component mount.
 	onMount(() => {
 		fetchLogs();
-		startSSE();
-		pollAggregate(); // 즉시 한 번 폴링 (SSE 연결 전 초기값)
+		connectSSE();
 	});
 
+	// Close the SSE connection when the component is removed from the DOM.
 	onDestroy(() => {
 		sse?.close();
-		if (refreshTimer) clearInterval(refreshTimer);
+		sse = null;
 	});
-
-	// 탭별 패널 개수 (뱃지용)
-	/** @param {string} tabId */
-	function tabCount(tabId) {
-		return Object.values(PANEL_TABS).filter((tabs) => tabs.includes(tabId))
-			.length;
-	}
 </script>
 
-<main class="container">
-	<h1 class="title">Polyglot Infinity Portal</h1>
+<!-- Notification banners rendered above all content. -->
+<div class="notif-container">
+	{#each notifications as n (n.id)}
+		<div class="notif notif-{n.type}">{n.msg}</div>
+	{/each}
+</div>
 
-	<!-- ── 글로벌 알림 배너 ─────────────────────────────────── -->
-	{#if notifications.length > 0}
-		<div class="notif-stack">
-			{#each notifications as n (n.id)}
-				<div class="notif notif-{n.type}">
-					<span class="notif-msg">{n.msg}</span>
-					<button
-						class="notif-close"
-						onclick={() => dismissNotif(n.id)}>✕</button
-					>
-				</div>
-			{/each}
+<div class="container">
+	<!-- Page header: title and live service counter. -->
+	<header class="page-header">
+		<h1 class="title">Polyglot Infinity</h1>
+		<div class="service-counter">
+			<span class="counter-label">Services</span>
+			<span class="counter-online">{onlineCount}</span>
+			<span class="counter-sep">/</span>
+			<span class="counter-total">{totalCount}</span>
+			<span class="sse-dot" class:sse-dot-live={sseConnected} title={sseConnected ? "SSE connected" : "SSE disconnected"}></span>
 		</div>
-	{/if}
+	</header>
 
-	<!-- ── 상태바 ───────────────────────────────────────────── -->
-	<div class="status-bar">
-		<div class="status-left">
-			<span class="status-dot" class:online={sseConnected}></span>
-			<span class="status-label">
-				{sseConnected ? "실시간 연결됨" : "폴링 모드"}
-			</span>
-			<span class="status-count">
-				<span class="count-online">{onlineCount}</span>
-				<span class="count-sep">/</span>
-				<span class="count-total">{totalCount}</span>
-				<span class="count-label">온라인</span>
-			</span>
-			<div class="online-bar">
-				<div
-					class="online-fill"
-					style="width:{totalCount > 0
-						? (onlineCount / totalCount) * 100
-						: 0}%"
-				></div>
-			</div>
-		</div>
-		<div class="status-right">
-			<label class="refresh-label" for="refresh-select">자동갱신</label>
-			<select
-				id="refresh-select"
-				class="refresh-select"
-				bind:value={refreshInterval}
-				onchange={applyRefreshTimer}
-			>
-				{#each REFRESH_OPTIONS as opt}
-					<option value={opt.value}>{opt.label}</option>
-				{/each}
-			</select>
-			<button
-				class="refresh-btn"
-				onclick={pollAggregate}
-				title="지금 새로고침">↺</button
-			>
-		</div>
-	</div>
-
-	<!-- ── 탭 네비게이션 ────────────────────────────────────── -->
-	<nav class="tab-nav">
+	<!-- Tab bar: filters the visible panel set. -->
+	<nav class="tab-bar" role="tablist">
 		{#each TABS as tab}
 			<button
+				role="tab"
+				aria-selected={activeTab === tab.id}
 				class="tab-btn"
-				class:active={activeTab === tab.id}
+				class:tab-active={activeTab === tab.id}
 				onclick={() => (activeTab = tab.id)}
 			>
-				<span class="tab-emoji">{tab.emoji}</span>
 				{tab.label}
-				<span class="tab-badge">{tabCount(tab.id)}</span>
 			</button>
 		{/each}
 	</nav>
 
-	<!-- ── 패널 ─────────────────────────────────────────────── -->
+	<!-- Panel grid: each panel is self-contained and manages its own API calls. -->
+	<!-- Panels are hidden via display:none rather than destroyed to preserve state across tab switches. -->
+
 	{#if show("SystemStatus")}
-		<SystemStatusPanel onSync={fetchLogs} />
+		<SystemStatusPanel onSync={handleSync} />
 	{/if}
+
 	{#if show("RustPipeline")}
-		<RustPipelinePanel onTrigger={fetchLogs} />
+		<RustPipelinePanel />
 	{/if}
+
 	{#if show("PythonBrain")}
 		<PythonBrainPanel />
 	{/if}
+
 	{#if show("LuaCache")}
 		<LuaCachePanel />
 	{/if}
+
 	{#if show("Julia")}
 		<JuliaPanel />
 	{/if}
+
 	{#if show("Kotlin")}
 		<KotlinPanel />
 	{/if}
+
 	{#if show("Elixir")}
 		<ElixirPanel />
 	{/if}
+
 	{#if show("R")}
 		<RPanel />
 	{/if}
+
 	{#if show("FSharp")}
 		<FSharpPanel />
 	{/if}
+
 	{#if show("Wasm")}
 		<WasmPanel />
 	{/if}
+
 	{#if show("OCaml")}
 		<OCamlPanel />
 	{/if}
+
 	{#if show("Crystal")}
 		<CrystalPanel />
 	{/if}
+
 	{#if show("Nim")}
 		<NimPanel />
 	{/if}
+
 	{#if show("Scala")}
 		<ScalaPanel />
 	{/if}
+
 	{#if show("Haskell")}
 		<HaskellPanel />
 	{/if}
+
 	{#if show("Ruby")}
 		<RubyPanel />
 	{/if}
+
 	{#if show("Dart")}
 		<DartPanel />
 	{/if}
+
 	{#if show("Gleam")}
 		<GleamPanel />
 	{/if}
+
 	{#if show("V")}
 		<VPanel />
 	{/if}
+
 	{#if show("Erlang")}
 		<ErlangPanel />
 	{/if}
+
 	{#if show("LuaStream")}
 		<LuaStreamPanel />
 	{/if}
+
 	{#if show("SwiftActor")}
 		<SwiftActorPanel />
 	{/if}
+
 	{#if show("ClojureSTM")}
 		<ClojureSTMPanel />
 	{/if}
+
 	{#if show("JavaLoom")}
 		<JavaLoomPanel />
 	{/if}
+
 	{#if show("Prolog")}
 		<PrologPanel />
 	{/if}
+
 	{#if show("BSCompare")}
 		<BSComparePanel />
 	{/if}
+
 	{#if show("Workflow")}
 		<WorkflowPanel />
 	{/if}
+
 	{#if show("Charts")}
 		<ChartsPanel />
 	{/if}
+
 	{#if show("DependencyMap")}
 		<DependencyMapPanel />
 	{/if}
+
 	{#if show("Logs")}
+		<!-- LogsPanel receives log rows as a prop; rows are owned by +page.svelte. -->
 		<LogsPanel {logs} />
 	{/if}
-</main>
+</div>
 
 <style>
-	/* ── 상태바 ─────────────────────────────────────────────── */
-	.status-bar {
+	/* Page-level header: title on the left, service counter on the right. */
+	.page-header {
 		display: flex;
-		align-items: center;
 		justify-content: space-between;
-		background: #1e293b;
-		border: 1px solid #334155;
-		border-radius: 10px;
-		padding: 0.6rem 1rem;
-		margin-bottom: 1rem;
-		gap: 1rem;
-		flex-wrap: wrap;
-	}
-	.status-left {
-		display: flex;
 		align-items: center;
+		margin-bottom: 1.5rem;
+		flex-wrap: wrap;
 		gap: 0.75rem;
 	}
-	.status-dot {
+
+	/* Service counter badge displayed next to the page title. */
+	.service-counter {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		background: #1e293b;
+		border: 1px solid #334155;
+		border-radius: 8px;
+		padding: 0.5rem 1rem;
+		font-size: 0.9rem;
+	}
+
+	.counter-label {
+		color: #64748b;
+		font-size: 0.8rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.counter-online {
+		font-weight: bold;
+		color: #22c55e;
+		font-size: 1.2rem;
+	}
+
+	.counter-sep {
+		color: #475569;
+	}
+
+	.counter-total {
+		color: #94a3b8;
+		font-size: 1rem;
+	}
+
+	/* SSE connection status indicator dot. */
+	.sse-dot {
+		display: inline-block;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
 		background: #475569;
-		flex-shrink: 0;
-	}
-	.status-dot.online {
-		background: #22c55e;
-		box-shadow: 0 0 6px #22c55e;
-		animation: pulse 2s infinite;
-	}
-	@keyframes pulse {
-		0%,
-		100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: 0.5;
-		}
-	}
-	.status-label {
-		font-size: 0.78rem;
-		color: #64748b;
-		white-space: nowrap;
-	}
-	.status-count {
-		display: flex;
-		align-items: baseline;
-		gap: 0.2rem;
-		font-family: monospace;
-	}
-	.count-online {
-		color: #22c55e;
-		font-size: 1.15rem;
-		font-weight: 700;
-	}
-	.count-sep {
-		color: #475569;
-		font-size: 1rem;
-	}
-	.count-total {
-		color: #94a3b8;
-		font-size: 1rem;
-	}
-	.count-label {
-		color: #64748b;
-		font-size: 0.78rem;
-		margin-left: 0.2rem;
-	}
-	.online-bar {
-		width: 80px;
-		height: 6px;
-		background: #1e3a2a;
-		border-radius: 3px;
-		overflow: hidden;
-	}
-	.online-fill {
-		height: 100%;
-		background: #22c55e;
-		border-radius: 3px;
-		transition: width 0.5s ease;
-	}
-	.status-right {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	.refresh-label {
-		font-size: 0.78rem;
-		color: #64748b;
-	}
-	.refresh-select {
-		background: #0f172a;
-		color: #94a3b8;
-		border: 1px solid #334155;
-		border-radius: 4px;
-		padding: 0.2rem 0.4rem;
-		font-size: 0.78rem;
-		cursor: pointer;
-	}
-	.refresh-btn {
-		background: #1e3a5f;
-		color: #60a5fa;
-		border: 1px solid #1d4ed8;
-		border-radius: 4px;
-		padding: 0.2rem 0.5rem;
-		cursor: pointer;
-		font-size: 0.85rem;
-	}
-	.refresh-btn:hover {
-		background: #1d4ed8;
+		margin-left: 0.3rem;
+		transition: background 0.4s;
 	}
 
-	/* ── 탭 네비게이션 ──────────────────────────────────────── */
-	.tab-nav {
+	.sse-dot-live {
+		background: #22c55e;
+		/* Pulse animation signals that the SSE stream is actively receiving data. */
+		animation: pulse 2s infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50%       { opacity: 0.4; }
+	}
+
+	/* Tab navigation bar. */
+	.tab-bar {
 		display: flex;
 		gap: 0.4rem;
 		flex-wrap: wrap;
 		margin-bottom: 1.5rem;
-		padding: 0.5rem;
-		background: #1e293b;
-		border-radius: 10px;
-		border: 1px solid #334155;
-	}
-	.tab-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-		background: transparent;
-		color: #64748b;
-		border: 1px solid transparent;
-		border-radius: 6px;
-		padding: 0.35rem 0.75rem;
-		font-size: 0.82rem;
-		cursor: pointer;
-		transition: all 0.15s;
-		white-space: nowrap;
-	}
-	.tab-btn:hover {
-		background: #0f172a;
-		color: #94a3b8;
-	}
-	.tab-btn.active {
-		background: #0f172a;
-		color: #e2e8f0;
-		border-color: #3b82f6;
-	}
-	.tab-emoji {
-		font-size: 0.9rem;
-	}
-	.tab-badge {
-		background: #0f172a;
-		color: #475569;
-		border-radius: 10px;
-		padding: 0 0.4rem;
-		font-size: 0.7rem;
-		font-family: monospace;
-	}
-	.tab-btn.active .tab-badge {
-		background: #1e3a5f;
-		color: #60a5fa;
 	}
 
-	/* ── 알림 배너 ──────────────────────────────────────────── */
-	.notif-stack {
+	.tab-btn {
+		background: #1e293b;
+		color: #94a3b8;
+		border: 1px solid #334155;
+		padding: 0.45rem 1rem;
+		border-radius: 6px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+
+	.tab-btn:hover {
+		background: #334155;
+		color: #e2e8f0;
+	}
+
+	.tab-active {
+		background: #2563eb;
+		color: #fff;
+		border-color: #2563eb;
+	}
+
+	/* Notification banner container anchored to the top of the viewport. */
+	.notif-container {
 		position: fixed;
 		top: 1rem;
 		right: 1rem;
@@ -547,66 +453,38 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-		max-width: 380px;
 		pointer-events: none;
 	}
+
 	.notif {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
+		padding: 0.7rem 1.2rem;
 		border-radius: 8px;
 		font-size: 0.85rem;
-		animation: slideIn 0.2s ease;
-		pointer-events: all;
-		backdrop-filter: blur(6px);
+		font-weight: 600;
+		max-width: 320px;
+		animation: slidein 0.2s ease-out;
 	}
+
+	@keyframes slidein {
+		from { opacity: 0; transform: translateX(20px); }
+		to   { opacity: 1; transform: translateX(0); }
+	}
+
+	.notif-ok {
+		background: #052e16;
+		border: 1px solid #16a34a;
+		color: #86efac;
+	}
+
 	.notif-error {
-		background: rgba(239, 68, 68, 0.15);
-		border: 1px solid rgba(239, 68, 68, 0.4);
+		background: #450a0a;
+		border: 1px solid #dc2626;
 		color: #fca5a5;
 	}
-	.notif-warning {
-		background: rgba(245, 158, 11, 0.15);
-		border: 1px solid rgba(245, 158, 11, 0.4);
-		color: #fcd34d;
-	}
-	.notif-success {
-		background: rgba(52, 211, 153, 0.15);
-		border: 1px solid rgba(52, 211, 153, 0.4);
-		color: #6ee7b7;
-	}
+
 	.notif-info {
-		background: rgba(99, 102, 241, 0.15);
-		border: 1px solid rgba(99, 102, 241, 0.4);
+		background: #1e1b4b;
+		border: 1px solid #6366f1;
 		color: #a5b4fc;
-	}
-	.notif-msg {
-		flex: 1;
-		line-height: 1.4;
-	}
-	.notif-close {
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: inherit;
-		opacity: 0.7;
-		font-size: 0.9rem;
-		padding: 0;
-		flex-shrink: 0;
-	}
-	.notif-close:hover {
-		opacity: 1;
-	}
-	@keyframes slideIn {
-		from {
-			transform: translateX(100%);
-			opacity: 0;
-		}
-		to {
-			transform: translateX(0);
-			opacity: 1;
-		}
 	}
 </style>

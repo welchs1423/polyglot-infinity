@@ -1,3 +1,5 @@
+mod ffi;
+
 use axum::{
     routing::{get, post},
     Router,
@@ -5,6 +7,7 @@ use axum::{
     Json,
     extract::State,
 };
+use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Instant;
 use serde_json::json;
@@ -45,6 +48,51 @@ fn daily_var_95(user_id: i32) -> f64 {
     position * daily_vol * 1.644_853_6
 }
 
+/// Request body for matrix multiplication: C = A * B.
+/// A is [m x k] row-major, B is [k x n] row-major.
+#[derive(Deserialize)]
+struct MultiplyRequest {
+    a: Vec<f64>,
+    m: i32,
+    k: i32,
+    b: Vec<f64>,
+    n: i32,
+}
+
+/// Request body for sample covariance matrix computation.
+/// returns is [assets x periods] row-major.
+#[derive(Deserialize)]
+struct CovarianceRequest {
+    returns: Vec<f64>,
+    assets: i32,
+    periods: i32,
+}
+
+/// Request body for Cholesky decomposition (A = L * L^T).
+/// matrix is [n x n] row-major, symmetric positive-definite.
+#[derive(Deserialize)]
+struct CholeskyRequest {
+    matrix: Vec<f64>,
+    n: i32,
+}
+
+/// Request body for Frobenius norm computation.
+/// matrix is [m x n] row-major.
+#[derive(Deserialize)]
+struct FrobeniusRequest {
+    matrix: Vec<f64>,
+    m: i32,
+    n: i32,
+}
+
+/// Request body for portfolio variance: v = w^T * cov * w.
+#[derive(Deserialize)]
+struct PortfolioVarRequest {
+    cov: Vec<f64>,
+    weights: Vec<f64>,
+    assets: i32,
+}
+
 #[tokio::main]
 async fn main() {
 
@@ -75,6 +123,12 @@ async fn main() {
         .route("/api/bulk-insert", post(bulk_insert))
         .route("/api/risk/summary", get(risk_summary))
         .route("/health", get(health_handler))
+        /* Matrix FFI endpoints */
+        .route("/api/matrix/multiply",   post(matrix_multiply_handler))
+        .route("/api/matrix/covariance",  post(matrix_covariance_handler))
+        .route("/api/matrix/cholesky",   post(matrix_cholesky_handler))
+        .route("/api/matrix/frobenius",  post(matrix_frobenius_handler))
+        .route("/api/portfolio/variance", post(portfolio_variance_handler))
         .with_state(pool);
 
     println!("[Rust Pipeline] Server is running on http://0.0.0.0:8081");
@@ -179,5 +233,212 @@ async fn bulk_insert(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
         "formula": "position × (annual_vol / √252) × z_{0.95}",
         "sample_var_first_krw": (var_first * 100.0).round() / 100.0,
         "sample_var_last_krw":  (var_last  * 100.0).round() / 100.0
+    }))
+}
+
+/* ── Matrix FFI handlers ──────────────────────────────────────────────── */
+
+/*
+ * POST /api/matrix/multiply
+ *
+ * Computes C = A * B using the C++ cache-tiled implementation.
+ * The output buffer is allocated by Rust (zero-copy into C++).
+ *
+ * Request  : { "a": [f64...], "m": int, "k": int, "b": [f64...], "n": int }
+ * Response : { "result": [f64...], "rows": int, "cols": int, "elapsed_us": u128 }
+ */
+async fn matrix_multiply_handler(
+    Json(req): Json<MultiplyRequest>,
+) -> impl IntoResponse {
+    let expected_a = (req.m as usize).saturating_mul(req.k as usize);
+    let expected_b = (req.k as usize).saturating_mul(req.n as usize);
+
+    if req.m <= 0 || req.k <= 0 || req.n <= 0
+        || req.a.len() != expected_a
+        || req.b.len() != expected_b
+    {
+        return Json(json!({ "error": "invalid dimensions or mismatched input lengths" }));
+    }
+
+    let (m, k, n) = (req.m, req.k, req.n);
+    let a = req.a;
+    let b = req.b;
+
+    /*
+     * CPU-bound work is offloaded to the blocking thread pool so the async
+     * executor is not stalled.  The owned Vec<f64> values are moved into the
+     * closure; no additional allocation is required.
+     */
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+        let out = ffi::multiply_zero_copy(&a, m, k, &b, n);
+        (out, t0.elapsed())
+    })
+    .await
+    .expect("blocking task panicked");
+
+    Json(json!({
+        "result":     result.0,
+        "rows":       m,
+        "cols":       n,
+        "elapsed_us": result.1.as_micros(),
+    }))
+}
+
+/*
+ * POST /api/matrix/covariance
+ *
+ * Computes the sample covariance matrix of a returns matrix.
+ * The output buffer is allocated by Rust (zero-copy into C++).
+ *
+ * Request  : { "returns": [f64...], "assets": int, "periods": int }
+ * Response : { "covariance": [f64...], "assets": int, "elapsed_us": u128 }
+ */
+async fn matrix_covariance_handler(
+    Json(req): Json<CovarianceRequest>,
+) -> impl IntoResponse {
+    let expected = (req.assets as usize).saturating_mul(req.periods as usize);
+
+    if req.assets <= 0 || req.periods < 2 || req.returns.len() != expected {
+        return Json(json!({ "error": "assets > 0, periods >= 2, and returns length must equal assets*periods" }));
+    }
+
+    let (assets, periods) = (req.assets, req.periods);
+    let returns = req.returns;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+        let cov = ffi::covariance(&returns, assets, periods);
+        (cov, t0.elapsed())
+    })
+    .await
+    .expect("blocking task panicked");
+
+    Json(json!({
+        "covariance": result.0,
+        "assets":     assets,
+        "elapsed_us": result.1.as_micros(),
+    }))
+}
+
+/*
+ * POST /api/matrix/cholesky
+ *
+ * Computes the Cholesky factor L such that A = L * L^T.
+ * A must be a symmetric positive-definite matrix.
+ * The output buffer is allocated by Rust (zero-copy into C++).
+ *
+ * Request  : { "matrix": [f64...], "n": int }
+ * Response : { "l": [f64...], "n": int, "elapsed_us": u128 }
+ *          | { "error": "..." }
+ */
+async fn matrix_cholesky_handler(
+    Json(req): Json<CholeskyRequest>,
+) -> impl IntoResponse {
+    let expected = (req.n as usize).saturating_mul(req.n as usize);
+
+    if req.n <= 0 || req.matrix.len() != expected {
+        return Json(json!({ "error": "n must be positive and matrix length must equal n*n" }));
+    }
+
+    let n = req.n;
+    let matrix = req.matrix;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+        let l = ffi::cholesky(&matrix, n);
+        (l, t0.elapsed())
+    })
+    .await
+    .expect("blocking task panicked");
+
+    match result.0 {
+        Some(l) => Json(json!({
+            "l":          l,
+            "n":          n,
+            "elapsed_us": result.1.as_micros(),
+        })),
+        None => Json(json!({
+            "error": "matrix is not symmetric positive-definite"
+        })),
+    }
+}
+
+/*
+ * POST /api/portfolio/variance
+ *
+ * Computes the scalar portfolio variance v = w^T * cov * w.
+ * An internal temporary buffer is allocated and freed inside the C++ function.
+ *
+ * Request  : { "cov": [f64...], "weights": [f64...], "assets": int }
+ * Response : { "variance": f64, "std_dev": f64, "elapsed_us": u128 }
+ */
+async fn portfolio_variance_handler(
+    Json(req): Json<PortfolioVarRequest>,
+) -> impl IntoResponse {
+    let expected_cov = (req.assets as usize).saturating_mul(req.assets as usize);
+
+    if req.assets <= 0
+        || req.cov.len() != expected_cov
+        || req.weights.len() != req.assets as usize
+    {
+        return Json(json!({ "error": "assets must be positive; cov length must equal assets^2; weights length must equal assets" }));
+    }
+
+    let assets = req.assets;
+    let cov = req.cov;
+    let weights = req.weights;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+        let var = ffi::portfolio_var(&cov, &weights, assets);
+        (var, t0.elapsed())
+    })
+    .await
+    .expect("blocking task panicked");
+
+    let variance = result.0;
+    Json(json!({
+        "variance":   variance,
+        "std_dev":    variance.sqrt(),
+        "assets":     assets,
+        "elapsed_us": result.1.as_micros(),
+    }))
+}
+
+/*
+ * POST /api/matrix/frobenius
+ *
+ * Computes the Frobenius norm: sqrt( sum_{i,j} A[i,j]^2 ).
+ * Read-only over the input; no allocation in C++.
+ *
+ * Request  : { "matrix": [f64...], "m": int, "n": int }
+ * Response : { "norm": f64, "rows": int, "cols": int, "elapsed_us": u128 }
+ */
+async fn matrix_frobenius_handler(
+    Json(req): Json<FrobeniusRequest>,
+) -> impl IntoResponse {
+    let expected = (req.m as usize).saturating_mul(req.n as usize);
+
+    if req.m <= 0 || req.n <= 0 || req.matrix.len() != expected {
+        return Json(json!({ "error": "m and n must be positive and matrix length must equal m*n" }));
+    }
+
+    let (m, n) = (req.m, req.n);
+    let matrix = req.matrix;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let t0 = Instant::now();
+        let norm = ffi::frobenius_norm(&matrix, m, n);
+        (norm, t0.elapsed())
+    })
+    .await
+    .expect("blocking task panicked");
+
+    Json(json!({
+        "norm":       result.0,
+        "rows":       m,
+        "cols":       n,
+        "elapsed_us": result.1.as_micros(),
     }))
 }

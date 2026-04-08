@@ -9,3 +9,6 @@ tokio = { version = "1.35", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-native-tls", "chrono"] }
+
+[build-dependencies]
+cc = "1"

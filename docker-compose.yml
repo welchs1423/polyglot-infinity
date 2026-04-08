@@ -71,8 +71,8 @@ services:
   # ── Rust Pipeline (:8081) ───────────────────────────────────────────────────
   rust-pipeline:
     build:
-      context: ./pipeline-rust
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: pipeline-rust/Dockerfile
     ports: ["8081:8081"]
     depends_on:
       postgres: { condition: service_healthy }

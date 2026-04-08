@@ -253,8 +253,17 @@ services:
     working_dir: /app
     command: sh run.sh
     ports: [ "8010:8010" ]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/polyglot_db
+      DB_USER: dev
+      DB_PASSWORD: polyglot
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
     volumes:
-      - ./loom-java:/app:ro
+      - ./loom-java:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     networks: [ polyglot ]
 
   # ── Prolog Solver (:8011) ───────────────────────────────────────────────────

@@ -2,17 +2,23 @@
 // Java 21 Virtual Threads (Project Loom) — Order/Payment State Management Server
 // Port: 8010
 //
-// Virtual Thread 원리:
+// Virtual Thread:
 //   OS Thread 1개당 약 1MB 스택, 생성 비용이 높아 대규모 동시 접속에 불리하다.
 //   Virtual Thread는 JVM이 관리하는 경량 스레드로 스택 초기 크기가 수백 바이트이며
 //   Thread.sleep()이나 소켓 I/O 등 블로킹 구간에서 OS Thread를 자동으로 반환한다.
 //   Executors.newVirtualThreadPerTaskExecutor()를 사용하면 작업마다 Virtual Thread를
 //   할당하므로 수만 개의 동시 요청을 OS Thread 수와 무관하게 처리할 수 있다.
 //
+// DB Persistence (HikariCP + JDBC):
+//   HikariCP 커넥션 풀을 통해 PostgreSQL에 연결한다.
+//   주문 생성 시 INSERT, 상태 전이 시 UPDATE를 Virtual Thread 내부에서 호출한다.
+//   DB 비가용 시 예외를 stderr에 기록하고 인메모리 상태 관리는 정상 작동한다.
+//   환경변수: DB_URL (jdbc:postgresql://...), DB_USER, DB_PASSWORD
+//
 // Redis Pub/Sub:
 //   상태 전이 성공 직후 JedisPool을 통해 "order-events" 채널에 이벤트 JSON을 발행한다.
 //   연결 실패 또는 Redis 비가용 시 예외를 표준 오류 스트림에만 기록하고 상태 전이 결과는
-//   정상 반환한다(비멱등 부작용은 핵심 흐름을 차단하지 않는다).
+//   정상 반환한다.
 //
 // 엔드포인트:
 //   GET /health
@@ -26,18 +32,115 @@
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
 import java.io.*;
 import java.net.InetSocketAddress;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.*;
 
 public class VirtualServer {
+
+    // ── DB Persistence (HikariCP + JDBC) ────────────────────────────────
+    // DbStore wraps a HikariDataSource and exposes two write operations:
+    //   insertOrder — called once when a new order is created
+    //   updateOrder — called after every successful state transition
+    // Both operations use INSERT ... ON CONFLICT to remain idempotent.
+    // DB unavailability does not interrupt in-memory state management.
+    static class DbStore {
+        private final HikariDataSource ds;
+
+        DbStore(String jdbcUrl, String user, String password) {
+            HikariConfig cfg = new HikariConfig();
+            cfg.setJdbcUrl(jdbcUrl);
+            cfg.setUsername(user);
+            cfg.setPassword(password);
+            cfg.setMaximumPoolSize(20);
+            cfg.setMinimumIdle(2);
+            cfg.setConnectionTimeout(3_000);
+            cfg.setIdleTimeout(60_000);
+            cfg.setMaxLifetime(1_800_000);
+            cfg.setAutoCommit(true);
+            ds = new HikariDataSource(cfg);
+        }
+
+        // CREATE TABLE IF NOT EXISTS — called once at startup.
+        void initSchema() {
+            String ddl = """
+                CREATE TABLE IF NOT EXISTS orders (
+                    id         VARCHAR(255) PRIMARY KEY,
+                    status     VARCHAR(32)  NOT NULL,
+                    created_at BIGINT       NOT NULL,
+                    updated_at BIGINT       NOT NULL
+                )
+                """;
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(ddl)) {
+                ps.executeUpdate();
+                System.out.println("[DB] schema initialized");
+            } catch (SQLException e) {
+                System.err.println("[DB] initSchema failed: " + e.getMessage());
+            }
+        }
+
+        // Inserts a new order row. Ignores duplicate key violations (idempotent).
+        void insertOrder(String id, String status, long createdAt) {
+            String sql = """
+                INSERT INTO orders (id, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (id) DO NOTHING
+                """;
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setString(1, id);
+                ps.setString(2, status);
+                ps.setLong(3, createdAt);
+                ps.setLong(4, createdAt);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                System.err.println("[DB] insertOrder failed [" + id + "]: " + e.getMessage());
+            }
+        }
+
+        // Updates status and updated_at for an existing order row.
+        void updateOrder(String id, String status, long updatedAt) {
+            String sql = """
+                UPDATE orders
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+                """;
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setString(1, status);
+                ps.setLong(2, updatedAt);
+                ps.setString(3, id);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                System.err.println("[DB] updateOrder failed [" + id + "]: " + e.getMessage());
+            }
+        }
+
+        boolean isRunning() {
+            return ds != null && !ds.isClosed();
+        }
+
+        void close() {
+            if (ds != null) ds.close();
+        }
+    }
+
+    // Singleton DbStore instance. Null when DB is not configured or unavailable.
+    static volatile DbStore dbStore;
 
     // ── Redis Pub/Sub ────────────────────────────────────────────────────
     // JedisPool: 스레드 안전한 JedisPool 인스턴스.
@@ -180,7 +283,9 @@ public class VirtualServer {
     static final LinkedBlockingQueue<EventTask> eventQueue = new LinkedBlockingQueue<>();
 
     // 이벤트 워커: Virtual Thread로 실행되며 큐에서 이벤트를 꺼내 상태 전이를 수행한다.
-    // 전이 성공 시 변경 사항을 JSON으로 직렬화하여 Redis "order-events" 채널에 발행한다.
+    // 전이 성공 시 DB를 업데이트하고 Redis "order-events" 채널에 이벤트를 발행한다.
+    // DB 호출은 Virtual Thread 내부에서 블로킹 JDBC를 그대로 사용한다.
+    // Virtual Thread는 소켓 I/O 대기 중 OS Thread를 반환하므로 블로킹 코드가 허용된다.
     static void startEventWorkers(int workerCount) {
         for (int i = 0; i < workerCount; i++) {
             Thread.ofVirtual().name("event-worker-" + i).start(() -> {
@@ -191,18 +296,29 @@ public class VirtualServer {
                         if (order == null) {
                             task.result().complete("ORDER_NOT_FOUND");
                         } else {
-                            // 실제 I/O 작업 시뮬레이션 (예: DB 저장, 알림 발송)
                             simulateAsyncIo(task.event());
                             String r = order.apply(task.event());
-                            // 상태 전이 성공 시 변경 내용을 JSON으로 직렬화하여 Redis에 발행.
                             // r 형식: "OK:<prevStatus>:<newStatus>"
                             if (r.startsWith("OK:")) {
                                 String[] parts = r.split(":", 3);
-                                // parts[1]=prevStatus, parts[2]=newStatus
+                                String newStatus = parts[2];
+
+                                // DB UPDATE: Virtual Thread 내부 블로킹 JDBC 호출.
+                                // DS가 없거나 비가용이면 조용히 건너뛴다.
+                                DbStore db = dbStore;
+                                if (db != null && db.isRunning()) {
+                                    db.updateOrder(
+                                        task.orderId(),
+                                        newStatus,
+                                        System.currentTimeMillis()
+                                    );
+                                }
+
+                                // Redis 발행: parts[1]=prevStatus, parts[2]=newStatus
                                 publishOrderEvent(
                                     task.orderId(),
                                     parts[1],
-                                    parts[2],
+                                    newStatus,
                                     task.event().name()
                                 );
                             }
@@ -352,6 +468,24 @@ public class VirtualServer {
     public static void main(String[] args) throws Exception {
         int port = 8010;
 
+        // DbStore 초기화: 환경변수 DB_URL / DB_USER / DB_PASSWORD 사용.
+        // DB가 없어도 서버는 인메모리 모드로 정상 기동한다.
+        String dbUrl  = System.getenv("DB_URL");
+        String dbUser = System.getenv().getOrDefault("DB_USER", "dev");
+        String dbPass = System.getenv().getOrDefault("DB_PASSWORD", "polyglot");
+        if (dbUrl != null && !dbUrl.isEmpty()) {
+            try {
+                dbStore = new DbStore(dbUrl, dbUser, dbPass);
+                dbStore.initSchema();
+                System.out.println("[DB] HikariCP connected -> " + dbUrl);
+            } catch (Exception e) {
+                System.err.println("[DB] HikariCP init failed (in-memory only): " + e.getMessage());
+                dbStore = null;
+            }
+        } else {
+            System.out.println("[DB] DB_URL not set — running in-memory only");
+        }
+
         // JedisPool 초기화: 환경변수 REDIS_HOST / REDIS_PORT 우선, 기본값 localhost:6379.
         // Redis가 없어도 서버는 정상 기동한다.
         String redisHost = System.getenv().getOrDefault("REDIS_HOST", "localhost");
@@ -373,6 +507,12 @@ public class VirtualServer {
         // 각 워커는 큐 대기 중 OS Thread를 차단하지 않는다.
         startEventWorkers(16);
 
+        // JVM 종료 시 HikariCP 커넥션 풀을 정리한다.
+        Runtime.getRuntime().addShutdownHook(Thread.ofVirtual().unstarted(() -> {
+            DbStore db = dbStore;
+            if (db != null) db.close();
+        }));
+
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 256);
 
         // HTTP 서버 자체도 Virtual Thread로 요청을 처리한다.
@@ -393,15 +533,19 @@ public class VirtualServer {
 
                 // GET /api/java/status
                 if (path.equals("/api/java/status")) {
+                    boolean dbConn = dbStore != null && dbStore.isRunning();
+                    String dbUrl   = System.getenv().getOrDefault("DB_URL", "not configured");
                     respond(ex, 200, toJson(Map.of(
-                        "lang",       "java",
-                        "version",    System.getProperty("java.version"),
-                        "port",       8010,
-                        "paradigm",   "virtual-threads",
-                        "feature",    "Project Loom — Executors.newVirtualThreadPerTaskExecutor()",
-                        "jvm",        System.getProperty("java.vm.name"),
-                        "cpu_cores",  Runtime.getRuntime().availableProcessors(),
-                        "orders",     orders.size()
+                        "lang",           "java",
+                        "version",        System.getProperty("java.version"),
+                        "port",           8010,
+                        "paradigm",       "virtual-threads",
+                        "feature",        "Project Loom — Executors.newVirtualThreadPerTaskExecutor()",
+                        "jvm",            System.getProperty("java.vm.name"),
+                        "cpu_cores",      Runtime.getRuntime().availableProcessors(),
+                        "orders",         orders.size(),
+                        "db_connected",   dbConn,
+                        "db_url",         dbUrl
                     )));
                     return;
                 }
@@ -413,10 +557,16 @@ public class VirtualServer {
                         respond(ex, 400, "{\"error\":\"id parameter required\"}");
                         return;
                     }
-                    Order existing = orders.putIfAbsent(id, new Order(id));
+                    Order newOrder = new Order(id);
+                    Order existing = orders.putIfAbsent(id, newOrder);
                     if (existing != null) {
                         respond(ex, 409, "{\"error\":\"order already exists\",\"id\":\"" + id + "\"}");
                         return;
+                    }
+                    // DB INSERT in Virtual Thread — blocking JDBC is acceptable here.
+                    DbStore db = dbStore;
+                    if (db != null && db.isRunning()) {
+                        db.insertOrder(id, OrderStatus.ORDERED.name(), newOrder.createdAt);
                     }
                     respond(ex, 201, toJson(orders.get(id).toMap()));
                     return;

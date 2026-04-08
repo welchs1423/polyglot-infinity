@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let crystalData = $state(null);
     /** @type {boolean} */
@@ -10,10 +11,10 @@
         try {
             const [pfRes, fxRes, concRes] = await Promise.all([
                 fetch(
-                    "http://localhost:9002/api/crystal/portfolio?mu=0.12&sigma=0.18&days=252",
+                    `${API_BASE}/api/crystal/portfolio?mu=0.12&sigma=0.18&days=252`,
                 ),
-                fetch("http://localhost:9002/api/crystal/fx"),
-                fetch("http://localhost:9002/api/crystal/concurrent"),
+                fetch(`${API_BASE}/api/crystal/fx`),
+                fetch(`${API_BASE}/api/crystal/concurrent`),
             ]);
             if (pfRes.ok && fxRes.ok) {
                 const pf = await pfRes.json();
@@ -38,7 +39,7 @@
         statsLoading = true;
         crystalStats = null;
         try {
-            const res = await fetch("http://localhost:9002/api/crystal/stats");
+            const res = await fetch(`${API_BASE}/api/crystal/stats`);
             if (res.ok) crystalStats = await res.json();
             else crystalStats = { error: "Crystal stats offline" };
         } catch {

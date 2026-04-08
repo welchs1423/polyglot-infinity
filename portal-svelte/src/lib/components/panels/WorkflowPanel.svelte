@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let riskResult = $state(null);
     /** @type {any | null} */
@@ -11,7 +12,7 @@
         riskResult = null;
         try {
             const res = await fetch(
-                "http://localhost:8080/api/workflow/risk-full",
+                `${API_BASE}/api/workflow/risk-full`,
             );
             if (res.ok) riskResult = await res.json();
             else riskResult = { error: "Go 워크플로 오프라인" };
@@ -26,7 +27,7 @@
         circuitLoading = true;
         circuitResult = null;
         try {
-            const res = await fetch("http://localhost:8080/api/circuit/status");
+            const res = await fetch(`${API_BASE}/api/circuit/status`);
             if (res.ok) circuitResult = await res.json();
             else circuitResult = { error: "서킷 브레이커 조회 실패" };
         } catch {

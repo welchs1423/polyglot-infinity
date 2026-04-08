@@ -1,4 +1,6 @@
 <script>
+    import { API_BASE } from "$lib/api";
+
     /** @type {any} */
     let statusData = $state(null);
     /** @type {any} */
@@ -19,17 +21,15 @@
         loading = true;
         try {
             const [status, infer, portfolio, explain] = await Promise.all([
-                fetch("http://localhost:8011/api/prolog/status").then((x) =>
-                    x.json(),
-                ),
+                fetch(`${API_BASE}/api/prolog/status`).then((x) => x.json()),
                 fetch(
-                    `http://localhost:8011/api/prolog/infer?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
+                    `${API_BASE}/api/prolog/infer?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
                 ).then((x) => x.json()),
                 fetch(
-                    `http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
+                    `${API_BASE}/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
                 ).then((x) => x.json()),
                 fetch(
-                    `http://localhost:8011/api/prolog/explain?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
+                    `${API_BASE}/api/prolog/explain?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
                 ).then((x) => x.json()),
             ]);
             statusData = status;
@@ -47,7 +47,7 @@
         loading = true;
         try {
             portfolioData = await fetch(
-                `http://localhost:8011/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
+                `${API_BASE}/api/prolog/portfolio?type=${portfolioType}&risk_max=${riskMax}`,
             ).then((x) => x.json());
         } catch {
             portfolioData = { error: "포트폴리오 탐색 실패" };
@@ -61,7 +61,7 @@
         explainData = null;
         try {
             explainData = await fetch(
-                `http://localhost:8011/api/prolog/explain?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
+                `${API_BASE}/api/prolog/explain?debt=${debtRatio}&vol=${volatility}&defaults=${defaults}`,
             ).then((x) => x.json());
         } catch {
             explainData = { error: "Prolog 서버 접속 불가 (:8011)" };

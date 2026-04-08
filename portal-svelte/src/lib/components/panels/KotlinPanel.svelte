@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any[] | null} */
     let reports = $state(null);
     let generating = $state(false);
@@ -9,7 +10,7 @@
 
     async function fetchReports() {
         try {
-            const res = await fetch("http://localhost:9000/api/reports/latest");
+            const res = await fetch(`${API_BASE}/api/reports/latest`);
             if (res.ok) reports = await res.json();
             else reports = [];
         } catch {
@@ -21,7 +22,7 @@
         generating = true;
         genMsg = null;
         try {
-            const res = await fetch("http://localhost:9000/api/reports/now");
+            const res = await fetch(`${API_BASE}/api/reports/now`);
             if (res.ok) {
                 genMsg = "리포트 즉시 생성 완료";
                 await fetchReports();

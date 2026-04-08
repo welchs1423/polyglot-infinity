@@ -1,10 +1,11 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let cacheStats = $state(null);
 
     async function fetchCacheStats() {
         try {
-            const res = await fetch("http://localhost:8080/api/cache/stats");
+            const res = await fetch(`${API_BASE}/api/cache/stats`);
             if (res.ok) cacheStats = await res.json();
         } catch {
             cacheStats = null;

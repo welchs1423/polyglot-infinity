@@ -1,4 +1,6 @@
 <script>
+    import { API_BASE } from "$lib/api";
+
     /** @type {"option" | "iv" | "smile" | "dcf"} */
     let activeTab = $state("option");
 
@@ -18,7 +20,7 @@
         fsharpOption = null;
         try {
             const res = await fetch(
-                "http://localhost:9001/api/fsharp/option?s=100&k=100&r=0.05&sigma=0.20&t=1.0",
+                `${API_BASE}/api/fsharp/option?s=100&k=100&r=0.05&sigma=0.20&t=1.0`,
             );
             if (res.ok) fsharpOption = await res.json();
             else fsharpOption = { error: "F# pricer offline" };
@@ -35,7 +37,7 @@
         try {
             // market_price ≈ BS Call at σ=0.20 (≈10.45)
             const res = await fetch(
-                "http://localhost:9001/api/fsharp/iv?market_price=10.45&s=100&k=100&r=0.05&t=1.0&type=call",
+                `${API_BASE}/api/fsharp/iv?market_price=10.45&s=100&k=100&r=0.05&t=1.0&type=call`,
             );
             if (res.ok) fsharpIV = await res.json();
             else fsharpIV = { error: "F# pricer offline" };
@@ -51,7 +53,7 @@
         fsharpSmile = null;
         try {
             const res = await fetch(
-                "http://localhost:9001/api/fsharp/smile?s=100&r=0.05&t=1.0&k_min=80&k_max=120&steps=9&atm_vol=0.20&skew=-0.05&curvature=0.10&type=call",
+                `${API_BASE}/api/fsharp/smile?s=100&r=0.05&t=1.0&k_min=80&k_max=120&steps=9&atm_vol=0.20&skew=-0.05&curvature=0.10&type=call`,
             );
             if (res.ok) fsharpSmile = await res.json();
             else fsharpSmile = { error: "F# pricer offline" };
@@ -66,7 +68,7 @@
         fsharpLoading = true;
         fsharpDCF = null;
         try {
-            const res = await fetch("http://localhost:9001/api/fsharp/dcf");
+            const res = await fetch(`${API_BASE}/api/fsharp/dcf`);
             if (res.ok) fsharpDCF = await res.json();
             else fsharpDCF = { error: "F# pricer offline" };
         } catch {

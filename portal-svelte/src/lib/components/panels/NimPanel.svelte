@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let nimData = $state(null);
     /** @type {boolean} */
@@ -10,12 +11,12 @@
         try {
             const [tsRes, momRes, indRes] = await Promise.all([
                 fetch(
-                    "http://localhost:8005/api/nim/timeseries?mu=0.10&sigma=0.20&n=252",
+                    `${API_BASE}/api/nim/timeseries?mu=0.10&sigma=0.20&n=252`,
                 ),
                 fetch(
-                    "http://localhost:8005/api/nim/momentum?mu=0.10&sigma=0.20&n=252",
+                    `${API_BASE}/api/nim/momentum?mu=0.10&sigma=0.20&n=252`,
                 ),
-                fetch("http://localhost:8005/api/nim/indicators"),
+                fetch(`${API_BASE}/api/nim/indicators`),
             ]);
             if (tsRes.ok && momRes.ok && indRes.ok) {
                 const ts = await tsRes.json();
@@ -52,7 +53,7 @@
         nimGarch = null;
         try {
             const res = await fetch(
-                "http://localhost:8005/api/nim/garch?omega=0.00001&alpha=0.1&beta=0.85&n=500",
+                `${API_BASE}/api/nim/garch?omega=0.00001&alpha=0.1&beta=0.85&n=500`,
             );
             if (res.ok) nimGarch = await res.json();
             else nimGarch = { error: "Nim GARCH offline" };
@@ -68,7 +69,7 @@
         nimForecast = null;
         try {
             const res = await fetch(
-                "http://localhost:8005/api/nim/forecast?mu=0.10&sigma=0.20&n=100&p=2",
+                `${API_BASE}/api/nim/forecast?mu=0.10&sigma=0.20&n=100&p=2`,
             );
             if (res.ok) nimForecast = await res.json();
             else nimForecast = { error: "Nim forecast offline" };

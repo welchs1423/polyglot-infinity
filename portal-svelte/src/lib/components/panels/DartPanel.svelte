@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let dartData = $state(null);
     /** @type {boolean} */
@@ -15,9 +16,9 @@
         try {
             const [bondRes, ycRes] = await Promise.all([
                 fetch(
-                    "http://localhost:9005/api/dart/bond?face=1000&coupon=0.05&ytm=0.06&years=10",
+                    `${API_BASE}/api/dart/bond?face=1000&coupon=0.05&ytm=0.06&years=10`,
                 ),
-                fetch("http://localhost:9005/api/dart/yieldcurve"),
+                fetch(`${API_BASE}/api/dart/yieldcurve`),
             ]);
             if (bondRes.ok && ycRes.ok) {
                 const bond = await bondRes.json();
@@ -48,7 +49,7 @@
             const results = await Promise.all(
                 ytmList.map((ytm) =>
                     fetch(
-                        `http://localhost:9005/api/dart/bond?face=1000&coupon=${bondCoupon}&ytm=${ytm}&years=${bondYears}`,
+                        `${API_BASE}/api/dart/bond?face=1000&coupon=${bondCoupon}&ytm=${ytm}&years=${bondYears}`,
                     ).then((r) => r.json()),
                 ),
             );

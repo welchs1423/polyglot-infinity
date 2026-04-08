@@ -1,5 +1,6 @@
 <script>
     import { onMount } from "svelte";
+    import { API_BASE } from "$lib/api";
 
     /** @type {HTMLCanvasElement} */
     let mcCanvas;
@@ -21,16 +22,16 @@
         try {
             const [mc, smile, bulk] = await Promise.all([
                 fetch(
-                    "http://localhost:8002/api/julia/simulate?paths=200&days=252&vol=0.20&mu=0.05",
+                    `${API_BASE}/api/julia/simulate?paths=200&days=252&vol=0.20&mu=0.05`,
                 )
                     .then((x) => x.json())
                     .catch(() => null),
                 fetch(
-                    "http://localhost:9001/api/fsharp/smile?s=100&r=0.05&t=1.0&k_min=80&k_max=120&steps=9&atm_vol=0.20&skew=-0.05&curvature=0.10&type=call",
+                    `${API_BASE}/api/fsharp/smile?s=100&r=0.05&t=1.0&k_min=80&k_max=120&steps=9&atm_vol=0.20&skew=-0.05&curvature=0.10&type=call`,
                 )
                     .then((x) => x.json())
                     .catch(() => null),
-                fetch("http://localhost:8081/api/risk/summary")
+                fetch(`${API_BASE}/api/risk/summary`)
                     .then((x) => x.json())
                     .catch(() => null),
             ]);

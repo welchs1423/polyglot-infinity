@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from "$lib/api";
     import { onDestroy } from "svelte";
 
     /** @type {any | null} */
@@ -17,7 +18,9 @@
     // Phoenix channel wire 포맷: [join_ref, ref, topic, event, payload]
     /** @type {WebSocket | null} */
     let ws = null;
+    /** @type {any} */
     let heartbeatTimer = 0;
+    /** @type {any} */
     let reconnectTimer = 0;
     let reconnectDelay = 3000; // ms, exponential backoff
     let refCounter = 1;
@@ -25,7 +28,7 @@
 
     async function checkElixir() {
         try {
-            const res = await fetch("http://localhost:4000/api/hub/status");
+            const res = await fetch(`${API_BASE}/api/hub/status`);
             if (res.ok) elixirStatus = await res.json();
             else elixirStatus = { status: "offline" };
         } catch {

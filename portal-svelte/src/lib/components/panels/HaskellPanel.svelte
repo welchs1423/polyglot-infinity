@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let haskellData = $state(null);
     /** @type {boolean} */
@@ -16,13 +17,13 @@
         try {
             const [bsRes, mcRes, streamRes] = await Promise.all([
                 fetch(
-                    `http://localhost:8006/api/haskell/blackscholes?s=${bsS}&k=${bsK}&r=${bsR}&sigma=${bsSigma}&t=${bsT}`,
+                    `${API_BASE}/api/haskell/blackscholes?s=${bsS}&k=${bsK}&r=${bsR}&sigma=${bsSigma}&t=${bsT}`,
                 ),
                 fetch(
-                    `http://localhost:8006/api/haskell/montecarlo?s=${bsS}&vol=${bsSigma}&mu=${bsR + 0.03}&n=${mcN}&days=252`,
+                    `${API_BASE}/api/haskell/montecarlo?s=${bsS}&vol=${bsSigma}&mu=${bsR + 0.03}&n=${mcN}&days=252`,
                 ),
                 fetch(
-                    `http://localhost:8006/api/haskell/stream?s=${bsS}&mu=${bsR + 0.03}&sigma=${bsSigma}&n=60&seed=42`,
+                    `${API_BASE}/api/haskell/stream?s=${bsS}&mu=${bsR + 0.03}&sigma=${bsSigma}&n=60&seed=42`,
                 ),
             ]);
             if (bsRes.ok && mcRes.ok && streamRes.ok) {

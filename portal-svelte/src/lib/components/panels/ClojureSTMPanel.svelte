@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let clojureData   = $state(null);
     /** @type {any | null} */
@@ -16,10 +17,10 @@
         clojureData = null;
         try {
             const [status, stress] = await Promise.all([
-                fetch("http://localhost:8009/api/clojure/status").then((r) =>
+                fetch(`${API_BASE}/api/clojure/status`).then((r) =>
                     r.json(),
                 ),
-                fetch("http://localhost:8009/api/clojure/stress?n=300").then(
+                fetch(`${API_BASE}/api/clojure/stress?n=300`).then(
                     (r) => r.json(),
                 ),
             ]);
@@ -37,11 +38,11 @@
         transferRes = null;
         try {
             const amt = parseFloat(amount) || 100;
-            const url = `http://localhost:8009/api/clojure/transfer?from=${fromAcc}&to=${toAcc}&amount=${amt}`;
+            const url = `${API_BASE}/api/clojure/transfer?from=${fromAcc}&to=${toAcc}&amount=${amt}`;
             const res = await fetch(url);
             transferRes = await res.json();
             // 이체 후 상태 갱신
-            const status = await fetch("http://localhost:8009/api/clojure/status").then(r => r.json());
+            const status = await fetch(`${API_BASE}/api/clojure/status`).then(r => r.json());
             if (clojureData) clojureData = { ...clojureData, ...status };
         } catch {
             transferRes = { error: "Clojure 서버 접속 불가 (:8009)" };

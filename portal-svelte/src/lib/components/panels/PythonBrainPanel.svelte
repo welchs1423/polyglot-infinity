@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let brainData = $state(null);
     let brainLoading = $state(false);
@@ -7,7 +8,7 @@
         brainLoading = true;
         brainData = null;
         try {
-            const res = await fetch("http://localhost:8000/api/analyze");
+            const res = await fetch(`${API_BASE}/api/analyze`);
             if (res.ok) brainData = await res.json();
             else brainData = { error: "Python Brain 오프라인" };
         } catch {

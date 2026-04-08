@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let rubyData = $state(null);
     /** @type {boolean} */
@@ -21,9 +22,9 @@
         try {
             const q = `debt_ratio=${debtRatio}&ltv=${ltv}&num_defaults=${numDefaults}&annual_income_k=${annualIncomeK}`;
             const [scoreRes, rulesetRes, evalRes] = await Promise.all([
-                fetch(`http://localhost:9004/api/ruby/score?${q}`),
-                fetch("http://localhost:9004/api/ruby/ruleset"),
-                fetch(`http://localhost:9004/api/ruby/evaluate?${q}`),
+                fetch(`${API_BASE}/api/ruby/score?${q}`),
+                fetch(`${API_BASE}/api/ruby/ruleset`),
+                fetch(`${API_BASE}/api/ruby/evaluate?${q}`),
             ]);
             if (scoreRes.ok && rulesetRes.ok && evalRes.ok) {
                 const score = await scoreRes.json();
@@ -44,7 +45,7 @@
         rulesLoading = true;
         rulesResult = null;
         try {
-            const res = await fetch("http://localhost:9004/api/ruby/rules", {
+            const res = await fetch(`${API_BASE}/api/ruby/rules`, {
                 method: "POST",
                 headers: { "Content-Type": "text/plain" },
                 body: customRule,

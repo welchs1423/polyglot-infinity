@@ -216,6 +216,50 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-09 (2)
+
+**portal-svelte — Vercel deployment + QR code share** (`portal-svelte`)
+
+- `vercel.json` — New Vercel configuration file
+  - `framework: sveltekit`, `buildCommand: npm run build`, `outputDirectory: .vercel/output`
+  - `rewrites`: `/api/(.*)` → `https://YOUR_BACKEND_HOST/api/$1` — edge-level proxy eliminates CORS preflight in production (browser sees same-origin response)
+  - `headers`: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy` applied to all routes
+
+- `.env` / `.env.production` — Environment variable files for `VITE_API_BASE_URL`
+  - Dev (`.env`): `VITE_API_BASE_URL=http://localhost:8080` — direct cross-origin request to local gateway
+  - Production (`.env.production`): `VITE_API_BASE_URL=` (empty) — all `/api/*` fetches use Vercel `rewrites` proxy; no backend CORS config required
+
+- `src/lib/api.ts` — New shared module exporting `API_BASE`
+  - `export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''`
+  - Single source of truth; all 24 panel components and `+page.svelte` import from this module
+
+- `svelte.config.js` — Adapter changed from `@sveltejs/adapter-auto` to `@sveltejs/adapter-vercel`
+  - `adapter-auto` removed from `package.json` `devDependencies`
+  - `adapter-vercel` options block included (commented `runtime`, `isr` examples)
+
+- `vite.config.ts` — Added three-option CORS/proxy guide as top-level comments
+  - **Solution A**: backend `Access-Control-Allow-Origin` response header (production-recommended)
+  - **Solution B**: Vite `server.proxy` block (dev-only; uncomment `/api` rule, set `VITE_API_BASE_URL=''`)
+  - **Solution C**: Vercel `rewrites` (production CDN-edge proxy, no backend config)
+  - `server` block with commented-out proxy config added to `defineConfig`
+
+- `src/lib/components/QrCode.svelte` — New component: QR code popover for mobile sharing
+  - Uses `qrcode` npm library (`QRCode.toCanvas`) to render current `window.location.href` onto an HTML5 `<canvas>` element (192 × 192 px, dark theme — `#f1f5f9` on `#0f172a`)
+  - `$state(visible)` controls popover; `$effect` re-renders on URL change while open
+  - Inserted into `+page.svelte` header (`header-right` flex row, between error banner and counter badge)
+  - Accessible: `aria-expanded`, `aria-label`, `role="dialog"` on popover
+
+- `src/routes/+page.svelte` — Updated
+  - `import { API_BASE } from '$lib/api'` replaces hardcoded `const API_BASE = "http://localhost:8080"`
+  - `import QrCode from '$lib/components/QrCode.svelte'` added; `<QrCode />` inserted in header
+  - `fetchArtifactServer` comment clarifies artifact servers (`:8012`–`:8014`) are local-only and will show offline in Vercel deployment (handled gracefully)
+
+- All 24 panel components (`panels/*.svelte`) — `http://localhost:PORT/...` hardcoded URLs replaced with `${API_BASE}/...`; `import { API_BASE } from '$lib/api'` added to each component's `<script>` block
+
+- `package.json` — `@sveltejs/adapter-vercel ^6.3.3`, `qrcode ^1.5.4`, `@types/qrcode ^1.5.6` added
+
+- `ElixirPanel.svelte` / `SystemStatusPanel.svelte` — Pre-existing `NodeJS.Timeout` vs `number` type conflict resolved with `/** @type {any} */` annotation on `heartbeatTimer`, `reconnectTimer`, `autoSyncInterval`; `svelte-check` now reports 0 errors
+
 ### 2026-04-09
 
 **Custom APM infrastructure** (`apm-server/`, `loom-java/`, `server-go/`)

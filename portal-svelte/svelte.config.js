@@ -1,12 +1,14 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-vercel';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	kit: {
-		// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-		// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
-		adapter: adapter()
+		// adapter-vercel emits Vercel serverless functions and static assets.
+		// CI/CD: push to a Vercel-connected Git branch; no manual deploy step needed.
+		adapter: adapter({
+			// runtime: 'nodejs22.x',  // optional: pin Node.js runtime version
+			// isr: { expiration: 60 } // optional: Incremental Static Regeneration
+		})
 	}
 };
 

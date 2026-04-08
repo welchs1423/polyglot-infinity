@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let juliaResult = $state(null);
     /** @type {any | null} */
@@ -13,7 +14,7 @@
         juliaResult = null;
         try {
             const res = await fetch(
-                "http://localhost:8002/api/julia/simulate?paths=10000&days=252&vol=0.20&mu=0.05",
+                `${API_BASE}/api/julia/simulate?paths=10000&days=252&vol=0.20&mu=0.05`,
             );
             if (res.ok) juliaResult = await res.json();
             else juliaResult = { error: "Julia engine offline" };
@@ -29,7 +30,7 @@
         stressResult = null;
         try {
             const res = await fetch(
-                "http://localhost:8002/api/julia/stress?paths=5000&days=252",
+                `${API_BASE}/api/julia/stress?paths=5000&days=252`,
             );
             if (res.ok) stressResult = await res.json();
             else stressResult = { error: "Julia engine offline" };

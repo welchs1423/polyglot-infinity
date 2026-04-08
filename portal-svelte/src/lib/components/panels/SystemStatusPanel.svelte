@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from "$lib/api";
     import { onDestroy } from "svelte";
 
     /** @type {{ onSync?: () => void }} */
@@ -11,6 +12,7 @@
     /** @type {boolean} */
     let autoSync = $state(false);
     /** @type {number | null} */
+    /** @type {any} */
     let autoSyncInterval = $state(null);
     /** @type {any | null} */
     let aggregateData = $state(null);
@@ -24,7 +26,7 @@
     async function runReport() {
         reportLoading = true;
         try {
-            const res = await fetch("http://localhost:8080/api/report");
+            const res = await fetch(`${API_BASE}/api/report`);
             if (res.ok) reportData = await res.json();
             else reportData = { error: "리포트 생성 실패" };
         } catch {
@@ -36,7 +38,7 @@
 
     async function syncSystem() {
         try {
-            const res = await fetch("http://localhost:8080/api/status");
+            const res = await fetch(`${API_BASE}/api/status`);
             if (!res.ok) throw new Error("System Offline");
             systemData = await res.json();
             errorMsg = null;
@@ -53,9 +55,7 @@
             sseSource = null;
             sseConnected = false;
         } else {
-            sseSource = new EventSource(
-                "http://localhost:8080/api/aggregate/stream",
-            );
+            sseSource = new EventSource(`${API_BASE}/api/aggregate/stream`);
             sseConnected = true;
             sseSource.onmessage = (e) => {
                 try {

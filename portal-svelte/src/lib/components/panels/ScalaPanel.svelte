@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let scalaData = $state(null);
     /** @type {boolean} */
@@ -10,13 +11,13 @@
         try {
             const [aggRes, smRes, streamRes] = await Promise.all([
                 fetch(
-                    "http://localhost:9003/api/scala/aggregate?mu=0.08&sigma=0.15&n=252",
+                    `${API_BASE}/api/scala/aggregate?mu=0.08&sigma=0.15&n=252`,
                 ),
                 fetch(
-                    "http://localhost:9003/api/scala/smooth?mu=0.08&sigma=0.15&n=252&alpha=0.3&beta=0.1",
+                    `${API_BASE}/api/scala/smooth?mu=0.08&sigma=0.15&n=252&alpha=0.3&beta=0.1`,
                 ),
                 fetch(
-                    "http://localhost:9003/api/scala/stream?mu=0.08&sigma=0.22&n=300&seed=7",
+                    `${API_BASE}/api/scala/stream?mu=0.08&sigma=0.22&n=300&seed=7`,
                 ),
             ]);
             if (aggRes.ok && smRes.ok && streamRes.ok) {

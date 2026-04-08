@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let ocamlRisk = $state(null);
     /** @type {boolean} */
@@ -17,10 +18,10 @@
         try {
             const [riskRes, scoreRes] = await Promise.all([
                 fetch(
-                    "http://localhost:8004/api/ocaml/risk?debt_ratio=0.75&volatility=0.28&leverage=3.5&credit_score=650",
+                    `${API_BASE}/api/ocaml/risk?debt_ratio=0.75&volatility=0.28&leverage=3.5&credit_score=650`,
                 ),
                 fetch(
-                    "http://localhost:8004/api/ocaml/score?income=5000000&debt=2000000&history_years=3&missed_payments=1",
+                    `${API_BASE}/api/ocaml/score?income=5000000&debt=2000000&history_years=3&missed_payments=1`,
                 ),
             ]);
             if (riskRes.ok && scoreRes.ok) {
@@ -46,7 +47,7 @@
         scoreLoading = true;
         scoreData = null;
         try {
-            const url = `http://localhost:8004/api/ocaml/score?income=${income}&debt=${debt}&history_years=${historyYears}&missed_payments=${missedPayments}`;
+            const url = `${API_BASE}/api/ocaml/score?income=${income}&debt=${debt}&history_years=${historyYears}&missed_payments=${missedPayments}`;
             const res = await fetch(url);
             if (res.ok) scoreData = await res.json();
             else scoreData = { error: "OCaml 스코어 오프라인" };
@@ -66,7 +67,7 @@
         portfolioData = null;
         try {
             const res = await fetch(
-                "http://localhost:8004/api/ocaml/portfolio",
+                `${API_BASE}/api/ocaml/portfolio`,
             );
             if (res.ok) portfolioData = await res.json();
             else portfolioData = { error: "OCaml portfolio offline" };

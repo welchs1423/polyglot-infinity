@@ -1,4 +1,6 @@
 <script>
+    import { API_BASE } from "$lib/api";
+
     /** @type {any | null} */
     let luaData = $state(null);
     let luaLoading = $state(false);
@@ -8,12 +10,10 @@
         luaData = null;
         try {
             const [status, stream] = await Promise.all([
-                fetch("http://localhost:8007/api/lua/status").then((r) =>
-                    r.json(),
+                fetch(`${API_BASE}/api/lua/status`).then((r) => r.json()),
+                fetch(`${API_BASE}/api/lua/stream?feeds=6&steps=300`).then(
+                    (r) => r.json(),
                 ),
-                fetch(
-                    "http://localhost:8007/api/lua/stream?feeds=6&steps=300",
-                ).then((r) => r.json()),
             ]);
             luaData = { ...status, ...stream };
         } catch {

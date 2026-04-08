@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let result = $state(null);
     let loading = $state(false);
@@ -14,7 +15,7 @@
         result = null;
         try {
             const res = await fetch(
-                `http://localhost:8080/api/workflow/option-compare?s=${bsS}&k=${bsK}&sigma=${bsSigma}&t=${bsT}&r=${bsR}`,
+                `${API_BASE}/api/workflow/option-compare?s=${bsS}&k=${bsK}&sigma=${bsSigma}&t=${bsT}&r=${bsR}`,
             );
             if (res.ok) result = await res.json();
             else result = { error: "Go 워크플로 오프라인" };

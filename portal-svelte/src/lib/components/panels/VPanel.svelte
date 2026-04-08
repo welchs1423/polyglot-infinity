@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any} */
     let vData = $state(null);
     let vLoading = $state(false);
@@ -12,10 +13,10 @@
         try {
             const [bt, st] = await Promise.all([
                 fetch(
-                    `http://localhost:4002/api/v/backtest?ticks=${ticks}&fast=${fastPeriod}&slow=${slowPeriod}&seed=${seed}`,
+                    `${API_BASE}/api/v/backtest?ticks=${ticks}&fast=${fastPeriod}&slow=${slowPeriod}&seed=${seed}`,
                 ).then((x) => x.json()),
                 fetch(
-                    `http://localhost:4002/api/v/stress?ticks=${Math.round(ticks * 1.5)}&seed=${seed}`,
+                    `${API_BASE}/api/v/stress?ticks=${Math.round(ticks * 1.5)}&seed=${seed}`,
                 ).then((x) => x.json()),
             ]);
             vData = { ...bt, stress: st };

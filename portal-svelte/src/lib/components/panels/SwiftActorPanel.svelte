@@ -1,4 +1,6 @@
 <script>
+    import { API_BASE } from "$lib/api";
+
     /** @type {any | null} */
     let swiftData = $state(null);
     let swiftLoading = $state(false);
@@ -14,11 +16,9 @@
         swiftData = null;
         try {
             const [status, concurrent] = await Promise.all([
-                fetch("http://localhost:8008/api/swift/status").then((r) =>
+                fetch(`${API_BASE}/api/swift/status`).then((r) => r.json()),
+                fetch(`${API_BASE}/api/swift/concurrent?n=200`).then((r) =>
                     r.json(),
-                ),
-                fetch("http://localhost:8008/api/swift/concurrent?n=200").then(
-                    (r) => r.json(),
                 ),
             ]);
             swiftData = { ...status, ...concurrent };
@@ -33,7 +33,7 @@
         tradeLoading = true;
         tradeResult = null;
         try {
-            const url = `http://localhost:8008/api/swift/trade?sym=${encodeURIComponent(tradeSym)}&qty=${tradeQty}&price=${tradePrice}`;
+            const url = `${API_BASE}/api/swift/trade?sym=${encodeURIComponent(tradeSym)}&qty=${tradeQty}&price=${tradePrice}`;
             const res = await fetch(url);
             tradeResult = await res.json();
         } catch {

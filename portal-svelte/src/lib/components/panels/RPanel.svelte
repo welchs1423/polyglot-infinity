@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any | null} */
     let rFit = $state(null);
     /** @type {any | null} */
@@ -12,7 +13,7 @@
         rLoading = true;
         rFit = null;
         try {
-            const res = await fetch("http://localhost:8003/api/r/fit?n=1000");
+            const res = await fetch(`${API_BASE}/api/r/fit?n=1000`);
             if (res.ok) rFit = await res.json();
             else rFit = { error: "R engine offline" };
         } catch {
@@ -26,7 +27,7 @@
         corrLoading = true;
         rCorr = null;
         try {
-            const res = await fetch("http://localhost:8003/api/r/correlation");
+            const res = await fetch(`${API_BASE}/api/r/correlation`);
             if (res.ok) rCorr = await res.json();
             else rCorr = { error: "R engine offline" };
         } catch {
@@ -48,7 +49,7 @@
         rGarch = null;
         try {
             const res = await fetch(
-                "http://localhost:8003/api/r/garch?omega=0.00001&alpha=0.1&beta=0.85&n=500",
+                `${API_BASE}/api/r/garch?omega=0.00001&alpha=0.1&beta=0.85&n=500`,
             );
             if (res.ok) rGarch = await res.json();
             else rGarch = { error: "R GARCH offline" };
@@ -64,7 +65,7 @@
         rArima = null;
         try {
             const res = await fetch(
-                "http://localhost:8003/api/r/arima?n=200&order_p=1&order_d=0&order_q=1",
+                `${API_BASE}/api/r/arima?n=200&order_p=1&order_d=0&order_q=1`,
             );
             if (res.ok) rArima = await res.json();
             else rArima = { error: "R ARIMA offline" };

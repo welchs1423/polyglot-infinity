@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any} */
     let erlangData = $state(null);
     let erlangLoading = $state(false);
@@ -12,18 +13,18 @@
         erlangLoading = true;
         try {
             const [status, swap, riskV1] = await Promise.all([
-                fetch("http://localhost:4003/api/erlang/status").then((x) =>
+                fetch(`${API_BASE}/api/erlang/status`).then((x) =>
                     x.json(),
                 ),
-                fetch("http://localhost:4003/api/erlang/hotswap").then((x) =>
+                fetch(`${API_BASE}/api/erlang/hotswap`).then((x) =>
                     x.json(),
                 ),
                 fetch(
-                    "http://localhost:4003/api/erlang/risk?debt=0.65&vol=0.28",
+                    `${API_BASE}/api/erlang/risk?debt=0.65&vol=0.28`,
                 ).then((x) => x.json()),
             ]);
             const riskV2 = await fetch(
-                "http://localhost:4003/api/erlang/risk?debt=0.65&vol=0.28",
+                `${API_BASE}/api/erlang/risk?debt=0.65&vol=0.28`,
             ).then((x) => x.json());
             erlangData = {
                 ...status,
@@ -43,7 +44,7 @@
         riskData = null;
         try {
             riskData = await fetch(
-                `http://localhost:4003/api/erlang/risk?debt=${riskDebt.toFixed(2)}&vol=${riskVol.toFixed(2)}`,
+                `${API_BASE}/api/erlang/risk?debt=${riskDebt.toFixed(2)}&vol=${riskVol.toFixed(2)}`,
             ).then((x) => x.json());
         } catch {
             riskData = { error: "Erlang 서버 접속 불가 (:4003)" };

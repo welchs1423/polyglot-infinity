@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     /** @type {any} */
     let gleamData = $state(null);
     let gleamLoading = $state(false);
@@ -14,12 +15,12 @@
         try {
             const [valid_ok, valid_err, contract] = await Promise.all([
                 fetch(
-                    "http://localhost:4001/api/gleam/validate?service=risk&score=750&grade=A",
+                    `${API_BASE}/api/gleam/validate?service=risk&score=750&grade=A`,
                 ).then((x) => x.json()),
                 fetch(
-                    "http://localhost:4001/api/gleam/validate?service=risk&score=1500&grade=X",
+                    `${API_BASE}/api/gleam/validate?service=risk&score=1500&grade=X`,
                 ).then((x) => x.json()),
-                fetch("http://localhost:4001/api/gleam/contract").then((x) =>
+                fetch(`${API_BASE}/api/gleam/contract`).then((x) =>
                     x.json(),
                 ),
             ]);
@@ -35,7 +36,7 @@
         pipelineLoading = true;
         try {
             pipelineData = await fetch(
-                "http://localhost:4001/api/gleam/pipeline?n=252&mu=0.05&sigma=0.18",
+                `${API_BASE}/api/gleam/pipeline?n=252&mu=0.05&sigma=0.18`,
             ).then((x) => x.json());
         } catch {
             pipelineData = { error: "Gleam 서버 접속 불가 (:4001)" };
@@ -48,7 +49,7 @@
         riskLoading = true;
         try {
             riskData = await fetch(
-                "http://localhost:4001/api/gleam/risk?n=252&mu=0.05&sigma=0.18",
+                `${API_BASE}/api/gleam/risk?n=252&mu=0.05&sigma=0.18`,
             ).then((x) => x.json());
         } catch {
             riskData = { error: "Gleam 서버 접속 불가 (:4001)" };

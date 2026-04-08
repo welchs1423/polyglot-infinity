@@ -1,5 +1,6 @@
 <script>
     import { onMount } from "svelte";
+    import { API_BASE } from "$lib/api";
 
     /** @type {any | null} */
     let javaData = $state(null);
@@ -12,7 +13,7 @@
 
     onMount(async () => {
         try {
-            const res = await fetch("http://localhost:8010/api/java/status");
+            const res = await fetch(`${API_BASE}/api/java/status`);
             if (res.ok) javaStatus = await res.json();
         } catch {
             /* offline */
@@ -24,11 +25,11 @@
         javaData = null;
         try {
             const [vthreads, compare] = await Promise.all([
-                fetch("http://localhost:8010/api/java/vthreads?n=50000").then(
-                    (r) => r.json(),
+                fetch(`${API_BASE}/api/java/vthreads?n=50000`).then((r) =>
+                    r.json(),
                 ),
-                fetch("http://localhost:8010/api/java/compare?n=500").then(
-                    (r) => r.json(),
+                fetch(`${API_BASE}/api/java/compare?n=500`).then((r) =>
+                    r.json(),
                 ),
             ]);
             javaData = { vthreads, compare };
@@ -44,7 +45,7 @@
         pipelineData = null;
         try {
             pipelineData = await fetch(
-                "http://localhost:8010/api/java/pipeline?n=1000&delay=10",
+                `${API_BASE}/api/java/pipeline?n=1000&delay=10`,
             ).then((r) => r.json());
         } catch {
             pipelineData = { error: "Java 서버 접속 불가 (:8010)" };

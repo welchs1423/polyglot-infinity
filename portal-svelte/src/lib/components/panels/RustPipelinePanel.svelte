@@ -1,4 +1,5 @@
 <script>
+    import { API_BASE } from '$lib/api';
     import { onMount } from "svelte";
 
     /** @type {{ onTrigger?: () => void }} */
@@ -17,7 +18,7 @@
 
     async function fetchRustStatus() {
         try {
-            const res = await fetch("http://localhost:8081/api/rust/status");
+            const res = await fetch(`${API_BASE}/api/rust/status`);
             if (res.ok) rustStatus = await res.json();
         } catch {
             rustStatus = null;
@@ -33,7 +34,7 @@
         pipelineResult = null;
         try {
             const res = await fetch(
-                "http://localhost:8080/api/pipeline/trigger",
+                `${API_BASE}/api/pipeline/trigger`,
                 { method: "POST" },
             );
             pipelineResult = await res.json();
@@ -53,7 +54,7 @@
         summaryLoading = true;
         riskSummary = null;
         try {
-            const res = await fetch("http://localhost:8081/api/risk/summary");
+            const res = await fetch(`${API_BASE}/api/risk/summary`);
             if (res.ok) riskSummary = await res.json();
             else riskSummary = { error: "Rust 서버 오프라인" };
         } catch {

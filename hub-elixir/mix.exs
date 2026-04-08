@@ -25,7 +25,7 @@ defmodule HubElixir.MixProject do
       {:bandit, "~> 1.5"},
       {:jason, "~> 1.4"},
       {:httpoison, "~> 2.2"},
-      {:plug_cowboy, "~> 2.7", optional: true},
+      {:plug_cowboy, "~> 2.7"},
       {:redix, "~> 1.4"}
     ]
   end

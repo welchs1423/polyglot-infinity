@@ -17,7 +17,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 7 | **WebAssembly** (Zig → WASM32) | 8014 | Black-Scholes Greeks · VaR · DCF · MC — nginx static server, browser-side execution |
 | 8 | **Lua 5.4** | — / 8007 | Redis EVAL atomic cache counter · coroutine 6-feed scheduler |
 | 9 | **Kotlin 2.0** | 9000 | Coroutine 60s risk report scheduler |
-| 10 | **Elixir/Phoenix** | 4000 | OTP Supervisor · GenServer · WebSocket Channel |
+| 10 | **Elixir/Phoenix** | 4000 / 4001 | OTP Supervisor · GenServer · Phoenix Channel (port 4000) · Cowboy WebSocket raw server (port 4001) · Registry broadcast · Redis Pub/Sub → multi-client fan-out |
 | 11 | **Julia 1.10** | 8002 | `Threads.@threads` GBM Monte Carlo · VaR/CVaR |
 | 12 | **R 4.1** | 8003 | MLE distribution fitting · GARCH · ARIMA · Sharpe |
 | 13 | **F# (.NET 8)** | 9001 | Black-Scholes Greeks · Implied Volatility · DCF |
@@ -33,7 +33,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
-| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · HikariCP + JDBC DB persistence (PostgreSQL/Oracle, in-memory fallback) · Virtual vs Platform Thread benchmark |
+| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool — publishes `{order_id, event, prev_status, new_status, timestamp}` JSON on every successful state transition) · Virtual vs Platform Thread benchmark |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
@@ -145,10 +145,74 @@ CREATE TABLE risk_reports (
 
 ## Changelog
 
-| Date | Changes |
-|:---|:---|
-| 2026-04-08 | **Rust×C++ FFI pipeline**: `core-cpp/src/matrix.cpp` — 4 new functions: `cholesky_decompose` (Cholesky-Banachiewicz O(n³/3), returns -1 on non-PD), `mat_vec_mul` (y=A·x zero-copy), `portfolio_variance` (v=wᵀΣw, internal tmp malloc/free), `mat_frobenius_norm` (‖A‖_F single-pass) · `core-cpp/src/matrix.h` — C extern declarations for all 4 · `pipeline-rust/src/ffi.rs` — new `unsafe extern "C"` bindings + safe wrappers (`cholesky`, `mat_vec_multiply`, `portfolio_var`, `frobenius_norm`) + `#![allow(dead_code)]` · `pipeline-rust/Cargo.toml` — `[build-dependencies] cc = "1"` · `pipeline-rust/src/main.rs` — 5 new Axum handlers (`POST /api/matrix/multiply`, `/api/matrix/covariance`, `/api/matrix/cholesky`, `/api/matrix/frobenius`, `/api/portfolio/variance`) all offloaded via `spawn_blocking` | `server.hs` full rewrite — raw socket → Servant + Warp HTTP framework · `DataKinds`/`TypeOperators` type-level API definition · `/price` endpoint (Black-Scholes call/put/delta/gamma/vega/theta pure functions) · `/montecarlo` GBM MC (LCG + Box-Muller) · `/stream` infinite lazy GBM stream (iterate/scanl/zipWith) · `BSResult`/`MCResult`/`StreamResult` Generic-based ToJSON · `pricer-haskell.cabal` aeson/servant-server/warp dependencies<br>**OCaml risk-ocaml**: `server.ml` — `applicant` record type · `loan_decision` ADT (Approved, ConditionalApproval of string, Rejected of string) · `margin_status` ADT (Safe, MarginWarning, MarginCall, ForcedLiquidation) · `evaluate_loan` pattern matching + when guard 6-stage assessment · `evaluate_margin` pattern matching Basel III 4-stage escalation · `/api/ocaml/loan` · `/api/ocaml/margincall` HTTP endpoints · `dune`/`dune-project` Dune 3.0 build config added<br>**Java 21 Loom**: `VirtualServer.java` full rewrite — `OrderStatus` enum state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `OrderEvent`-based transition validation · `LinkedBlockingQueue` + 16 Virtual Thread workers for async event processing · `ReentrantLock` to prevent Virtual Thread pinning · Virtual vs Platform Thread benchmark · REST endpoints added (`POST/PUT/GET /api/java/order`, `GET /api/java/benchmark`)<br>**Go reverse proxy**: `server-go/main.go` — 22 canonical language routes + 5 role aliases (27 total) registered as `httputil.ReverseProxy` · `resolveBackend` env-override + localhost fallback · `withCORS` preflight handling · shared `proxyTransport` (30s header timeout)<br>**Gleam hub_gleam**: replaced gen_tcp-based Erlang server with pure Gleam HTTP server using `wisp` 2.2.2 + `mist` 6.0.2 · `/health` "Gleam Hub OK" · `handle_request` wisp router · `gleam.toml` dependencies added<br>**docker-compose**: added cpp-core(:8012) · zig-core(:8013) · wasm-zig(:8014) containers · unified all services on polyglot bridge network · nginx WASM MIME config · SSE health stream · WASM Theta/Vega/Rho Greeks · Python multi-stage Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI · Rust base image 1.78→1.88 (edition2024/MSRV) · added openssl-libs-static (fix musl static link) · added portal-svelte package-lock.json (fix npm ci)<br>**.gitignore**: added `tree.txt` · `server-go/server` (Go compiled binary) |
-| 2026-04-07 | Docker Compose 28 services · Go workflow orchestration · circuit breaker · R GARCH/ARIMA · Nim AR(p) · OCaml multi-asset VaR · WASM MC/portfolio · Elixir Redis Pub/Sub · Svelte tabs/notifications/charts/dependency-map panels |
-| 2026-04-06 | SWI-Prolog added (28th) · Lua coroutines · Swift Actor · Clojure STM · Java Loom · Erlang hot-swap · V Zero-GC · Ruby DSL · Gleam ADT · Scala 3 · Nim · Crystal · OCaml · Dart · Haskell · R · F# · WebAssembly |
-| 2026-03-18 | Rust pipeline · Docker PostgreSQL integration |
-| 2026-02-14 | Project init (SvelteKit · Go · Python · Rust · C++) |
+### 2026-04-08
+
+**Rust × C++ FFI pipeline** (`core-cpp` / `pipeline-rust`)
+- `core-cpp/src/matrix.cpp` — 4 new functions: `cholesky_decompose` (Cholesky-Banachiewicz O(n³/3), returns -1 on non-PD), `mat_vec_mul` (y=A·x zero-copy), `portfolio_variance` (v=wᵀΣw, internal tmp malloc/free), `mat_frobenius_norm` (‖A‖_F single-pass)
+- `core-cpp/src/matrix.h` — C extern declarations for all 4
+- `pipeline-rust/src/ffi.rs` — new `unsafe extern "C"` bindings + safe wrappers (`cholesky`, `mat_vec_multiply`, `portfolio_var`, `frobenius_norm`) + `#![allow(dead_code)]`
+- `pipeline-rust/Cargo.toml` — `[build-dependencies] cc = "1"`
+- `pipeline-rust/src/main.rs` — 5 new Axum handlers (`POST /api/matrix/multiply`, `/api/matrix/covariance`, `/api/matrix/cholesky`, `/api/matrix/frobenius`, `/api/portfolio/variance`) all offloaded via `spawn_blocking`
+
+**Haskell** (`pricer-haskell`)
+- `server.hs` full rewrite — raw socket → Servant + Warp HTTP framework
+- `DataKinds`/`TypeOperators` type-level API definition
+- `/price` — Black-Scholes call/put/delta/gamma/vega/theta pure functions
+- `/montecarlo` — GBM MC (LCG + Box-Muller)
+- `/stream` — infinite lazy GBM stream (`iterate`/`scanl`/`zipWith`)
+- `BSResult`/`MCResult`/`StreamResult` Generic-based ToJSON
+- `pricer-haskell.cabal` — aeson/servant-server/warp dependencies
+
+**OCaml** (`risk-ocaml`)
+- `server.ml` — `applicant` record type · `loan_decision` ADT (Approved, ConditionalApproval of string, Rejected of string) · `margin_status` ADT (Safe, MarginWarning, MarginCall, ForcedLiquidation)
+- `evaluate_loan` — pattern matching + when guard 6-stage assessment
+- `evaluate_margin` — pattern matching Basel III 4-stage escalation
+- `/api/ocaml/loan` · `/api/ocaml/margincall` HTTP endpoints added
+- `dune`/`dune-project` — Dune 3.0 build config added
+
+**Java 21 Loom** (`loom-java`)
+- `VirtualServer.java` full rewrite
+- `OrderStatus` enum state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`)
+- `OrderEvent`-based transition validation
+- `LinkedBlockingQueue` + 16 Virtual Thread workers for async event processing
+- `ReentrantLock` to prevent Virtual Thread pinning
+- Virtual vs Platform Thread benchmark
+- REST endpoints: `POST/PUT/GET /api/java/order`, `GET /api/java/benchmark`
+- **Redis Pub/Sub** — Jedis 5 `JedisPool` (`libs/jedis-5.2.0.jar` + `commons-pool2`) · 상태 전이 성공 직후 `order-events` 채널로 `{order_id, event, prev_status, new_status, channel, timestamp}` JSON 발행 · `REDIS_HOST`/`REDIS_PORT` 환경변수 지원 · Redis 비가용 시 서버 정상 기동 유지
+- `build.sh` / `run.sh` — `-cp libs/` 클래스패스 추가
+
+**Go reverse proxy** (`server-go`)
+- `main.go` — 22 canonical language routes + 5 role aliases (27 total) registered as `httputil.ReverseProxy`
+- `resolveBackend` env-override + localhost fallback
+- `withCORS` preflight handling
+- Shared `proxyTransport` (30s header timeout)
+
+**Gleam** (`hub_gleam`)
+- Replaced gen_tcp-based Erlang server with pure Gleam HTTP server using `wisp` 2.2.2 + `mist` 6.0.2
+- `/health` "Gleam Hub OK" · `handle_request` wisp router
+- `gleam.toml` dependencies added
+
+**docker-compose**
+- Added cpp-core(:8012) · zig-core(:8013) · wasm-zig(:8014) containers
+- Unified all services on polyglot bridge network
+- nginx WASM MIME config · SSE health stream · WASM Theta/Vega/Rho Greeks
+- Python multi-stage Dockerfile · Rust SQLX_OFFLINE · GitHub Actions CI
+- Rust base image 1.78→1.88 (edition2024/MSRV)
+- Added openssl-libs-static (fix musl static link) · portal-svelte package-lock.json (fix npm ci)
+
+**Misc**
+- `.gitignore` — added `tree.txt` · `server-go/server` (Go compiled binary)
+
+---
+
+### 2026-04-07
+Docker Compose 28 services · Go workflow orchestration · circuit breaker · R GARCH/ARIMA · Nim AR(p) · OCaml multi-asset VaR · WASM MC/portfolio · Elixir Redis Pub/Sub · Svelte tabs/notifications/charts/dependency-map panels
+
+### 2026-04-06
+SWI-Prolog added (28th) · Lua coroutines · Swift Actor · Clojure STM · Java Loom · Erlang hot-swap · V Zero-GC · Ruby DSL · Gleam ADT · Scala 3 · Nim · Crystal · OCaml · Dart · Haskell · R · F# · WebAssembly
+
+### 2026-03-18
+Rust pipeline · Docker PostgreSQL integration
+
+### 2026-02-14
+Project init (SvelteKit · Go · Python · Rust · C++)

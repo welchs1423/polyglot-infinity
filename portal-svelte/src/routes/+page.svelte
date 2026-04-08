@@ -1,9 +1,12 @@
 <script>
 	import { onMount } from "svelte";
 	import ServiceCard from "$lib/components/ServiceCard.svelte";
+	import QrCode from "$lib/components/QrCode.svelte";
+	import { API_BASE } from "$lib/api";
 
-	// Base URL of the Go gateway. All API calls are routed through it.
-	const API_BASE = "http://localhost:8080";
+	// API_BASE is resolved from VITE_API_BASE_URL (see src/lib/api.ts).
+	// Dev default: http://localhost:8080 (set in .env).
+	// Production:  empty string — Vercel rewrites /api/* to the backend (vercel.json).
 	const WS_URL = "ws://localhost:8080/ws";
 
 	// ── WebSocket order feed ──────────────────────────────────────────────────
@@ -385,6 +388,10 @@
 	// Health-checks an artifact HTTP server by issuing a HEAD request to its root.
 	// These containers serve static binary files via python http.server or nginx;
 	// they have no JSON API. A 200 or 405 response confirms the server is reachable.
+	//
+	// NOTE: Artifact servers (ports 8012–8014) are local-only binary file servers.
+	// They are not routed through the Go gateway and are unreachable from Vercel.
+	// The offline state is handled gracefully — no action required for production.
 	/** @param {string} key @param {number} port */
 	async function fetchArtifactServer(key, port) {
 		const t0 = performance.now();
@@ -430,6 +437,9 @@
 			{#if fetchError}
 				<span class="error-banner">{fetchError}</span>
 			{/if}
+
+			<!-- QR code popover: encodes window.location.href for mobile access. -->
+			<QrCode />
 
 			<div class="counter-badge">
 				<span class="count-online">{onlineCount}</span>

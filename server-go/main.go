@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -102,6 +105,128 @@ func writeFallback(w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "degraded",
 		"message": "Service temporarily unavailable",
+	})
+}
+
+// ── APM instrumentation ───────────────────────────────────────────────────────
+// apmEvent is one request-duration data point forwarded to the APM server.
+// All fields are JSON-serialised; tag names match the APM server's schema.
+type apmEvent struct {
+	CorrelationID string `json:"correlationId"`
+	Service       string `json:"service"`
+	Endpoint      string `json:"endpoint"`
+	ResponseMs    int64  `json:"responseMs"`
+	Timestamp     int64  `json:"timestamp"`
+}
+
+// apmQueue is a buffered channel used as a non-blocking drop-on-full queue.
+// Buffer capacity is deliberately generous (8192 slots) so that a 500 ms burst
+// at 1200 TPS — approximately 600 events — never causes a drop under normal
+// conditions.  When the channel is full, the select default branch discards
+// the event rather than blocking the caller goroutine.
+var apmQueue = make(chan apmEvent, 8192)
+
+// newCorrelationID returns a UUID v4 string derived from crypto/rand.
+// Falls back to a nanosecond timestamp string if the OS entropy source fails.
+func newCorrelationID() string {
+	var b [16]byte
+	if _, err := io.ReadFull(crand.Reader, b[:]); err != nil {
+		return fmt.Sprintf("%016x", time.Now().UnixNano())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant bits
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// startAPMDrainer starts a single background goroutine that drains apmQueue
+// and forwards batches to the central APM server every 500 ms.
+// APM_URL defaults to http://apm-server:9009/ingest (Docker Compose DNS).
+// APM server unavailability is fully non-fatal; batches are silently discarded.
+func startAPMDrainer() {
+	apmURL := os.Getenv("APM_URL")
+	if apmURL == "" {
+		apmURL = "http://apm-server:9009/ingest"
+	}
+	apmClient := &http.Client{Timeout: 3 * time.Second}
+	go func() {
+		batch  := make([]apmEvent, 0, 100)
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case ev := <-apmQueue:
+				batch = append(batch, ev)
+				// Flush immediately when the batch reaches capacity to avoid
+				// excessive memory accumulation during high-traffic bursts.
+				if len(batch) >= 100 {
+					sendAPMBatch(apmClient, apmURL, batch)
+					batch = batch[:0]
+				}
+			case <-ticker.C:
+				if len(batch) > 0 {
+					sendAPMBatch(apmClient, apmURL, batch)
+					batch = batch[:0]
+				}
+			}
+		}
+	}()
+}
+
+// sendAPMBatch serialises batch as a JSON array and POSTs it to url.
+// All errors (serialisation, network, non-2xx) are silently discarded.
+func sendAPMBatch(client *http.Client, url string, batch []apmEvent) {
+	b, err := json.Marshal(batch)
+	if err != nil {
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+}
+
+// withAPM wraps h with three behaviours:
+//  1. Correlation ID resolution: reads X-Correlation-Id from the incoming
+//     request header; generates a UUID v4 if absent.
+//  2. Header propagation: injects the correlation ID into the outgoing request
+//     header (forwarded downstream by httputil.ReverseProxy) and into the
+//     response header so the client can continue the trace.
+//  3. Async APM recording: after h returns, enqueues a duration event into
+//     apmQueue using a non-blocking select.  If the queue is full the event
+//     is dropped; h's latency is never affected.
+func withAPM(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cid := r.Header.Get("X-Correlation-Id")
+		if cid == "" {
+			cid = newCorrelationID()
+		}
+		// Set on the incoming request so the reverse proxy forwards it downstream.
+		r.Header.Set("X-Correlation-Id", cid)
+		// Set on the response before the inner handler can call WriteHeader.
+		w.Header().Set("X-Correlation-Id", cid)
+
+		t0 := time.Now()
+		h.ServeHTTP(w, r)
+		elapsed := time.Since(t0).Milliseconds()
+
+		select {
+		case apmQueue <- apmEvent{
+			CorrelationID: cid,
+			Service:       "go-hub",
+			Endpoint:      r.URL.Path,
+			ResponseMs:    elapsed,
+			Timestamp:     time.Now().UnixMilli(),
+		}:
+		default:
+			// Queue full: discard event rather than blocking the goroutine.
+		}
 	})
 }
 
@@ -482,8 +607,13 @@ func main() {
 	// WebSocket endpoint for real-time order event streaming.
 	http.HandleFunc("/ws", wsHandler)
 
+	// Start the background APM drain goroutine before accepting traffic.
+	startAPMDrainer()
+
 	fmt.Println("Go Backend Server running on port 8080...")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	// withAPM wraps http.DefaultServeMux with correlation ID injection and
+	// non-blocking APM event enqueue for every inbound request.
+	if err := http.ListenAndServe(":8080", withAPM(http.DefaultServeMux)); err != nil {
 		log.Fatal(err)
 	}
 }

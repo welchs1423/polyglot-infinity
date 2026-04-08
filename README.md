@@ -36,6 +36,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · BUY/SELL order state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · **PostgreSQL-only persistence** (no in-memory fallback; `DB_URL` required at startup) · `DbStore` inner class — pure JDBC `PreparedStatement`, no ORM · `insertOrder()`: `INSERT ... ON CONFLICT DO NOTHING RETURNING` · `applyTransition()`: explicit transaction `SELECT ... FOR UPDATE` → state-machine check → `UPDATE` → `COMMIT`; concurrent transitions serialized at DB level · `findOrder()` / `findAllOrders()` / `countOrders()` read-paths · `deleteBenchmarkOrders()` cleanup · HikariCP pool 20, `autoCommit=true` · Virtual Thread parks on JDBC socket I/O (OS thread released) · **Redis Pub/Sub** fire-and-forget (`order-events` via Jedis 5 JedisPool) · Benchmark: real JDBC INSERT + PAY round-trips (virtual vs platform) |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | 28 | **Elm 0.19.1** (TEA) | 5174 | Order entry terminal · live Greeks (F#) · VaR (Rust) · no runtime exceptions |
+| — | **APM Server** (Node.js) | 9009 | Central APM ingest · `POST /ingest` (batched `TransactionMetric`) · `GET /metrics` (p50/p95/p99/avg/max per service) · in-memory circular buffer (100k entries) |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
 
@@ -45,9 +46,13 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 
 ```
 [Svelte 5 :5173]
-      │ fetch / SSE
+      │ fetch / SSE / WebSocket (/ws)
       ▼
-[Go Hub :8080] ── Redis :6379 (Lua EVAL cache)
+[Go Hub :8080] ── Redis :6379 (Lua EVAL cache · order-events Pub/Sub)
+      │           └─ withAPM() middleware ── X-Correlation-Id inject/propagate
+      │                                   └─ 8192-slot buffered chan → [APM Server :9009]
+      │
+      │        PUBLISH order-events ──► [Java Loom :8010] (INSERT / state transition)
       │
       ├─ [Python :8000] ── C++ cpp-core :8012 (libcore.so)
       │                 ── Zig  zig-core :8013 (libzigcore.so)
@@ -57,6 +62,12 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
       │
       └─ Workflow orchestration (Python→Rust→Kotlin pipeline)
            └─ Circuit breaker (closed/open/half-open)
+
+[Java Loom :8010] ── ApmCollector (ConcurrentLinkedQueue, apm-drain virtual thread)
+                  └─ POST /ingest 500ms flush ──────────────────► [APM Server :9009]
+
+[APM Server :9009] node:22-alpine · POST /ingest · GET /metrics · GET /health
+                   circular buffer 100k entries · p50/p95/p99 per service
 
 Standalone services: Kotlin · Elixir · R · F# · OCaml · Crystal · Nim · Scala · Haskell
                      Ruby · Dart · Gleam · V · Erlang · Lua · Swift · Clojure · Java · Prolog
@@ -120,6 +131,7 @@ Reverse proxy routes registered on Go Hub (:8080):
 | GET | `/api/java/order?id=<id>` | Get order by ID (live DB read) |
 | GET | `/api/java/orders` | Get all orders (ordered by `created_at DESC`) |
 | GET | `/api/java/benchmark?n=<N>&mode=virtual\|platform\|both` | Virtual Thread vs Platform Thread throughput benchmark |
+| WS | `/ws` | WebSocket — streams `order-events` Redis Pub/Sub channel to all connected clients |
 
 ---
 
@@ -180,9 +192,69 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ---
 
+## APM Endpoints
+
+| Method | Endpoint | Description |
+|:---|:---|:---|
+| POST | `/ingest` | Accept JSON array of `TransactionMetric` objects; 202 Accepted |
+| GET | `/metrics?limit=N` | Per-service p50/p95/p99/avg/max latency + most recent N events (default 100) |
+| GET | `/health` | Liveness probe: `{ status, buffered }` |
+
+**`TransactionMetric` schema**
+```json
+{
+  "correlationId": "3f2a1b4c-...",
+  "service":       "go-hub",
+  "endpoint":      "/api/java/order",
+  "responseMs":    12,
+  "queryMs":       8,
+  "timestamp":     1712700000000
+}
+```
+
+---
+
 ## Changelog
 
 ### 2026-04-09
+
+**Event-Driven WebSocket pipeline — real-time order feed** (`server-go`, `loom-java`, `portal-svelte`)
+
+Data flow: `Java Loom POST/PUT → Redis Pub/Sub (order-events) → Go WS Hub → WebSocket → Svelte`
+
+- `server-go/main.go`
+  - Import `github.com/gorilla/websocket v1.5.3` added
+  - `Client` struct — wraps a single WebSocket connection; `readPump` / `writePump` goroutines per client
+  - `Hub` struct — `clients map[*Client]struct{}`, `broadcast chan []byte`, `register` / `unregister` channels; `run()` is the sole goroutine that mutates the map, so no mutex is needed; full send-buffer eviction prevents a slow client from stalling broadcast
+  - `globalHub` — singleton hub started at process init via `go globalHub.run()`
+  - `wsHandler` — upgrades HTTP to WebSocket via `websocket.Upgrader` (all origins allowed for gateway-level CORS parity); registers the client and starts `readPump`/`writePump` goroutines
+  - `startRedisSubscriber()` — subscribes to `"order-events"` channel; if the channel closes (Redis restart) the subscriber sleeps 5 s and reconnects in a loop; every received payload is forwarded to `globalHub.broadcast`
+  - `GET /ws` route registered in `main()` (no CORS wrapper needed; WebSocket handshake is handled by the upgrader)
+  - `go startRedisSubscriber()` started alongside `go globalHub.run()` at boot
+
+- `loom-java/VirtualServer.java`
+  - `POST /api/java/order` — after `respond(ex, 201, ...)`, fires `publishOrderEvent(id, type, "", "ORDERED", "INSERT")` in a new virtual thread (fire-and-forget)
+  - `PUT /api/java/order` already published `"OK"` transitions; INSERT events now also propagate, giving the frontend visibility into order creation as well as every state transition
+  - `publishOrderEvent` payload: `{ order_id, type, event, prev_status, new_status, channel, timestamp }`
+
+- `portal-svelte/src/routes/+page.svelte`
+  - `WS_URL = "ws://localhost:8080/ws"` constant
+  - `wsStatus` (`$state`) — `'connecting' | 'connected' | 'disconnected' | 'error'`; displayed as a color-coded badge in the feed header
+  - `orderEvents` (`$state`) — ring buffer of last 50 events, newest first
+  - `connectOrderFeed()` — opens WebSocket, parses JSON frames into `orderEvents`; on close auto-reconnects after 3 s; `onMount` calls `connectOrderFeed()` and returns a cleanup function that closes the socket
+  - Order Event Feed panel rendered below the service grid:
+    - Header: title, `Java Loom → Redis → Go WS` source label, connection-state badge
+    - Empty state placeholder while waiting for first event
+    - Scrollable table: Order ID · Type (BUY/SELL tag) · Event · Prev Status · New Status · Time
+    - Newest row highlighted; all rows update reactively on every incoming frame
+
+- `server-go/go.mod` — `github.com/gorilla/websocket v1.5.3` added
+
+**Key APIs (Go Hub :8080) — addition**
+
+| Method | Endpoint | Description |
+|:---|:---|:---|
+| WS | `/ws` | WebSocket connection — streams `order-events` Redis channel to all connected clients |
 
 **Load test — error rate 0% hardening** (`tests/load-test.js`)
 

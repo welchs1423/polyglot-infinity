@@ -431,6 +431,11 @@ public class VirtualServer {
             System.err.println("[Redis] JedisPool init failed (pub/sub disabled): " + e.getMessage());
         }
 
+        // APM collector: resolves APM_URL from environment, falls back to localhost.
+        // init() is idempotent; the background drain virtual thread is started once.
+        ApmCollector.init(System.getenv("APM_URL"));
+        System.out.println("[APM] ApmCollector initialized");
+
         Runtime.getRuntime().addShutdownHook(Thread.ofVirtual().unstarted(() -> {
             if (dbStore != null) dbStore.close();
         }));
@@ -443,9 +448,25 @@ public class VirtualServer {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
         server.createContext("/", ex -> {
+            // APM: record wall-clock start time and resolve/generate correlation ID.
+            // correlationId is propagated from the upstream gateway (Go Hub) via the
+            // X-Correlation-Id header; if absent, a new UUID v4 is generated so that
+            // requests entering the service directly are also traceable.
+            long   t0 = System.currentTimeMillis();
+            String incomingCid = ex.getRequestHeaders().getFirst("X-Correlation-Id");
+            final String correlationId = (incomingCid != null && !incomingCid.isEmpty())
+                ? incomingCid
+                : UUID.randomUUID().toString();
+            ex.getResponseHeaders().set("X-Correlation-Id", correlationId);
+
             String method = ex.getRequestMethod();
             String path   = ex.getRequestURI().getPath();
             Map<String, String> params = parseQuery(ex.getRequestURI().getQuery());
+
+            // queryMs captures the JDBC execution time for the primary DB operation
+            // in this request.  Updated in-place by each DB-calling branch.
+            // long[] is used because lambdas require effectively-final references.
+            long[] queryMs = {0L};
 
             try {
                 // GET /health
@@ -516,7 +537,9 @@ public class VirtualServer {
                         respond(ex, 400, "{\"error\":\"unknown event: " + evt + "\"}");
                         return;
                     }
+                    long dbStart = System.currentTimeMillis();
                     String r = dbStore.applyTransition(id, event);
+                    queryMs[0] = System.currentTimeMillis() - dbStart;
                     if (r.startsWith("OK:")) {
                         String[] parts      = r.split(":", 3);
                         String   prevStatus = parts[1];
@@ -545,7 +568,9 @@ public class VirtualServer {
                         respond(ex, 400, "{\"error\":\"id parameter required\"}");
                         return;
                     }
+                    long dbStart = System.currentTimeMillis();
                     Map<String, Object> row = dbStore.findOrder(id);
+                    queryMs[0] = System.currentTimeMillis() - dbStart;
                     if (row == null) {
                         respond(ex, 404, "{\"error\":\"order not found\",\"id\":\"" + id + "\"}");
                         return;
@@ -556,7 +581,9 @@ public class VirtualServer {
 
                 // GET /api/java/orders
                 if (path.equals("/api/java/orders")) {
+                    long dbStart = System.currentTimeMillis();
                     List<Map<String, Object>> list = dbStore.findAllOrders();
+                    queryMs[0] = System.currentTimeMillis() - dbStart;
                     respond(ex, 200, toJson(Map.of("count", list.size(), "orders", list)));
                     return;
                 }
@@ -581,6 +608,22 @@ public class VirtualServer {
                     respond(ex, 500, "{\"error\":\"" + e.getClass().getSimpleName()
                         + ": " + e.getMessage() + "\"}");
                 } catch (IOException ignored) {}
+            } finally {
+                // Enqueue APM metric after the response has been written.
+                // Thread.ofVirtual().start() is used so that the ApmCollector.record()
+                // call (which is itself non-blocking) does not execute on the
+                // request-serving virtual thread after it has returned from ServeHTTP.
+                // In practice record() returns in nanoseconds, but the separation
+                // makes the non-blocking contract explicit.
+                final long   responseMs     = System.currentTimeMillis() - t0;
+                final long   capturedQueryMs = queryMs[0];
+                final String capturedPath   = path;
+                Thread.ofVirtual().start(() ->
+                    ApmCollector.record(new ApmCollector.TransactionMetric(
+                        correlationId, "java-loom", capturedPath,
+                        responseMs, capturedQueryMs, System.currentTimeMillis()
+                    ))
+                );
             }
         });
 

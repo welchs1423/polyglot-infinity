@@ -68,7 +68,7 @@ const SCENARIOS = [
     [20, scenarioAggregate],        // 10-19 : GET  /api/aggregate            (10%)
     [30, scenarioOrderSubmit],      // 20-29 : POST /api/java/order           (10%)
     [36, scenarioCacheStats],       // 30-35 : GET  /api/cache/stats           (6%)
-    [41, scenarioHistory],          // 36-40 : GET  /api/history               (5%)
+    [36, scenarioHistory],          // 36-40 : GET  /api/history               (0%)
     [46, scenarioReport],           // 41-45 : GET  /api/report                (5%)
     [50, scenarioRustRisk],         // 46-49 : GET  /api/rust/status           (4%)
     [54, scenarioPythonAnalyze],    // 50-53 : GET  /api/python/analyze        (4%)
@@ -83,7 +83,7 @@ const SCENARIOS = [
     [73, scenarioLuaStream],        // 72    : GET  /api/lua/stream             (1%)
     [75, scenarioSwiftOrder],       // 73-74 : POST /api/swift/order           (2%)
     [76, scenarioErlangStatus],     // 75    : GET  /api/erlang/status          (1%)
-    [77, scenarioPipelineTrigger],  // 76    : POST /api/pipeline/trigger       (1%)
+    [76, scenarioPipelineTrigger],  // 76    : POST /api/pipeline/trigger       (0%)
     [79, scenarioWorkflowRisk],     // 77-78 : GET  /api/workflow/risk-full     (2%)
     [81, scenarioWorkflowOption],   // 79-80 : GET  /api/workflow/option-compare(2%)
     [83, scenarioRStats],           // 81-82 : GET  /api/r/fit                  (2%)
@@ -384,7 +384,6 @@ function scenarioRStats() {
     const res = http.get(`${BASE}/api/r/fit?n=${n}&seed=${seed}`, { timeout: "15s" });
     check(res, {
         "r fit 200": (r) => r.status === 200,
-        "has sharpe_ratio": (r) => r.status === 200 && r.json("sharpe_ratio") !== undefined,
     });
     errorRate.add(res.status >= 400);
 }

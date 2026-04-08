@@ -1,8 +1,8 @@
 # ── Stage 1: C++ shared library ─────────────────────────────────────────────
 FROM gcc:12 AS cpp-builder
 WORKDIR /build
-COPY core-cpp/src/calculator.cpp .
-RUN g++ -shared -fPIC -O2 -o libcore.so calculator.cpp -lstdc++ -lm
+COPY core-cpp/src/calculator.cpp core-cpp/src/matrix.cpp core-cpp/src/matrix.h .
+RUN g++ -shared -fPIC -O2 -o libcore.so calculator.cpp matrix.cpp -lstdc++ -lm
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim

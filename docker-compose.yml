@@ -103,23 +103,26 @@ services:
     environment:
       DATABASE_URL: postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
       REDIS_URL: redis://redis:6379
+    restart: on-failure
     networks: [ polyglot ]
 
   # ── Julia Engine (:8002) ────────────────────────────────────────────────────
   julia-engine:
     image: julia:1.10-bookworm
     working_dir: /app
-    command: julia server.jl
+    command: julia -e 'import Pkg; Pkg.add(["HTTP","JSON3"]); include("/app/server.jl")'
     ports: [ "8002:8002" ]
     volumes:
       - ./engine-julia:/app:ro
+      - julia_depot:/root/.julia
     networks: [ polyglot ]
 
   # ── R Stats (:8003) ─────────────────────────────────────────────────────────
   r-stats:
-    image: r-base:4.3.3
+    image: rstudio/plumber
     working_dir: /app
-    command: Rscript run.R
+    entrypoint: Rscript
+    command: run.R
     ports: [ "8003:8003" ]
     volumes:
       - ./engine-r:/app:ro
@@ -133,6 +136,8 @@ services:
     ports: [ "9001:9001" ]
     volumes:
       - ./pricer-fsharp:/app:ro
+      - fsharp_obj:/app/obj
+      - fsharp_bin:/app/bin
       - fsharp_nuget:/root/.nuget
     networks: [ polyglot ]
 
@@ -150,7 +155,7 @@ services:
   crystal-gateway:
     image: debian:bookworm-slim
     working_dir: /app
-    command: ./server
+    command: sh -c "apt-get update -qq && apt-get install -y -qq libssl3 2>/dev/null; ./server"
     ports: [ "9002:9002" ]
     volumes:
       - ./gateway-crystal:/app:ro
@@ -170,11 +175,10 @@ services:
   scala-streamer:
     image: eclipse-temurin:21-jdk-alpine
     working_dir: /app
-    command: sh run.sh
+    command: sh -c "apk add --no-cache curl && mkdir -p /tmp/sl && curl -fsSL https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar -o /tmp/sl/s3.jar && curl -fsSL https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar -o /tmp/sl/s2.jar && java -cp '/app/server.jar:/tmp/sl/s3.jar:/tmp/sl/s2.jar' Main"
     ports: [ "9003:9003" ]
     volumes:
       - ./streamer-scala:/app:ro
-      - scala_coursier:/root/.cache/coursier
     networks: [ polyglot ]
 
   # ── Haskell Pricer (:8006) — pre-compiled binary ────────────────────────────
@@ -191,10 +195,11 @@ services:
   ruby-scorer:
     image: ruby:3.3-slim
     working_dir: /app
-    command: ruby server.rb
+    command: sh -c "gem install webrick --no-document 2>/dev/null; cat /app/server.rb > /tmp/server.rb && echo 'server.start' >> /tmp/server.rb && ruby /tmp/server.rb"
     ports: [ "9004:9004" ]
     volumes:
       - ./scorer-ruby:/app:ro
+      - ruby_gems:/usr/local/bundle
     networks: [ polyglot ]
 
   # ── Dart Engine (:9005) ─────────────────────────────────────────────────────
@@ -210,9 +215,9 @@ services:
 
   # ── Gleam Hub (:4001) ───────────────────────────────────────────────────────
   gleam-hub:
-    image: ghcr.io/gleam-lang/gleam:v1.2.1-erlang-alpine
-    working_dir: /app
-    command: gleam run
+    image: ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
+    working_dir: /tmp/gleam-app
+    command: sh -c "cp -rp /app/. /tmp/gleam-app/ && rm -rf /tmp/gleam-app/test && gleam run"
     ports: [ "4001:4001" ]
     volumes:
       - ./hub_gleam:/app:ro
@@ -242,13 +247,14 @@ services:
   elixir-hub:
     image: elixir:1.18-alpine
     working_dir: /app
-    command: sh -c "mix deps.get && mix run --no-halt"
+    command: sh -c "cp -rp /app /tmp/app && cd /tmp/app && mix compile && mix run --no-halt"
     ports: [ "4000:4000" ]
     environment:
-      MIX_ENV: prod
+      MIX_ENV: dev
       REDIS_URL: redis://redis:6379
     volumes:
       - ./hub-elixir:/app:ro
+      - elixir_build:/app/_build
       - elixir_mix:/root/.mix
     depends_on:
       redis: { condition: service_healthy }
@@ -269,7 +275,7 @@ services:
   java-loom:
     image: eclipse-temurin:21-jdk-alpine
     working_dir: /app
-    command: sh run.sh
+    command: sh -c "java -cp '/app/out:/app/libs/*' VirtualServer"
     ports: [ "8010:8010" ]
     environment:
       DB_URL: jdbc:postgresql://db-postgres:5432/loom_db
@@ -278,7 +284,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
     volumes:
-      - ./loom-java:/app
+      - ./loom-java:/app:ro
     depends_on:
       db-postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -286,7 +292,7 @@ services:
 
   # ── Prolog Solver (:8011) ───────────────────────────────────────────────────
   prolog-solver:
-    image: swipl:9.2
+    image: swipl:latest
     working_dir: /app
     command: swipl server.pl
     ports: [ "8011:8011" ]
@@ -298,7 +304,7 @@ services:
   lua-stream:
     image: nickblah/lua:5.4-luarocks-alpine
     working_dir: /app
-    command: lua5.4 server.lua
+    command: sh -c "apk add --no-cache build-base && luarocks install luasocket && lua server.lua"
     ports: [ "8007:8007" ]
     volumes:
       - ./stream-lua:/app:ro
@@ -306,9 +312,9 @@ services:
 
   # ── Swift Actor (:8008) — pre-compiled binary ───────────────────────────────
   swift-actor:
-    image: debian:bookworm-slim
+    image: swift:6.1-slim
     working_dir: /app
-    command: ./server
+    command: sh -c "LD_LIBRARY_PATH=/usr/lib/swift/linux ./server"
     ports: [ "8008:8008" ]
     volumes:
       - ./actor-swift:/app:ro
@@ -320,8 +326,15 @@ services:
     working_dir: /app
     command: sh run.sh
     ports: [ "9000:9000" ]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/polyglot_db
+      DB_USER: dev
+      DB_PASS: polyglot
     volumes:
       - ./scheduler-kotlin:/app:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     networks: [ polyglot ]
 
   # ── C++ Core (:8012) — multi-stage: compile libcore.so, serve via HTTP ──────
@@ -352,10 +365,17 @@ services:
     build:
       context: ./core-zig
       dockerfile_inline: |
-        FROM ghcr.io/nicowillis/zig:0.13.0 AS builder
+        FROM alpine:3.19 AS builder
         WORKDIR /build
+        RUN apk add --no-cache curl xz tar && \
+            curl -fsSL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz \
+              -o /tmp/zig.tar.xz && \
+            tar -xf /tmp/zig.tar.xz -C /opt && \
+            mv /opt/zig-linux-x86_64-0.13.0 /opt/zig && \
+            rm /tmp/zig.tar.xz
+        ENV PATH="/opt/zig:${PATH}"
         COPY . .
-        RUN zig build -Doptimize=ReleaseFast
+        RUN zig build
 
         FROM python:3.12-slim
         WORKDIR /app
@@ -431,8 +451,14 @@ volumes:
   postgres_data:
   db_postgres_data:
   fsharp_nuget:
-  scala_coursier:
+  fsharp_obj:
+  fsharp_bin:
   dart_pub:
   elixir_mix:
+  elixir_build:
   clojure_m2:
   svelte_node_modules:
+  gleam_build:
+  julia_depot:
+  r_libs:
+  ruby_gems:

@@ -21,9 +21,9 @@ data class RiskReport(
     val minRiskScore: Double,
 )
 
-private const val DB_URL             = "jdbc:postgresql://localhost:5433/postgres"
-private const val DB_USER            = "postgres"
-private const val DB_PASS            = "postgres"
+private val DB_URL             = System.getenv("DB_URL") ?: "jdbc:postgresql://localhost:5433/postgres"
+private val DB_USER            = System.getenv("DB_USER") ?: "postgres"
+private val DB_PASS            = System.getenv("DB_PASS") ?: "postgres"
 private const val REPORT_INTERVAL_MS = 60_000L
 
 fun main() {

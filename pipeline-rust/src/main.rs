@@ -96,11 +96,12 @@ struct PortfolioVarRequest {
 #[tokio::main]
 async fn main() {
 
-    let db_url = "postgres://postgres:postgres@localhost:5433/postgres";
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5433/postgres".to_string());
     
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(db_url)
+        .connect(&db_url)
         .await
         .expect("Failed to connect to PostgreSQL");
 

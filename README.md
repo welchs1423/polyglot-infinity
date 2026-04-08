@@ -445,6 +445,12 @@ Data flow: `Java Loom POST/PUT → Redis Pub/Sub (order-events) → Go WS Hub �
 - Fixed `Allow()` — replaced cascading `if` with `switch` + `defer cb.mu.Unlock()` to eliminate dual manual-unlock paths
 - Fixed `RecordSuccess()` — replaced non-atomic `StoreInt32(Load+1)` read-modify-write with `atomic.AddInt32`
 
+**portal-svelte — fix: stale `node_modules` volume causes `qrcode` module not found** (`docker-compose.yml`)
+
+- Root cause: the `svelte_node_modules` Docker named volume was created before `qrcode ^1.5.4` was added to `package.json`. On subsequent `docker compose up`, npm reads `/app/node_modules/.package-lock.json` (inside the volume) and sees 80 packages up to date — the `qrcode` entry is absent from the embedded lock, so npm reports "up to date" and skips installation. Vite then fails with `Cannot find module 'qrcode'` on every SSR request, rendering the portal with HTTP 500.
+- Fix (`docker-compose.yml` — `svelte-portal` `command`): prepend `ls node_modules/qrcode 2>/dev/null || rm -rf node_modules;` before `npm install`. On each container start, if `node_modules/qrcode` is missing (stale volume), the entire `node_modules` directory is deleted so the subsequent `npm install` performs a full clean install (147 packages). If the key package is present, the directory is left intact for fast startup.
+- Stale volume removed and container recreated; confirmed `added 147 packages` on fresh install and `node_modules/qrcode` present in volume.
+
 ---
 
 ### 2026-04-08

@@ -216,6 +216,21 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-09 (4)
+
+**Chaos Monkey script** (`chaos.sh`)
+
+- `chaos.sh` — New shell script for resilience and circuit-breaker testing; added to project root
+  - Reads the list of running backend containers via `docker ps --format '{{.Names}}'`; filters to names matching the `polyglot-infinity-` project prefix
+  - Excludes infrastructure and frontend containers via `grep -vE`: `postgres`, `redis`, `db-postgres`, `svelte-portal`, `terminal-elm`
+  - Runs an infinite `while true` loop: 10 s idle → `docker kill <random target>` → 5 s down → `docker start <target>` → repeat
+  - Random selection uses `$RANDOM % ${#CONTAINERS[@]}`; no external dependencies beyond standard Docker CLI
+  - Skips the kill/start cycle with a log message when no eligible containers are running (prevents array-index arithmetic on empty set)
+  - All log lines include a UTC timestamp (`date '+%Y-%m-%d %H:%M:%S'`)
+  - File is executable (`chmod +x`)
+
+---
+
 ### 2026-04-09 (3)
 
 **portal-svelte — fix Svelte 5 `non_reactive_update` warning in QrCode** (`portal-svelte`)

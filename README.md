@@ -147,6 +147,15 @@ CREATE TABLE risk_reports (
 
 ### 2026-04-08
 
+**Elixir WebSocket 확장** (`hub-elixir`)
+- `lib/hub_elixir/websocket/registry.ex` — Elixir 내장 `Registry` `:duplicate` 모드로 모든 Cowboy WS 핸들러 프로세스 추적; 프로세스 종료 시 자동 해제
+- `lib/hub_elixir/websocket/handler.ex` — Cowboy 2.14 `:cowboy_websocket` 비헤이비어; 클라이언트별 독립 BEAM 프로세스 (`init` → `websocket_init` → `websocket_handle` → `websocket_info` → `terminate`); 접속 직후 최신 스냅숏 push; `ping`/`pong` 양방향 JSON 프레임 처리
+- `lib/hub_elixir/websocket/broadcaster.ex` — JSON 인코딩 후 `Registry.dispatch`로 전체 클라이언트에 전파
+- `lib/hub_elixir/redis_subscriber.ex` — `Redix.PubSub` 전용 커넥션으로 `polyglot:events` 구독; 수신 이벤트를 Phoenix PubSub(port 4000)과 `Broadcaster`(port 4001) 두 경로로 동시 방송; 지수 백오프 재연결 (5 s base → 30 s max)
+- `lib/hub_elixir/poller.ex` — 10 s 주기 스냅숏 브로드캐스트도 동일하게 양쪽 경로로 전파
+- `lib/hub_elixir/application.ex` — Supervisor 기동 후 `:cowboy.start_clear/3`로 Cowboy WS 리스너(port 4001) 시작; `Registry`를 첫 번째 child로 등록
+- `mix.exs` — `plug_cowboy` `optional: true` 제거
+
 **Rust × C++ FFI pipeline** (`core-cpp` / `pipeline-rust`)
 - `core-cpp/src/matrix.cpp` — 4 new functions: `cholesky_decompose` (Cholesky-Banachiewicz O(n³/3), returns -1 on non-PD), `mat_vec_mul` (y=A·x zero-copy), `portfolio_variance` (v=wᵀΣw, internal tmp malloc/free), `mat_frobenius_norm` (‖A‖_F single-pass)
 - `core-cpp/src/matrix.h` — C extern declarations for all 4

@@ -491,6 +491,11 @@ public class VirtualServer {
                         return;
                     }
                     respond(ex, 201, toJson(row));
+                    // Publish INSERT event to Redis after the HTTP response is committed.
+                    // Fire-and-forget in a new virtual thread to avoid blocking the caller.
+                    final String fId = id, fType = type;
+                    Thread.ofVirtual().start(() ->
+                        publishOrderEvent(fId, fType, "", "ORDERED", "INSERT"));
                     return;
                 }
 

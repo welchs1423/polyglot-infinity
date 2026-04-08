@@ -4,6 +4,48 @@
 
 	// Base URL of the Go gateway. All API calls are routed through it.
 	const API_BASE = "http://localhost:8080";
+	const WS_URL = "ws://localhost:8080/ws";
+
+	// ── WebSocket order feed ──────────────────────────────────────────────────
+	// wsStatus: current connection state displayed in the feed header.
+	// orderEvents: ring buffer of the last 50 received events (newest first).
+	// wsConn: raw WebSocket instance kept outside $state to avoid Svelte
+	//         wrapping a native object that is not serialisable.
+	/** @type {'connecting'|'connected'|'disconnected'|'error'} */
+	let wsStatus = $state("disconnected");
+	/** @type {Array<{order_id:string, type:string, event:string, prev_status:string, new_status:string, timestamp:number}>} */
+	let orderEvents = $state([]);
+	/** @type {WebSocket|null} */
+	let wsConn = null;
+
+	function connectOrderFeed() {
+		wsStatus = "connecting";
+		const ws = new WebSocket(WS_URL);
+		wsConn = ws;
+
+		ws.onopen = () => {
+			wsStatus = "connected";
+		};
+
+		ws.onmessage = (evt) => {
+			try {
+				const data = JSON.parse(evt.data);
+				orderEvents = [data, ...orderEvents].slice(0, 50);
+			} catch {
+				// ignore non-JSON frames
+			}
+		};
+
+		ws.onclose = () => {
+			wsStatus = "disconnected";
+			wsConn = null;
+			setTimeout(connectOrderFeed, 3000);
+		};
+
+		ws.onerror = () => {
+			wsStatus = "error";
+		};
+	}
 
 	// Static service registry. Defines every language microservice in this platform.
 	// aggregateName: the exact 'name' value returned by GET /api/aggregate, or null for
@@ -368,6 +410,10 @@
 
 	onMount(() => {
 		fetchStatus();
+		connectOrderFeed();
+		return () => {
+			if (wsConn) wsConn.close();
+		};
 	});
 </script>
 
@@ -415,6 +461,58 @@
 			/>
 		{/each}
 	</div>
+
+	<section class="order-feed">
+		<div class="feed-header">
+			<h2 class="feed-title">Order Event Feed</h2>
+			<span class="feed-source">Java Loom &rarr; Redis &rarr; Go WS</span>
+			<span class="ws-badge ws-badge--{wsStatus}">{wsStatus}</span>
+		</div>
+
+		{#if orderEvents.length === 0}
+			<p class="feed-empty">Waiting for order events&hellip;</p>
+		{:else}
+			<div class="feed-table-wrap">
+				<table class="feed-table">
+					<thead>
+						<tr>
+							<th>Order ID</th>
+							<th>Type</th>
+							<th>Event</th>
+							<th>Prev Status</th>
+							<th>New Status</th>
+							<th>Time</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each orderEvents as evt (evt.timestamp + evt.order_id + evt.event)}
+							<tr class="feed-row">
+								<td class="mono">{evt.order_id}</td>
+								<td
+									><span
+										class="tag tag--{evt.type?.toLowerCase()}"
+										>{evt.type}</span
+									></td
+								>
+								<td>{evt.event}</td>
+								<td class="status-cell"
+									>{evt.prev_status || "—"}</td
+								>
+								<td class="status-cell status-cell--new"
+									>{evt.new_status}</td
+								>
+								<td class="mono ts"
+									>{new Date(
+										evt.timestamp,
+									).toLocaleTimeString()}</td
+								>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</section>
 </div>
 
 <style>
@@ -538,5 +636,140 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
 		gap: 1rem;
+	}
+
+	/* ── Order Event Feed ─────────────────────────────────────────────────── */
+	.order-feed {
+		margin-top: 2.5rem;
+		background: #0f172a;
+		border: 1px solid #1e293b;
+		border-radius: 12px;
+		overflow: hidden;
+	}
+
+	.feed-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem 1.25rem;
+		border-bottom: 1px solid #1e293b;
+		flex-wrap: wrap;
+	}
+
+	.feed-title {
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: #e2e8f0;
+	}
+
+	.feed-source {
+		font-size: 0.72rem;
+		color: #475569;
+		flex: 1;
+	}
+
+	.ws-badge {
+		font-size: 0.68rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.25rem 0.65rem;
+		border-radius: 100px;
+	}
+
+	.ws-badge--connected {
+		background: #14532d40;
+		color: #4ade80;
+		border: 1px solid #16a34a50;
+	}
+	.ws-badge--connecting {
+		background: #1e3a5f40;
+		color: #60a5fa;
+		border: 1px solid #2563eb50;
+	}
+	.ws-badge--disconnected {
+		background: #1e293b;
+		color: #64748b;
+		border: 1px solid #33415550;
+	}
+	.ws-badge--error {
+		background: #450a0a40;
+		color: #f87171;
+		border: 1px solid #ef444450;
+	}
+
+	.feed-empty {
+		padding: 2rem 1.25rem;
+		color: #475569;
+		font-size: 0.85rem;
+		text-align: center;
+	}
+
+	.feed-table-wrap {
+		overflow-x: auto;
+	}
+
+	.feed-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.8rem;
+	}
+
+	.feed-table th {
+		padding: 0.6rem 1rem;
+		text-align: left;
+		font-size: 0.68rem;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+		color: #475569;
+		background: #0f172a;
+		border-bottom: 1px solid #1e293b;
+	}
+
+	.feed-row td {
+		padding: 0.55rem 1rem;
+		border-bottom: 1px solid #1e293b20;
+		color: #94a3b8;
+		white-space: nowrap;
+	}
+
+	.feed-row:first-child td {
+		color: #e2e8f0;
+		background: #1e293b30;
+	}
+
+	.mono {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.75rem;
+	}
+
+	.ts {
+		color: #475569;
+	}
+
+	.tag {
+		display: inline-block;
+		padding: 0.15rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		font-weight: 600;
+	}
+
+	.tag--buy {
+		background: #14532d40;
+		color: #4ade80;
+	}
+	.tag--sell {
+		background: #450a0a40;
+		color: #f87171;
+	}
+
+	.status-cell {
+		color: #64748b;
+	}
+	.status-cell--new {
+		color: #38bdf8;
+		font-weight: 600;
 	}
 </style>

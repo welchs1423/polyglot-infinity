@@ -9,7 +9,6 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | # | Language | Port | Key Feature |
 |:-:|:---|:---:|:---|
 | 1 | **Svelte 5** (SvelteKit + Bun) | 5173 | Real-time dashboard UI |
-| 28 | **Elm 0.19.1** (TEA) | 5174 | Order entry terminal · live Greeks (F#) · VaR (Rust) · no runtime exceptions |
 | 2 | **Go** `net/http` | 8080 | API Hub · Reverse proxy gateway (27 backends) · Redis caching · SSE stream · Circuit breaker |
 | 3 | **Python** FastAPI | 8000 | FX rate collection · C++/Zig FFI · Julia HTTP |
 | 4 | **Rust** Axum + sqlx | 8081 | High-performance bulk insert pipeline |
@@ -36,6 +35,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
 | 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · BUY/SELL order state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · **PostgreSQL-only persistence** (no in-memory fallback; `DB_URL` required at startup) · `DbStore` inner class — pure JDBC `PreparedStatement`, no ORM · `insertOrder()`: `INSERT ... ON CONFLICT DO NOTHING RETURNING` · `applyTransition()`: explicit transaction `SELECT ... FOR UPDATE` → state-machine check → `UPDATE` → `COMMIT`; concurrent transitions serialized at DB level · `findOrder()` / `findAllOrders()` / `countOrders()` read-paths · `deleteBenchmarkOrders()` cleanup · HikariCP pool 20, `autoCommit=true` · Virtual Thread parks on JDBC socket I/O (OS thread released) · **Redis Pub/Sub** fire-and-forget (`order-events` via Jedis 5 JedisPool) · Benchmark: real JDBC INSERT + PAY round-trips (virtual vs platform) |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
+| 28 | **Elm 0.19.1** (TEA) | 5174 | Order entry terminal · live Greeks (F#) · VaR (Rust) · no runtime exceptions |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
 

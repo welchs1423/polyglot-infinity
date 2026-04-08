@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 )
@@ -234,6 +235,152 @@ func withCORS(h http.Handler) http.HandlerFunc {
 	}
 }
 
+// ── WebSocket Hub ─────────────────────────────────────────────────────────────
+// Hub maintains the set of active clients and serializes all mutations through
+// its run() goroutine — no mutex is required on the clients map.
+// broadcast receives encoded JSON payloads from the Redis subscriber and fans
+// them out to every connected client. Slow clients whose send buffer is full
+// are evicted to prevent a single lagging connection from stalling others.
+
+const (
+	wsWriteWait  = 10 * time.Second
+	wsPongWait   = 60 * time.Second
+	wsPingPeriod = 54 * time.Second // must be less than wsPongWait
+	wsMaxMsgSize = 4096
+)
+
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	// Allow all origins; the gateway already enforces CORS for HTTP routes.
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// Client wraps a single WebSocket connection.
+type Client struct {
+	hub  *Hub
+	conn *websocket.Conn
+	send chan []byte
+}
+
+// readPump drains the read side of the connection and handles pong frames.
+// It unregisters the client and closes the connection when the loop exits.
+func (c *Client) readPump() {
+	defer func() {
+		c.hub.unregister <- c
+		c.conn.Close()
+	}()
+	c.conn.SetReadLimit(wsMaxMsgSize)
+	c.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		return nil
+	})
+	for {
+		if _, _, err := c.conn.ReadMessage(); err != nil {
+			break
+		}
+	}
+}
+
+// writePump delivers messages from the send channel to the WebSocket.
+// A periodic ping keeps the connection alive and detects dead peers.
+func (c *Client) writePump() {
+	ticker := time.NewTicker(wsPingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+	for {
+		select {
+		case msg, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// Hub coordinates client registration and message broadcasting.
+type Hub struct {
+	clients    map[*Client]struct{}
+	broadcast  chan []byte
+	register   chan *Client
+	unregister chan *Client
+}
+
+// globalHub is the singleton hub started in main().
+var globalHub = &Hub{
+	clients:    make(map[*Client]struct{}),
+	broadcast:  make(chan []byte, 256),
+	register:   make(chan *Client),
+	unregister: make(chan *Client),
+}
+
+// run is the hub's event loop. All access to clients happens here so no mutex
+// is needed. Clients whose send channel is full are evicted immediately.
+func (h *Hub) run() {
+	for {
+		select {
+		case c := <-h.register:
+			h.clients[c] = struct{}{}
+		case c := <-h.unregister:
+			if _, ok := h.clients[c]; ok {
+				delete(h.clients, c)
+				close(c.send)
+			}
+		case msg := <-h.broadcast:
+			for c := range h.clients {
+				select {
+				case c.send <- msg:
+				default:
+					close(c.send)
+					delete(h.clients, c)
+				}
+			}
+		}
+	}
+}
+
+// wsHandler upgrades an HTTP connection to WebSocket and attaches it to the hub.
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("[WS] upgrade error:", err)
+		return
+	}
+	client := &Client{hub: globalHub, conn: conn, send: make(chan []byte, 256)}
+	globalHub.register <- client
+	go client.writePump()
+	go client.readPump()
+}
+
+// startRedisSubscriber subscribes to the "order-events" Redis channel and
+// forwards every message to the WebSocket hub for broadcasting. If the channel
+// closes (e.g. Redis restart), the subscriber re-connects after 5 seconds.
+func startRedisSubscriber() {
+	for {
+		sub := rdb.Subscribe(ctx, "order-events")
+		ch := sub.Channel()
+		for msg := range ch {
+			globalHub.broadcast <- []byte(msg.Payload)
+		}
+		sub.Close()
+		log.Println("[Redis PubSub] order-events channel closed, reconnecting in 5s")
+		time.Sleep(5 * time.Second)
+	}
+}
+
 var (
 	db  *sql.DB
 	rdb *redis.Client
@@ -280,6 +427,9 @@ func main() {
 		log.Fatal("Redis 접속 실패:", err)
 	}
 	fmt.Println("⚡ Redis 연결 성공!")
+
+	go globalHub.run()
+	go startRedisSubscriber()
 
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/history", historyHandler)
@@ -328,6 +478,9 @@ func main() {
 	http.Handle("/api/analytics/", withCORS(newCBProxy("nim-analytics", resolveBackend("nim-analytics", portNimAnalytics))))
 	http.Handle("/api/ledger/", withCORS(newCBProxy("clojure-stm", resolveBackend("clojure-stm", portClojureSTM))))
 	http.Handle("/api/scheduler/", withCORS(newCBProxy("kotlin-scheduler", resolveBackend("kotlin-scheduler", portKotlinScheduler))))
+
+	// WebSocket endpoint for real-time order event streaming.
+	http.HandleFunc("/ws", wsHandler)
 
 	fmt.Println("Go Backend Server running on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

@@ -216,17 +216,13 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
-### 2026-04-09 (7)
+### 2026-04-09
 
 **apm-server — fix unhealthy container (IPv6 localhost resolution)** (`docker-compose.yml`, `apm-server/server.js`)
 
 - Root cause: the `node:22-alpine` container's `/etc/hosts` maps `localhost` to `::1` (IPv6 only); there is no `127.0.0.1 localhost` entry. The server was bound to `0.0.0.0` (IPv4), so every `wget localhost:9009/health` inside the healthcheck resolved `::1` and received "Connection refused", driving the container into `unhealthy`.
 - `docker-compose.yml` — `apm-server` healthcheck target changed from `http://localhost:9009/health` to `http://127.0.0.1:9009/health`; avoids `/etc/hosts` hostname resolution entirely.
 - `apm-server/server.js` — `server.listen` bind address changed from `'0.0.0.0'` to `'::'` (IPv6 dual-stack); on Linux this accepts connections on both `0.0.0.0` and `::1`, so the server is reachable regardless of whether the caller uses IPv4 or IPv6.
-
----
-
-### 2026-04-09 (6)
 
 **Java Loom — Saga Pattern (two-phase compensating transaction)** (`loom-java/VirtualServer.java`)
 
@@ -249,10 +245,6 @@ CREATE TABLE IF NOT EXISTS orders (
   - Fires `SagaCoordinator.executeSaga(...)` after the HTTP response is written; no blocking
 - `imports` — added `java.net.URI`, `java.net.http.{HttpClient,HttpRequest,HttpResponse}`, `java.time.Duration`
 
----
-
-### 2026-04-09 (5)
-
 **brain-python — SMA crossover autobot** (`brain-python/`)
 
 - `brain-python/autobot.py` — New autonomous trading bot script
@@ -265,10 +257,6 @@ CREATE TABLE IF NOT EXISTS orders (
   - Reconnect policy: exponential back-off starting at 1 s, capped at 30 s; resets on each successful connection; handles `ConnectionClosedError`, `ConnectionClosedOK`, `OSError`, and unexpected exceptions uniformly
 - `brain-python/requirements.txt` — added `httpx>=0.27.0` and `websockets>=12.0`
 
----
-
-### 2026-04-09 (4)
-
 **Chaos Monkey script** (`chaos.sh`)
 
 - `chaos.sh` — New shell script for resilience and circuit-breaker testing; added to project root
@@ -280,18 +268,10 @@ CREATE TABLE IF NOT EXISTS orders (
   - All log lines include a UTC timestamp (`date '+%Y-%m-%d %H:%M:%S'`)
   - File is executable (`chmod +x`)
 
----
-
-### 2026-04-09 (3)
-
 **portal-svelte — fix Svelte 5 `non_reactive_update` warning in QrCode** (`portal-svelte`)
 
 - `src/lib/components/QrCode.svelte` — `canvas` variable changed from a plain `let` binding to `let canvas = $state<HTMLCanvasElement | undefined>(undefined)`
   - Svelte 5 requires `$state(...)` for any variable that is mutated by `bind:this` so that the runtime can track reactivity; the previous plain `let` triggered the `non_reactive_update` compiler warning
-
----
-
-### 2026-04-09 (2)
 
 **portal-svelte — Vercel deployment + QR code share** (`portal-svelte`)
 
@@ -334,8 +314,6 @@ CREATE TABLE IF NOT EXISTS orders (
 - `package.json` — `@sveltejs/adapter-vercel ^6.3.3`, `qrcode ^1.5.4`, `@types/qrcode ^1.5.6` added
 
 - `ElixirPanel.svelte` / `SystemStatusPanel.svelte` — Pre-existing `NodeJS.Timeout` vs `number` type conflict resolved with `/** @type {any} */` annotation on `heartbeatTimer`, `reconnectTimer`, `autoSyncInterval`; `svelte-check` now reports 0 errors
-
-### 2026-04-09
 
 **Custom APM infrastructure** (`apm-server/`, `loom-java/`, `server-go/`)
 

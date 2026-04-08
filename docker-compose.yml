@@ -426,7 +426,7 @@ services:
   svelte-portal:
     image: node:22-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "ls node_modules/qrcode 2>/dev/null || rm -rf node_modules; npm install && npm run dev -- --host 0.0.0.0"
     ports: [ "5173:5173" ]
     volumes:
       - ./portal-svelte:/app

@@ -36,7 +36,8 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
 | 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **HikariCP JDBC persistence** (PostgreSQL `INSERT ON CONFLICT DO NOTHING` + `UPDATE`, `autoCommit=true`, pool 20) · `DbStore` inner class — `initSchema` / `insertOrder` / `updateOrder` via pure JDBC · DB write inside Virtual Thread (blocking JDBC acceptable; OS thread yielded) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool) · Virtual vs Platform Thread benchmark |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
-| — | **PostgreSQL** | 5432/5433 | System logs · risk data |
+| — | **PostgreSQL** | 5432 | System logs · risk data (shared) |
+| — | **PostgreSQL** (`db-postgres`) | 5432 | `loom-java` order persistence (isolated) |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
 
 ---
@@ -144,7 +145,7 @@ CREATE TABLE risk_reports (
     avg_risk_score FLOAT, total_records INT, max_risk_score FLOAT, min_risk_score FLOAT
 );
 
--- orders (Java Loom · postgres :5432, auto-created on startup)
+-- orders (Java Loom · db-postgres :5432/loom_db, auto-created on startup via initSchema())
 CREATE TABLE IF NOT EXISTS orders (
     id         VARCHAR(255) PRIMARY KEY,
     status     VARCHAR(32)  NOT NULL,
@@ -189,6 +190,18 @@ Starts only the three core backends (postgres, redis, go-hub, python-brain, rust
 ---
 
 ## Changelog
+
+### 2026-04-08 (latest)
+
+**Java Loom — dedicated PostgreSQL instance** (`loom-java` / `docker-compose.yml`)
+
+- `docker-compose.yml` — Added `db-postgres` service (`postgres:16-alpine`, DB `loom_db`) isolated from the shared `postgres` instance (`polyglot_db`); prevents order-workload I/O from impacting other services
+  - Healthcheck: `pg_isready -U dev -d loom_db` (interval 5s, retries 10)
+  - Named volume: `db_postgres_data` — separate persistence from `postgres_data`
+  - Network: `polyglot` bridge (same as all other containers)
+- `java-loom` service — `DB_URL` updated to `jdbc:postgresql://db-postgres:5432/loom_db`; `depends_on` updated from `postgres` to `db-postgres: { condition: service_healthy }`
+
+---
 
 ### 2026-04-08
 

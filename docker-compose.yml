@@ -48,6 +48,24 @@ services:
       retries: 10
     networks: [ polyglot ]
 
+  # Dedicated PostgreSQL instance for the loom-java order-persistence service.
+  # Isolated from the shared `postgres` instance so that schema migrations or
+  # load spikes from the order workload cannot affect other services.
+  db-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: polyglot
+      POSTGRES_DB: loom_db
+    volumes:
+      - db_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U dev -d loom_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [ polyglot ]
+
   # ── Go Hub / Gateway (:8080) ────────────────────────────────────────────────
   go-hub:
     build:
@@ -254,7 +272,7 @@ services:
     command: sh run.sh
     ports: [ "8010:8010" ]
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/polyglot_db
+      DB_URL: jdbc:postgresql://db-postgres:5432/loom_db
       DB_USER: dev
       DB_PASSWORD: polyglot
       REDIS_HOST: redis
@@ -262,7 +280,7 @@ services:
     volumes:
       - ./loom-java:/app
     depends_on:
-      postgres: { condition: service_healthy }
+      db-postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     networks: [ polyglot ]
 
@@ -411,6 +429,7 @@ networks:
 
 volumes:
   postgres_data:
+  db_postgres_data:
   fsharp_nuget:
   scala_coursier:
   dart_pub:

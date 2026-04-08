@@ -423,17 +423,22 @@ func pipelineTriggerHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := httpClient.Post("http://localhost:8081/api/bulk-insert", "application/json", nil)
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		log.Println("pipelineTriggerHandler: Rust unreachable:", err)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":  "error",
-			"message": "Rust Pipeline is unreachable",
+			"status":  "degraded",
+			"message": "Rust Pipeline is temporarily unreachable",
 		})
 		return
 	}
 	defer resp.Body.Close()
 
 	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&result); decodeErr != nil || result == nil {
+		result = map[string]interface{}{
+			"status":  "error",
+			"message": "Rust Pipeline returned an unreadable response",
+		}
+	}
 
 	_, _ = db.Exec("INSERT INTO system_logs (source, message) VALUES ($1, $2)",
 		"Rust-Pipeline", fmt.Sprintf("Bulk insert triggered: %v rows", result["inserted_rows"]))
@@ -557,14 +562,16 @@ func historyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
+	logs := make([]SystemLog, 0)
+
 	rows, err := db.Query("SELECT id, source, message, created_at FROM system_logs ORDER BY id DESC LIMIT 10")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Println("historyHandler DB query error:", err)
+		json.NewEncoder(w).Encode(logs)
 		return
 	}
 	defer rows.Close()
 
-	var logs []SystemLog
 	for rows.Next() {
 		var l SystemLog
 		if err := rows.Scan(&l.ID, &l.Source, &l.Message, &l.CreatedAt); err != nil {

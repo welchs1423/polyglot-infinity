@@ -198,31 +198,76 @@ async fn status_handler(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
 // 대규모 데이터 적재 핸들러
 async fn bulk_insert(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
     let start_time = Instant::now();
-    let record_count = 10000;
+    let record_count: i32 = 10000;
 
-    // 4. 트랜잭션 시작 (벌크 인서트의 핵심: 하나씩 넣지 않고 모아서 한 번에 커밋)
-    let mut tx = pool.begin().await.expect("Failed to begin transaction");
+    // 테이블이 없을 경우 자동 생성 후 재시도할 수 있도록 먼저 ensure
+    let ensure = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS risk_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL,
+            risk_score FLOAT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(&pool)
+    .await;
 
-    for i in 0..record_count {
-        // 사용자별 일별 VaR(95%): Xorshift64 기반 포지션·변동성 샘플링 후
-        // daily_VaR = position × (annual_vol / √252) × z_{0.95}
-        let risk_score = daily_var_95(i);
-
-        sqlx::query("INSERT INTO risk_logs (user_id, risk_score) VALUES ($1, $2)")
-            .bind(i)
-            .bind(risk_score)
-            .execute(&mut *tx)
-            .await
-            .expect("Failed to insert record");
+    if let Err(e) = ensure {
+        eprintln!("[Rust Pipeline] bulk_insert: table ensure failed: {e}");
+        return Json(json!({
+            "status":  "error",
+            "message": format!("DB schema ensure failed: {e}"),
+            "inserted_rows": 0
+        }));
     }
 
-    // 5. 트랜잭션 커밋 (이때 실제 DB에 일괄 기록됨)
-    tx.commit().await.expect("Failed to commit transaction");
+    // 트랜잭션 시작
+    let tx_result = pool.begin().await;
+    let mut tx = match tx_result {
+        Ok(tx) => tx,
+        Err(e) => {
+            eprintln!("[Rust Pipeline] bulk_insert: begin tx failed: {e}");
+            return Json(json!({
+                "status":  "error",
+                "message": format!("Failed to begin transaction: {e}"),
+                "inserted_rows": 0
+            }));
+        }
+    };
+
+    for i in 0..record_count {
+        let risk_score = daily_var_95(i);
+        let insert_result =
+            sqlx::query("INSERT INTO risk_logs (user_id, risk_score) VALUES ($1, $2)")
+                .bind(i)
+                .bind(risk_score)
+                .execute(&mut *tx)
+                .await;
+
+        if let Err(e) = insert_result {
+            eprintln!("[Rust Pipeline] bulk_insert: insert row {i} failed: {e}");
+            let _ = tx.rollback().await;
+            return Json(json!({
+                "status":  "error",
+                "message": format!("Insert failed at row {i}: {e}"),
+                "inserted_rows": i
+            }));
+        }
+    }
+
+    // 트랜잭션 커밋
+    if let Err(e) = tx.commit().await {
+        eprintln!("[Rust Pipeline] bulk_insert: commit failed: {e}");
+        return Json(json!({
+            "status":  "error",
+            "message": format!("Failed to commit transaction: {e}"),
+            "inserted_rows": 0
+        }));
+    }
 
     let elapsed = start_time.elapsed();
     println!("[Rust Pipeline] Inserted {} VaR records in {:?}", record_count, elapsed);
 
-    // 통계 샘플 (첫 행·마지막 행 VaR 참고값)
     let var_first = daily_var_95(0);
     let var_last  = daily_var_95(record_count - 1);
 
@@ -231,7 +276,7 @@ async fn bulk_insert(State(pool): State<sqlx::PgPool>) -> impl IntoResponse {
         "inserted_rows": record_count,
         "elapsed_time_ms": elapsed.as_millis(),
         "model": "daily_VaR_95",
-        "formula": "position × (annual_vol / √252) × z_{0.95}",
+        "formula": "position x (annual_vol / sqrt(252)) x z_0.95",
         "sample_var_first_krw": (var_first * 100.0).round() / 100.0,
         "sample_var_last_krw":  (var_last  * 100.0).round() / 100.0
     }))

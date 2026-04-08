@@ -33,7 +33,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
-| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · BUY/SELL order state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · **PostgreSQL-only persistence** (no in-memory fallback; `DB_URL` required at startup) · `DbStore` inner class — pure JDBC `PreparedStatement`, no ORM · `insertOrder()`: `INSERT ... ON CONFLICT DO NOTHING RETURNING` · `applyTransition()`: explicit transaction `SELECT ... FOR UPDATE` → state-machine check → `UPDATE` → `COMMIT`; concurrent transitions serialized at DB level · `findOrder()` / `findAllOrders()` / `countOrders()` read-paths · `deleteBenchmarkOrders()` cleanup · HikariCP pool 20, `autoCommit=true` · Virtual Thread parks on JDBC socket I/O (OS thread released) · **Redis Pub/Sub** fire-and-forget (`order-events` via Jedis 5 JedisPool) · Benchmark: real JDBC INSERT + PAY round-trips (virtual vs platform) |
+| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · **Saga Pattern** — `POST /api/java/order` runs a two-phase compensating transaction: Phase 1 `INSERT status=PENDING` (committed immediately, returns 202); Phase 2 `SagaCoordinator` virtual thread calls Go gateway → Clojure STM ledger (`/api/clojure/transfer`); on HTTP 2xx → `UPDATE status=COMPLETED`; on timeout/non-2xx → compensating `UPDATE status=CANCELED` · State machine: `PENDING→COMPLETED|CANCELED`, `ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED` · `GATEWAY_URL` env var (default `http://server-go:8080`); per-request timeout 10 s · **PostgreSQL-only persistence** (no in-memory fallback; `DB_URL` required) · `DbStore`: `insertOrderPending()` `INSERT status=PENDING`; `updateOrderStatus()` unconditional UPDATE (Saga use only); `applyTransition()` `SELECT FOR UPDATE` state-machine transaction · HikariCP pool 20 · Virtual Thread parks on JDBC socket I/O · **Redis Pub/Sub** `order-events` (`SAGA_COMPLETE` / `SAGA_COMPENSATE` events) · Benchmark: real JDBC INSERT + PAY round-trips (virtual vs platform) |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | 28 | **Elm 0.19.1** (TEA) | 5174 | Order entry terminal · live Greeks (F#) · VaR (Rust) · no runtime exceptions |
 | — | **APM Server** (Node.js) | 9009 | Central APM ingest · `POST /ingest` (batched `TransactionMetric`) · `GET /metrics` (p50/p95/p99/avg/max per service) · in-memory circular buffer (100k entries) |
@@ -126,7 +126,7 @@ Reverse proxy routes registered on Go Hub (:8080):
 | ANY | `/api/analytics/*` | Role alias → `nim-analytics:8005` |
 | ANY | `/api/ledger/*` | Role alias → `clojure-stm:8009` |
 | ANY | `/api/scheduler/*` | Role alias → `kotlin-scheduler:9000` |
-| POST | `/api/java/order?id=<id>&type=BUY\|SELL` | Create BUY or SELL order (status: ORDERED) — 409 if id exists |
+| POST | `/api/java/order?id=<id>&type=BUY\|SELL[&from=ACC-001&to=ACC-002&amount=100.0]` | **Saga** — Phase 1: `INSERT status=PENDING` (202 Accepted, immediate); Phase 2 async: calls Clojure STM ledger via Go gateway; success → `COMPLETED`, failure/timeout → `CANCELED` (compensating transaction) |
 | PUT | `/api/java/order?id=<id>&event=<evt>` | Order state transition — `PAY`, `PROCESS`, `SHIP`, `DELIVER`, `CANCEL`, `REFUND` (DB `SELECT FOR UPDATE` transaction) |
 | GET | `/api/java/order?id=<id>` | Get order by ID (live DB read) |
 | GET | `/api/java/orders` | Get all orders (ordered by `created_at DESC`) |
@@ -215,6 +215,31 @@ CREATE TABLE IF NOT EXISTS orders (
 ---
 
 ## Changelog
+
+### 2026-04-09 (6)
+
+**Java Loom — Saga Pattern (two-phase compensating transaction)** (`loom-java/VirtualServer.java`)
+
+- `OrderStatus` enum — added `PENDING` (Saga initial state) and `COMPLETED` (success terminal); `canTransitionTo` extended with `PENDING → COMPLETED | CANCELED`
+- `OrderEvent` enum — added `COMPLETE` mapping to `OrderStatus.COMPLETED`
+- `DbStore` — two new methods:
+  - `insertOrderPending(id, type, now)` — `INSERT ... VALUES (?, ?, 'PENDING', ?, ?) ON CONFLICT DO NOTHING RETURNING`
+  - `updateOrderStatus(id, status)` — unconditional `UPDATE orders SET status = ?, updated_at = ?`; bypasses state-machine; used exclusively by `SagaCoordinator`
+- `SagaCoordinator` (new static inner class) — implements two-phase Saga:
+  - `executeSaga(orderId, orderType, from, to, amount, correlationId)` — spawns a named virtual thread (`saga-<orderId>`) and returns immediately; calling HTTP handler is not blocked
+  - `runSaga(...)` — sends `GET {GATEWAY_URL}/api/clojure/transfer?from=...&to=...&amount=...` with `HttpClient` (connect timeout 5 s, per-request timeout 10 s); propagates `X-Correlation-Id` and `X-Order-Id` headers
+  - HTTP 2xx → `updateOrderStatus(COMPLETED)` + Redis `SAGA_COMPLETE` publish
+  - `HttpTimeoutException` or non-2xx → compensating `updateOrderStatus(CANCELED)` + Redis `SAGA_COMPENSATE` publish
+  - Compensating `UPDATE` failure logged to stderr; order remains `PENDING` for external reconciliation
+  - Single shared `HttpClient` instance (connection reuse; no per-saga TCP handshake)
+  - `GATEWAY_URL` resolved from env at class-load time; default `http://server-go:8080`
+- `POST /api/java/order` handler rewritten:
+  - Accepts optional `from`, `to`, `amount` query parameters (defaults: `ACC-001`, `ACC-002`, `100.0`)
+  - Calls `insertOrderPending()` instead of `insertOrder()`; returns **202 Accepted** with the `PENDING` row
+  - Fires `SagaCoordinator.executeSaga(...)` after the HTTP response is written; no blocking
+- `imports` — added `java.net.URI`, `java.net.http.{HttpClient,HttpRequest,HttpResponse}`, `java.time.Duration`
+
+---
 
 ### 2026-04-09 (5)
 

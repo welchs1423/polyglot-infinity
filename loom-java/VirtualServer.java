@@ -13,19 +13,29 @@
 //   at the database level: applyTransition() issues SELECT ... FOR UPDATE inside
 //   an explicit transaction before applying the state-machine check and UPDATE.
 //
+// Saga Pattern (POST /api/java/order):
+//   Phase 1 — local commit: INSERT order with status PENDING.  Committed immediately.
+//   Phase 2 — remote call: SagaCoordinator virtual thread sends HTTP GET to the Go
+//     gateway, which proxies /api/clojure/transfer to the Clojure STM ledger (:8009).
+//   On HTTP 2xx: UPDATE orders SET status = 'COMPLETED'.
+//   On timeout or non-2xx: compensating transaction sets status = 'CANCELED'.
+//
 // Required environment variables:
 //   DB_URL       jdbc:postgresql://db-postgres:5432/loom_db
 //   DB_USER      dev
 //   DB_PASSWORD  polyglot
 //
 // Optional environment variables:
-//   REDIS_HOST   Redis hostname (default: localhost)
-//   REDIS_PORT   Redis port     (default: 6379)
+//   REDIS_HOST   Redis hostname          (default: localhost)
+//   REDIS_PORT   Redis port              (default: 6379)
+//   GATEWAY_URL  Go hub base URL         (default: http://server-go:8080)
+//   APM_URL      APM ingest endpoint     (default: http://localhost:9009/ingest)
 //
 // Endpoints:
 //   GET  /health
 //   GET  /api/java/status
-//   POST /api/java/order?id=<orderId>&type=BUY|SELL   — INSERT, initial status ORDERED
+//   POST /api/java/order?id=<id>&type=BUY|SELL[&from=ACC-001&to=ACC-002&amount=100.0]
+//        Inserts order as PENDING; Saga runs asynchronously; returns 202 Accepted.
 //   PUT  /api/java/order?id=<orderId>&event=<evt>     — UPDATE state transition
 //   GET  /api/java/order?id=<orderId>                 — SELECT single row
 //   GET  /api/java/orders                             — SELECT all rows
@@ -43,7 +53,12 @@ import redis.clients.jedis.JedisPoolConfig;
 
 import java.io.*;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.sql.*;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -51,16 +66,19 @@ public class VirtualServer {
 
     // ── State machine ─────────────────────────────────────────────────────
     // Transition rules:
-    //   ORDERED -> PAID | CANCELED
-    //   PAID    -> PROCESSING | CANCELED
-    //   PROCESSING -> SHIPPED
-    //   SHIPPED    -> DELIVERED
-    //   CANCELED   -> REFUNDED
+    //   PENDING     -> COMPLETED | CANCELED  (Saga coordinator only)
+    //   ORDERED     -> PAID | CANCELED
+    //   PAID        -> PROCESSING | CANCELED
+    //   PROCESSING  -> SHIPPED
+    //   SHIPPED     -> DELIVERED
+    //   CANCELED    -> REFUNDED
+    //   COMPLETED   -> (terminal; no outgoing transitions)
     enum OrderStatus {
-        ORDERED, PAID, PROCESSING, SHIPPED, DELIVERED, CANCELED, REFUNDED;
+        PENDING, ORDERED, PAID, PROCESSING, SHIPPED, DELIVERED, COMPLETED, CANCELED, REFUNDED;
 
         boolean canTransitionTo(OrderStatus next) {
             return switch (this) {
+                case PENDING    -> next == COMPLETED  || next == CANCELED;
                 case ORDERED    -> next == PAID       || next == CANCELED;
                 case PAID       -> next == PROCESSING || next == CANCELED;
                 case PROCESSING -> next == SHIPPED;
@@ -72,16 +90,17 @@ public class VirtualServer {
     }
 
     enum OrderEvent {
-        PAY, PROCESS, SHIP, DELIVER, CANCEL, REFUND;
+        PAY, PROCESS, SHIP, DELIVER, CANCEL, REFUND, COMPLETE;
 
         OrderStatus targetStatus() {
             return switch (this) {
-                case PAY     -> OrderStatus.PAID;
-                case PROCESS -> OrderStatus.PROCESSING;
-                case SHIP    -> OrderStatus.SHIPPED;
-                case DELIVER -> OrderStatus.DELIVERED;
-                case CANCEL  -> OrderStatus.CANCELED;
-                case REFUND  -> OrderStatus.REFUNDED;
+                case PAY      -> OrderStatus.PAID;
+                case PROCESS  -> OrderStatus.PROCESSING;
+                case SHIP     -> OrderStatus.SHIPPED;
+                case DELIVER  -> OrderStatus.DELIVERED;
+                case CANCEL   -> OrderStatus.CANCELED;
+                case REFUND   -> OrderStatus.REFUNDED;
+                case COMPLETE -> OrderStatus.COMPLETED;
             };
         }
     }
@@ -122,6 +141,42 @@ public class VirtualServer {
                 """;
             try (Connection c = ds.getConnection();
                  PreparedStatement ps = c.prepareStatement(ddl)) {
+                ps.executeUpdate();
+            }
+        }
+
+        // Inserts a new order with status PENDING for Saga orchestration.
+        // Returns the inserted row as a Map, or null if the id already exists
+        // (ON CONFLICT DO NOTHING returns zero rows via RETURNING).
+        Map<String, Object> insertOrderPending(String id, String type, long now) throws SQLException {
+            String sql = """
+                INSERT INTO orders (id, type, status, created_at, updated_at)
+                VALUES (?, ?, 'PENDING', ?, ?)
+                ON CONFLICT (id) DO NOTHING
+                RETURNING id, type, status, created_at, updated_at
+                """;
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setString(1, id);
+                ps.setString(2, type);
+                ps.setLong(3, now);
+                ps.setLong(4, now);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rowToMap(rs) : null;
+                }
+            }
+        }
+
+        // Updates the status of an order unconditionally (no state-machine check).
+        // Used exclusively by SagaCoordinator: PENDING -> COMPLETED or PENDING -> CANCELED.
+        // applyTransition() enforces the state machine for all normal event-driven transitions.
+        void updateOrderStatus(String id, String status) throws SQLException {
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                     "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?")) {
+                ps.setString(1, status);
+                ps.setLong(2, System.currentTimeMillis());
+                ps.setString(3, id);
                 ps.executeUpdate();
             }
         }
@@ -258,6 +313,105 @@ public class VirtualServer {
     }
 
     static volatile DbStore dbStore;
+
+    // ── Saga Pattern ──────────────────────────────────────────────────────
+    // SagaCoordinator implements a two-phase compensating transaction.
+    //
+    // Pre-condition: the order row exists in DB with status PENDING.
+    //   Phase 1 is committed by the HTTP handler before executeSaga() is called.
+    //
+    // Phase 2 — remote call:
+    //   HTTP GET to Go gateway -> /api/clojure/transfer?from=...&to=...&amount=...
+    //   The Go gateway proxies /api/clojure/* to the Clojure STM ledger (:8009).
+    //   Per-request timeout: 10 seconds.  HttpClient connect timeout: 5 seconds.
+    //
+    // On HTTP 2xx:
+    //   UPDATE orders SET status = 'COMPLETED', updated_at = <now> WHERE id = <orderId>
+    //   Publish SAGA_COMPLETE event to Redis.
+    //
+    // On timeout or non-2xx:
+    //   Compensating transaction:
+    //   UPDATE orders SET status = 'CANCELED', updated_at = <now> WHERE id = <orderId>
+    //   Publish SAGA_COMPENSATE event to Redis.
+    //
+    // If the compensating UPDATE itself fails (e.g. DB unreachable), the error is
+    // written to stderr and the order remains in PENDING state for external reconciliation.
+    static class SagaCoordinator {
+
+        // Single shared HttpClient instance.  HttpClient is thread-safe; internally
+        // reuses connections so that each saga virtual thread does not incur a full
+        // TCP + TLS handshake for every call.
+        private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
+        // Resolved once at class-loading time.  The Go gateway proxies
+        // /api/clojure/* to the Clojure STM ledger (:8009).
+        private static final String GATEWAY_URL =
+            System.getenv().getOrDefault("GATEWAY_URL", "http://server-go:8080");
+
+        // Spawns a background virtual thread to execute the saga.
+        // Returns immediately; the calling HTTP handler is not blocked.
+        static void executeSaga(String orderId, String orderType,
+                                String fromAccount, String toAccount, double amount,
+                                String correlationId) {
+            Thread.ofVirtual()
+                  .name("saga-" + orderId)
+                  .start(() -> runSaga(orderId, orderType, fromAccount, toAccount,
+                                       amount, correlationId));
+        }
+
+        private static void runSaga(String orderId, String orderType,
+                                    String fromAccount, String toAccount, double amount,
+                                    String correlationId) {
+            boolean success = false;
+            try {
+                // The Clojure STM ledger transfer endpoint accepts query parameters.
+                // The Go gateway proxies /api/clojure/ to ledger-clojure:8009.
+                String url = GATEWAY_URL
+                    + "/api/clojure/transfer"
+                    + "?from="   + fromAccount
+                    + "&to="     + toAccount
+                    + "&amount=" + amount;
+
+                HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("X-Correlation-Id", correlationId)
+                    .header("X-Order-Id",       orderId)
+                    .GET()
+                    .build();
+
+                HttpResponse<String> resp =
+                    HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+                int sc = resp.statusCode();
+
+                if (sc >= 200 && sc < 300) {
+                    success = true;
+                } else {
+                    System.err.println("[Saga] Remote ledger returned HTTP " + sc
+                        + " for order " + orderId + ". Compensating.");
+                }
+            } catch (java.net.http.HttpTimeoutException e) {
+                System.err.println("[Saga] Payment request timed out for order "
+                    + orderId + ". Compensating.");
+            } catch (Exception e) {
+                System.err.println("[Saga] Payment request failed for order "
+                    + orderId + ": " + e.getMessage() + ". Compensating.");
+            }
+
+            // Apply the terminal status update regardless of which branch was taken.
+            String finalStatus = success ? "COMPLETED" : "CANCELED";
+            String sagaEvent   = success ? "SAGA_COMPLETE" : "SAGA_COMPENSATE";
+            try {
+                dbStore.updateOrderStatus(orderId, finalStatus);
+                publishOrderEvent(orderId, orderType, "PENDING", finalStatus, sagaEvent);
+            } catch (SQLException e) {
+                System.err.println("[Saga] DB update to " + finalStatus
+                    + " failed for order " + orderId + ": " + e.getMessage());
+            }
+        }
+    }
 
     // ── Redis Pub/Sub ────────────────────────────────────────────────────
     // JedisPool is thread-safe. getResource() borrows a Jedis instance; the
@@ -492,9 +646,11 @@ public class VirtualServer {
                     return;
                 }
 
-                // POST /api/java/order?id=<orderId>&type=BUY|SELL
-                // Inserts a new order row with status ORDERED.
-                // Returns 409 if the id already exists.
+                // POST /api/java/order?id=<id>&type=BUY|SELL[&from=ACC-001&to=ACC-002&amount=100.0]
+                // Saga Phase 1: INSERT order with status PENDING (committed immediately).
+                // Saga Phase 2: SagaCoordinator virtual thread calls Go gateway ->
+                //   Clojure STM ledger.  On 2xx: COMPLETED.  On timeout/non-2xx: CANCELED.
+                // Returns 202 Accepted with the PENDING row; final status is set asynchronously.
                 if (path.equals("/api/java/order") && method.equals("POST")) {
                     String id   = params.get("id");
                     String type = params.getOrDefault("type", "BUY").toUpperCase();
@@ -506,17 +662,34 @@ public class VirtualServer {
                         respond(ex, 400, "{\"error\":\"type must be BUY or SELL\"}");
                         return;
                     }
-                    Map<String, Object> row = dbStore.insertOrder(id, type, System.currentTimeMillis());
+                    String fromAcct = params.getOrDefault("from", "ACC-001");
+                    String toAcct   = params.getOrDefault("to",   "ACC-002");
+                    double amount;
+                    try {
+                        amount = Double.parseDouble(params.getOrDefault("amount", "100.0"));
+                        if (amount <= 0) throw new NumberFormatException("non-positive");
+                    } catch (NumberFormatException e) {
+                        respond(ex, 400, "{\"error\":\"amount must be a positive number\"}");
+                        return;
+                    }
+                    long dbStart = System.currentTimeMillis();
+                    Map<String, Object> row =
+                        dbStore.insertOrderPending(id, type, System.currentTimeMillis());
+                    queryMs[0] = System.currentTimeMillis() - dbStart;
                     if (row == null) {
                         respond(ex, 409, "{\"error\":\"order already exists\",\"id\":\"" + id + "\"}");
                         return;
                     }
-                    respond(ex, 201, toJson(row));
-                    // Publish INSERT event to Redis after the HTTP response is committed.
-                    // Fire-and-forget in a new virtual thread to avoid blocking the caller.
-                    final String fId = id, fType = type;
+                    // 202 Accepted: PENDING row is durable in DB.
+                    // SagaCoordinator will update the row to COMPLETED or CANCELED
+                    // asynchronously once the remote ledger call resolves.
+                    respond(ex, 202, toJson(row));
+                    final String fId = id, fType = type, fFrom = fromAcct,
+                                 fTo = toAcct, fCid = correlationId;
+                    final double fAmount = amount;
                     Thread.ofVirtual().start(() ->
-                        publishOrderEvent(fId, fType, "", "ORDERED", "INSERT"));
+                        publishOrderEvent(fId, fType, "", "PENDING", "INSERT"));
+                    SagaCoordinator.executeSaga(fId, fType, fFrom, fTo, fAmount, fCid);
                     return;
                 }
 
@@ -629,7 +802,7 @@ public class VirtualServer {
 
         server.start();
         System.out.println("[Java 21 Loom] PostgreSQL-backed Virtual Thread Order Server on :" + port);
-        System.out.println("  POST /api/java/order?id=order-1&type=BUY");
+        System.out.println("  POST /api/java/order?id=order-1&type=BUY&from=ACC-001&to=ACC-002&amount=500");
         System.out.println("  POST /api/java/order?id=order-2&type=SELL");
         System.out.println("  PUT  /api/java/order?id=order-1&event=PAY");
         System.out.println("  PUT  /api/java/order?id=order-1&event=PROCESS");

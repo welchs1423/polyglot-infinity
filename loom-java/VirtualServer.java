@@ -533,8 +533,8 @@ public class VirtualServer {
 
                 // GET /api/java/status
                 if (path.equals("/api/java/status")) {
-                    boolean dbConn = dbStore != null && dbStore.isRunning();
-                    String dbUrl   = System.getenv().getOrDefault("DB_URL", "not configured");
+                    boolean dbConn    = dbStore != null && dbStore.isRunning();
+                    String  dbUrlDisp = System.getenv().getOrDefault("DB_URL", "not configured");
                     respond(ex, 200, toJson(Map.of(
                         "lang",           "java",
                         "version",        System.getProperty("java.version"),
@@ -545,7 +545,7 @@ public class VirtualServer {
                         "cpu_cores",      Runtime.getRuntime().availableProcessors(),
                         "orders",         orders.size(),
                         "db_connected",   dbConn,
-                        "db_url",         dbUrl
+                        "db_url",         dbUrlDisp
                     )));
                     return;
                 }

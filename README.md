@@ -183,6 +183,13 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ### 2026-04-09
 
+**Java Loom — bugfix: variable shadowing in `main()`** (`loom-java`)
+
+- `VirtualServer.java` — Renamed inner `String dbUrl` local variable (line ~537, inside the `/api/java/status` handler lambda) to `dbUrlDisp` to resolve a compile-time "variable already defined in method `main`" error
+  - The outer `main()` declares `String dbUrl = System.getenv("DB_URL")` at init time; the inner lambda inside the HTTP handler re-declared the same name, causing `javac` to fail
+  - Fix: `dbUrlDisp` is used only for the status response payload; the outer `dbUrl` continues to drive HikariCP initialization
+  - Recompiled `.class` files in `loom-java/out/` are now in sync with source; HikariCP JDBC persistence is confirmed end-to-end (INSERT on `POST /api/java/order`, UPDATE on state transition, verified against `db-postgres` via `psql`)
+
 **GitHub Actions CI pipeline** (`.github/workflows/main.yml`)
 
 - Rewrote workflow: single `build` job triggering on `push` and `pull_request` to `main`

@@ -3,7 +3,7 @@
     import QRCode from "qrcode";
 
     // Canvas element bound via bind:this.
-    let canvas: HTMLCanvasElement;
+    let canvas = $state<HTMLCanvasElement | undefined>(undefined);
 
     // Current dashboard URL populated on mount (SSR-safe: window unavailable server-side).
     let url = $state("");

@@ -216,6 +216,15 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-09 (3)
+
+**portal-svelte — fix Svelte 5 `non_reactive_update` warning in QrCode** (`portal-svelte`)
+
+- `src/lib/components/QrCode.svelte` — `canvas` variable changed from a plain `let` binding to `let canvas = $state<HTMLCanvasElement | undefined>(undefined)`
+  - Svelte 5 requires `$state(...)` for any variable that is mutated by `bind:this` so that the runtime can track reactivity; the previous plain `let` triggered the `non_reactive_update` compiler warning
+
+---
+
 ### 2026-04-09 (2)
 
 **portal-svelte — Vercel deployment + QR code share** (`portal-svelte`)

@@ -55,3 +55,7 @@ tree.txt
 # Go (컴파일 산출물)
 server-go/server
 server-go/main
+
+# Java (컴파일 산출물)
+loom-java/out/
+loom-java/.classpath

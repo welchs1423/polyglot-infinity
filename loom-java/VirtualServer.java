@@ -1,36 +1,38 @@
 // loom-java/VirtualServer.java
-// Java 21 Virtual Threads (Project Loom) — Order/Payment State Management Server
+// Java 21 Virtual Threads (Project Loom) — PostgreSQL-backed order server.
 // Port: 8010
 //
-// Virtual Thread:
-//   OS Thread 1개당 약 1MB 스택, 생성 비용이 높아 대규모 동시 접속에 불리하다.
-//   Virtual Thread는 JVM이 관리하는 경량 스레드로 스택 초기 크기가 수백 바이트이며
-//   Thread.sleep()이나 소켓 I/O 등 블로킹 구간에서 OS Thread를 자동으로 반환한다.
-//   Executors.newVirtualThreadPerTaskExecutor()를 사용하면 작업마다 Virtual Thread를
-//   할당하므로 수만 개의 동시 요청을 OS Thread 수와 무관하게 처리할 수 있다.
+// All order state is persisted exclusively in PostgreSQL via HikariCP + pure JDBC.
+// In-memory order caching is absent; every read and write is a database round-trip.
+// Virtual threads (Executors.newVirtualThreadPerTaskExecutor()) park during JDBC
+// socket I/O without consuming OS threads, enabling high concurrency with a small
+// number of physical connections in the HikariCP pool.
 //
-// DB Persistence (HikariCP + JDBC):
-//   HikariCP 커넥션 풀을 통해 PostgreSQL에 연결한다.
-//   주문 생성 시 INSERT, 상태 전이 시 UPDATE를 Virtual Thread 내부에서 호출한다.
-//   DB 비가용 시 예외를 stderr에 기록하고 인메모리 상태 관리는 정상 작동한다.
-//   환경변수: DB_URL (jdbc:postgresql://...), DB_USER, DB_PASSWORD
+// Concurrency:
+//   Concurrent PUT /api/java/order transitions on the same order ID are serialized
+//   at the database level: applyTransition() issues SELECT ... FOR UPDATE inside
+//   an explicit transaction before applying the state-machine check and UPDATE.
 //
-// Redis Pub/Sub:
-//   상태 전이 성공 직후 JedisPool을 통해 "order-events" 채널에 이벤트 JSON을 발행한다.
-//   연결 실패 또는 Redis 비가용 시 예외를 표준 오류 스트림에만 기록하고 상태 전이 결과는
-//   정상 반환한다.
+// Required environment variables:
+//   DB_URL       jdbc:postgresql://db-postgres:5432/loom_db
+//   DB_USER      dev
+//   DB_PASSWORD  polyglot
 //
-// 엔드포인트:
-//   GET /health
-//   GET /api/java/status
-//   POST /api/java/order?id=<orderId>              — 주문 생성 (ORDERED)
-//   PUT  /api/java/order?id=<orderId>&event=<evt>  — 상태 전이 (PAY, SHIP, CANCEL, REFUND)
-//   GET  /api/java/order?id=<orderId>              — 주문 조회
-//   GET  /api/java/orders                          — 전체 주문 목록
-//   GET  /api/java/benchmark?n=<N>&mode=virtual|platform|both — 벤치마크
+// Optional environment variables:
+//   REDIS_HOST   Redis hostname (default: localhost)
+//   REDIS_PORT   Redis port     (default: 6379)
+//
+// Endpoints:
+//   GET  /health
+//   GET  /api/java/status
+//   POST /api/java/order?id=<orderId>&type=BUY|SELL   — INSERT, initial status ORDERED
+//   PUT  /api/java/order?id=<orderId>&event=<evt>     — UPDATE state transition
+//   GET  /api/java/order?id=<orderId>                 — SELECT single row
+//   GET  /api/java/orders                             — SELECT all rows
+//   GET  /api/java/benchmark?n=<N>&mode=virtual|platform|both
 
-import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -41,22 +43,54 @@ import redis.clients.jedis.JedisPoolConfig;
 
 import java.io.*;
 import java.net.InetSocketAddress;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.util.concurrent.locks.*;
 
 public class VirtualServer {
 
-    // ── DB Persistence (HikariCP + JDBC) ────────────────────────────────
-    // DbStore wraps a HikariDataSource and exposes two write operations:
-    //   insertOrder — called once when a new order is created
-    //   updateOrder — called after every successful state transition
-    // Both operations use INSERT ... ON CONFLICT to remain idempotent.
-    // DB unavailability does not interrupt in-memory state management.
+    // ── State machine ─────────────────────────────────────────────────────
+    // Transition rules:
+    //   ORDERED -> PAID | CANCELED
+    //   PAID    -> PROCESSING | CANCELED
+    //   PROCESSING -> SHIPPED
+    //   SHIPPED    -> DELIVERED
+    //   CANCELED   -> REFUNDED
+    enum OrderStatus {
+        ORDERED, PAID, PROCESSING, SHIPPED, DELIVERED, CANCELED, REFUNDED;
+
+        boolean canTransitionTo(OrderStatus next) {
+            return switch (this) {
+                case ORDERED    -> next == PAID       || next == CANCELED;
+                case PAID       -> next == PROCESSING || next == CANCELED;
+                case PROCESSING -> next == SHIPPED;
+                case SHIPPED    -> next == DELIVERED;
+                case CANCELED   -> next == REFUNDED;
+                default         -> false;
+            };
+        }
+    }
+
+    enum OrderEvent {
+        PAY, PROCESS, SHIP, DELIVER, CANCEL, REFUND;
+
+        OrderStatus targetStatus() {
+            return switch (this) {
+                case PAY     -> OrderStatus.PAID;
+                case PROCESS -> OrderStatus.PROCESSING;
+                case SHIP    -> OrderStatus.SHIPPED;
+                case DELIVER -> OrderStatus.DELIVERED;
+                case CANCEL  -> OrderStatus.CANCELED;
+                case REFUND  -> OrderStatus.REFUNDED;
+            };
+        }
+    }
+
+    // ── DB Persistence (HikariCP + pure JDBC) ────────────────────────────
+    // DbStore is the sole state store. No in-memory caching is performed.
+    // Every read and write is a JDBC round-trip to PostgreSQL.
+    // HikariCP maintains a bounded pool of physical connections; virtual threads
+    // block cheaply when the pool is exhausted (socket park, no OS thread consumed).
     static class DbStore {
         private final HikariDataSource ds;
 
@@ -74,11 +108,13 @@ public class VirtualServer {
             ds = new HikariDataSource(cfg);
         }
 
-        // CREATE TABLE IF NOT EXISTS — called once at startup.
-        void initSchema() {
+        // Creates the orders table if it does not exist.
+        // Called once at startup; throws SQLException on DDL failure.
+        void initSchema() throws SQLException {
             String ddl = """
                 CREATE TABLE IF NOT EXISTS orders (
                     id         VARCHAR(255) PRIMARY KEY,
+                    type       VARCHAR(8)   NOT NULL DEFAULT 'BUY',
                     status     VARCHAR(32)  NOT NULL,
                     created_at BIGINT       NOT NULL,
                     updated_at BIGINT       NOT NULL
@@ -87,47 +123,129 @@ public class VirtualServer {
             try (Connection c = ds.getConnection();
                  PreparedStatement ps = c.prepareStatement(ddl)) {
                 ps.executeUpdate();
-                System.out.println("[DB] schema initialized");
-            } catch (SQLException e) {
-                System.err.println("[DB] initSchema failed: " + e.getMessage());
             }
         }
 
-        // Inserts a new order row. Ignores duplicate key violations (idempotent).
-        void insertOrder(String id, String status, long createdAt) {
+        // Inserts a new BUY or SELL order with initial status ORDERED.
+        // Returns the inserted row as a Map, or null if the id already exists
+        // (ON CONFLICT DO NOTHING returns zero rows via RETURNING).
+        Map<String, Object> insertOrder(String id, String type, long now) throws SQLException {
             String sql = """
-                INSERT INTO orders (id, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO orders (id, type, status, created_at, updated_at)
+                VALUES (?, ?, 'ORDERED', ?, ?)
                 ON CONFLICT (id) DO NOTHING
+                RETURNING id, type, status, created_at, updated_at
                 """;
             try (Connection c = ds.getConnection();
                  PreparedStatement ps = c.prepareStatement(sql)) {
                 ps.setString(1, id);
-                ps.setString(2, status);
-                ps.setLong(3, createdAt);
-                ps.setLong(4, createdAt);
-                ps.executeUpdate();
-            } catch (SQLException e) {
-                System.err.println("[DB] insertOrder failed [" + id + "]: " + e.getMessage());
+                ps.setString(2, type);
+                ps.setLong(3, now);
+                ps.setLong(4, now);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rowToMap(rs) : null;
+                }
             }
         }
 
-        // Updates status and updated_at for an existing order row.
-        void updateOrder(String id, String status, long updatedAt) {
-            String sql = """
-                UPDATE orders
-                SET status = ?, updated_at = ?
-                WHERE id = ?
-                """;
-            try (Connection c = ds.getConnection();
-                 PreparedStatement ps = c.prepareStatement(sql)) {
-                ps.setString(1, status);
-                ps.setLong(2, updatedAt);
-                ps.setString(3, id);
-                ps.executeUpdate();
-            } catch (SQLException e) {
-                System.err.println("[DB] updateOrder failed [" + id + "]: " + e.getMessage());
+        // Applies an order event within a serializable transaction.
+        // SELECT ... FOR UPDATE serializes concurrent transitions on the same row.
+        // Returns one of:
+        //   "OK:<prevStatus>:<newStatus>"     — transition applied
+        //   "ORDER_NOT_FOUND"                 — no row with given id
+        //   "INVALID_TRANSITION:<from>:<to>"  — state machine rejected the event
+        String applyTransition(String id, OrderEvent event) throws SQLException {
+            try (Connection c = ds.getConnection()) {
+                c.setAutoCommit(false);
+                try {
+                    OrderStatus current;
+                    try (PreparedStatement sel = c.prepareStatement(
+                            "SELECT status FROM orders WHERE id = ? FOR UPDATE")) {
+                        sel.setString(1, id);
+                        try (ResultSet rs = sel.executeQuery()) {
+                            if (!rs.next()) {
+                                c.rollback();
+                                return "ORDER_NOT_FOUND";
+                            }
+                            current = OrderStatus.valueOf(rs.getString("status"));
+                        }
+                    }
+                    OrderStatus next = event.targetStatus();
+                    if (!current.canTransitionTo(next)) {
+                        c.rollback();
+                        return "INVALID_TRANSITION:" + current + "->" + next;
+                    }
+                    try (PreparedStatement upd = c.prepareStatement(
+                            "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?")) {
+                        upd.setString(1, next.name());
+                        upd.setLong(2, System.currentTimeMillis());
+                        upd.setString(3, id);
+                        upd.executeUpdate();
+                    }
+                    c.commit();
+                    return "OK:" + current.name() + ":" + next.name();
+                } catch (SQLException e) {
+                    c.rollback();
+                    throw e;
+                } finally {
+                    c.setAutoCommit(true);
+                }
             }
+        }
+
+        // Returns a single order row as a Map, or null if not found.
+        Map<String, Object> findOrder(String id) throws SQLException {
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                     "SELECT id, type, status, created_at, updated_at FROM orders WHERE id = ?")) {
+                ps.setString(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rowToMap(rs) : null;
+                }
+            }
+        }
+
+        // Returns all orders sorted by creation time descending.
+        List<Map<String, Object>> findAllOrders() throws SQLException {
+            String sql = "SELECT id, type, status, created_at, updated_at " +
+                         "FROM orders ORDER BY created_at DESC";
+            List<Map<String, Object>> list = new ArrayList<>();
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(sql);
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) list.add(rowToMap(rs));
+            }
+            return list;
+        }
+
+        // Returns the total number of rows in the orders table.
+        int countOrders() throws SQLException {
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM orders");
+                 ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+
+        // Deletes benchmark rows whose id starts with the given prefix.
+        // Used by the benchmark endpoint to clean up after each run.
+        void deleteBenchmarkOrders(String prefix) throws SQLException {
+            try (Connection c = ds.getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                     "DELETE FROM orders WHERE id LIKE ?")) {
+                ps.setString(1, prefix + "%");
+                ps.executeUpdate();
+            }
+        }
+
+        private Map<String, Object> rowToMap(ResultSet rs) throws SQLException {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",         rs.getString("id"));
+            m.put("type",       rs.getString("type"));
+            m.put("status",     rs.getString("status"));
+            m.put("created_at", rs.getLong("created_at"));
+            m.put("updated_at", rs.getLong("updated_at"));
+            return m;
         }
 
         boolean isRunning() {
@@ -139,28 +257,25 @@ public class VirtualServer {
         }
     }
 
-    // Singleton DbStore instance. Null when DB is not configured or unavailable.
     static volatile DbStore dbStore;
 
     // ── Redis Pub/Sub ────────────────────────────────────────────────────
-    // JedisPool: 스레드 안전한 JedisPool 인스턴스.
-    // JedisPool.getResource()로 Jedis 인스턴스를 빌려 publish 후 반환(try-with-resources).
+    // JedisPool is thread-safe. getResource() borrows a Jedis instance; the
+    // try-with-resources block returns it to the pool after publish().
+    // Redis unavailability is non-fatal: errors are written to stderr only.
     static volatile JedisPool jedisPool;
-
-    // Redis 연결 채널 상수
     static final String REDIS_CHANNEL = "order-events";
 
-    // 상태 전이 이벤트를 JSON으로 직렬화한 뒤 Redis "order-events" 채널에 발행한다.
-    // Redis 비가용 시 에러를 stderr에 기록하고 조용히 반환한다.
-    static void publishOrderEvent(String orderId, String prevStatus,
-                                   String newStatus, String eventName) {
+    static void publishOrderEvent(String orderId, String type,
+                                   String prevStatus, String newStatus, String eventName) {
         JedisPool pool = jedisPool;
         if (pool == null || pool.isClosed()) return;
         String payload = "{" +
-            "\"order_id\":\"" + orderId    + "\"," +
-            "\"event\":\""    + eventName  + "\"," +
+            "\"order_id\":\"" + orderId      + "\"," +
+            "\"type\":\""     + type         + "\"," +
+            "\"event\":\""    + eventName    + "\"," +
             "\"prev_status\":\"" + prevStatus + "\"," +
-            "\"new_status\":\"" + newStatus  + "\"," +
+            "\"new_status\":\"" + newStatus   + "\"," +
             "\"channel\":\""  + REDIS_CHANNEL + "\"," +
             "\"timestamp\":"  + System.currentTimeMillis() +
         "}";
@@ -171,193 +286,14 @@ public class VirtualServer {
         }
     }
 
-    // ── 주문 상태 열거형 ────────────────────────────────────────────────────
-    // 상태 전이 규칙:
-    //   ORDERED -> PAID -> PROCESSING -> SHIPPED -> DELIVERED
-    //   ORDERED -> CANCELED
-    //   PAID    -> CANCELED -> REFUNDED
-    enum OrderStatus {
-        ORDERED, PAID, PROCESSING, SHIPPED, DELIVERED, CANCELED, REFUNDED;
-
-        boolean canTransitionTo(OrderStatus next) {
-            return switch (this) {
-                case ORDERED    -> next == PAID    || next == CANCELED;
-                case PAID       -> next == PROCESSING || next == CANCELED;
-                case PROCESSING -> next == SHIPPED;
-                case SHIPPED    -> next == DELIVERED;
-                case CANCELED   -> next == REFUNDED;
-                default         -> false;
-            };
-        }
-    }
-
-    // ── 이벤트 열거형 ──────────────────────────────────────────────────────
-    enum OrderEvent {
-        PAY, SHIP, PROCESS, DELIVER, CANCEL, REFUND;
-
-        OrderStatus targetStatus() {
-            return switch (this) {
-                case PAY     -> OrderStatus.PAID;
-                case PROCESS -> OrderStatus.PROCESSING;
-                case SHIP    -> OrderStatus.SHIPPED;
-                case DELIVER -> OrderStatus.DELIVERED;
-                case CANCEL  -> OrderStatus.CANCELED;
-                case REFUND  -> OrderStatus.REFUNDED;
-            };
-        }
-    }
-
-    // ── 주문 도메인 객체 ────────────────────────────────────────────────────
-    static class Order {
-        final String id;
-        // 상태 변경은 ReentrantLock으로 동시성을 보호한다.
-        // synchronized 대신 Lock을 사용하면 virtual thread의 pinning 문제를 피할 수 있다.
-        private final ReentrantLock lock = new ReentrantLock();
-        private OrderStatus status;
-        private final List<String> history = new ArrayList<>();
-        private final long createdAt;
-        private long updatedAt;
-
-        Order(String id) {
-            this.id        = id;
-            this.status    = OrderStatus.ORDERED;
-            this.createdAt = System.currentTimeMillis();
-            this.updatedAt = createdAt;
-            history.add(ts() + " CREATED -> ORDERED");
-        }
-
-        // 상태 전이: 허용된 전이만 수행하고 이벤트 히스토리를 기록한다.
-        // 성공한 경우 "OK:<prev>:<next>" 형식을 반환해 호출자가 Redis 발행에 사용한다.
-        String apply(OrderEvent event) {
-            lock.lock();
-            try {
-                OrderStatus next = event.targetStatus();
-                if (!status.canTransitionTo(next)) {
-                    return "INVALID_TRANSITION:" + status + "->" + next;
-                }
-                String prev = status.name();
-                status    = next;
-                updatedAt = System.currentTimeMillis();
-                history.add(ts() + " " + prev + " -> " + status.name() + " [" + event.name() + "]");
-                // 반환값에 전이 전/후 상태를 포함시켜 호출 측에서 Redis 페이로드 구성에 활용한다.
-                return "OK:" + prev + ":" + status.name();
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        OrderStatus status() {
-            lock.lock();
-            try { return status; } finally { lock.unlock(); }
-        }
-
-        Map<String, Object> toMap() {
-            lock.lock();
-            try {
-                return Map.of(
-                    "id",         id,
-                    "status",     status.name(),
-                    "history",    new ArrayList<>(history),
-                    "created_at", createdAt,
-                    "updated_at", updatedAt
-                );
-            } finally {
-                lock.unlock();
-            }
-        }
-
-        private String ts() {
-            return "[" + System.currentTimeMillis() + "]";
-        }
-    }
-
-    // ── 주문 저장소 ────────────────────────────────────────────────────────
-    // ConcurrentHashMap으로 스레드 안전 조회를 보장한다.
-    static final ConcurrentHashMap<String, Order> orders = new ConcurrentHashMap<>();
-
-    // ── 비동기 이벤트 큐 ────────────────────────────────────────────────────
-    // 상태 전이 이벤트를 큐에 쌓고, 별도의 Virtual Thread 워커가 처리한다.
-    // 이 패턴은 HTTP 요청 스레드와 이벤트 처리를 분리하여 응답 속도를 높인다.
-    record EventTask(String orderId, OrderEvent event, CompletableFuture<String> result) {}
-
-    static final LinkedBlockingQueue<EventTask> eventQueue = new LinkedBlockingQueue<>();
-
-    // 이벤트 워커: Virtual Thread로 실행되며 큐에서 이벤트를 꺼내 상태 전이를 수행한다.
-    // 전이 성공 시 DB를 업데이트하고 Redis "order-events" 채널에 이벤트를 발행한다.
-    // DB 호출은 Virtual Thread 내부에서 블로킹 JDBC를 그대로 사용한다.
-    // Virtual Thread는 소켓 I/O 대기 중 OS Thread를 반환하므로 블로킹 코드가 허용된다.
-    static void startEventWorkers(int workerCount) {
-        for (int i = 0; i < workerCount; i++) {
-            Thread.ofVirtual().name("event-worker-" + i).start(() -> {
-                while (!Thread.currentThread().isInterrupted()) {
-                    try {
-                        EventTask task = eventQueue.take(); // 블로킹 대기, OS Thread 반환
-                        Order order = orders.get(task.orderId());
-                        if (order == null) {
-                            task.result().complete("ORDER_NOT_FOUND");
-                        } else {
-                            simulateAsyncIo(task.event());
-                            String r = order.apply(task.event());
-                            // r 형식: "OK:<prevStatus>:<newStatus>"
-                            if (r.startsWith("OK:")) {
-                                String[] parts = r.split(":", 3);
-                                String newStatus = parts[2];
-
-                                // DB UPDATE: Virtual Thread 내부 블로킹 JDBC 호출.
-                                // DS가 없거나 비가용이면 조용히 건너뛴다.
-                                DbStore db = dbStore;
-                                if (db != null && db.isRunning()) {
-                                    db.updateOrder(
-                                        task.orderId(),
-                                        newStatus,
-                                        System.currentTimeMillis()
-                                    );
-                                }
-
-                                // Redis 발행: parts[1]=prevStatus, parts[2]=newStatus
-                                publishOrderEvent(
-                                    task.orderId(),
-                                    parts[1],
-                                    newStatus,
-                                    task.event().name()
-                                );
-                            }
-                            task.result().complete(r);
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            });
-        }
-    }
-
-    // 외부 시스템 호출 시뮬레이션 (DB write, 결제 API, 알림 등)
-    // Virtual Thread에서 sleep은 OS Thread를 차단하지 않는다.
-    static void simulateAsyncIo(OrderEvent event) {
-        try {
-            int delayMs = switch (event) {
-                case PAY     -> 5;   // 결제 승인 API 호출
-                case SHIP    -> 3;   // 배송사 API 호출
-                case CANCEL  -> 2;   // 취소 처리
-                case REFUND  -> 8;   // 환불 처리
-                default      -> 1;
-            };
-            Thread.sleep(delayMs);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    // ── 벤치마크: Virtual Thread vs Platform Thread ──────────────────────
-    // 동일한 작업(주문 상태 전이 + I/O 시뮬레이션)을 두 방식으로 실행하고 비교한다.
-    // Platform Thread(OS Thread)는 풀 크기 상한에 묶이지만,
-    // Virtual Thread는 작업 수와 무관하게 모두 동시에 실행된다.
+    // ── Benchmark ───────────────────────────────────────────────────────
+    // Measures INSERT + PAY transition throughput for virtual vs platform threads.
+    // All operations are real JDBC round-trips; benchmark rows are deleted after
+    // each run to avoid polluting the orders table.
     static Map<String, Object> benchmark(int n, String mode) throws Exception {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tasks", n);
         result.put("mode",  mode);
-
         if (mode.equals("platform") || mode.equals("both")) {
             result.put("platform_ms", runBenchmarkWith(n, false));
         }
@@ -373,52 +309,49 @@ public class VirtualServer {
         result.put("platform_pool_capped_at", 200);
         result.put("virtual_pool_unbounded",  true);
         result.put("note",
-            "Each task: create order + state transition (PAY) + " +
-            "simulated I/O (5ms). " +
-            "Platform threads block OS thread during I/O. " +
-            "Virtual threads yield OS thread during I/O.");
+            "Each task: INSERT BUY order + PAY transition via JDBC PreparedStatement. " +
+            "Virtual threads yield the OS thread during JDBC socket I/O. " +
+            "Platform threads block the OS thread for the same duration.");
         return result;
     }
 
     static long runBenchmarkWith(int n, boolean virtual) throws Exception {
-        // 벤치마크용 임시 주문 ID 목록 생성
+        String prefix = (virtual ? "vt" : "pt") + "-bench-" + System.nanoTime() + "-";
         List<String> ids = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            String id = (virtual ? "vt" : "pt") + "-bench-" + i + "-" + System.nanoTime();
-            orders.put(id, new Order(id));
-            ids.add(id);
-        }
+        for (int i = 0; i < n; i++) ids.add(prefix + i);
 
         CountDownLatch latch = new CountDownLatch(n);
         long t0 = System.nanoTime();
 
         ExecutorService exec = virtual
             ? Executors.newVirtualThreadPerTaskExecutor()
-            : Executors.newFixedThreadPool(200); // OS Thread 상한 200개
+            : Executors.newFixedThreadPool(200);
 
         try {
             for (String id : ids) {
                 exec.submit(() -> {
                     try {
-                        simulateAsyncIo(OrderEvent.PAY); // I/O 시뮬레이션
-                        Order o = orders.get(id);
-                        if (o != null) o.apply(OrderEvent.PAY);
+                        dbStore.insertOrder(id, "BUY", System.currentTimeMillis());
+                        dbStore.applyTransition(id, OrderEvent.PAY);
+                    } catch (Exception e) {
+                        System.err.println("[bench error] " + e.getMessage());
                     } finally {
                         latch.countDown();
                     }
                 });
             }
-            latch.await(60, TimeUnit.SECONDS);
+            latch.await(120, TimeUnit.SECONDS);
         } finally {
             exec.shutdown();
-            // 벤치마크용 임시 주문 제거
-            for (String id : ids) orders.remove(id);
+            dbStore.deleteBenchmarkOrders(prefix);
         }
 
         return (System.nanoTime() - t0) / 1_000_000;
     }
 
-    // ── JSON 직렬화 ────────────────────────────────────────────────────────
+    // ── JSON serialization ───────────────────────────────────────────────
+    // Hand-rolled serializer avoids a dependency on Jackson or Gson.
+    // Handles Map, List, String, Boolean, null, and numbers (via toString()).
     @SuppressWarnings("unchecked")
     static String toJson(Object v) {
         if (v instanceof Map<?,?> m) {
@@ -445,7 +378,7 @@ public class VirtualServer {
         return v.toString();
     }
 
-    // ── HTTP 유틸리티 ──────────────────────────────────────────────────────
+    // ── HTTP utilities ───────────────────────────────────────────────────
     static void respond(HttpExchange ex, int status, String body) throws IOException {
         byte[] bytes = body.getBytes("UTF-8");
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
@@ -464,30 +397,25 @@ public class VirtualServer {
         return m;
     }
 
-    // ── 메인 ────────────────────────────────────────────────────────────────
+    // ── main ─────────────────────────────────────────────────────────────
     public static void main(String[] args) throws Exception {
         int port = 8010;
 
-        // DbStore 초기화: 환경변수 DB_URL / DB_USER / DB_PASSWORD 사용.
-        // DB가 없어도 서버는 인메모리 모드로 정상 기동한다.
+        // DB_URL is required. The server exits immediately if it is absent,
+        // because there is no in-memory fallback for order persistence.
         String dbUrl  = System.getenv("DB_URL");
         String dbUser = System.getenv().getOrDefault("DB_USER", "dev");
         String dbPass = System.getenv().getOrDefault("DB_PASSWORD", "polyglot");
-        if (dbUrl != null && !dbUrl.isEmpty()) {
-            try {
-                dbStore = new DbStore(dbUrl, dbUser, dbPass);
-                dbStore.initSchema();
-                System.out.println("[DB] HikariCP connected -> " + dbUrl);
-            } catch (Exception e) {
-                System.err.println("[DB] HikariCP init failed (in-memory only): " + e.getMessage());
-                dbStore = null;
-            }
-        } else {
-            System.out.println("[DB] DB_URL not set — running in-memory only");
+        if (dbUrl == null || dbUrl.isEmpty()) {
+            System.err.println("[FATAL] DB_URL is not set. PostgreSQL is required.");
+            System.exit(1);
         }
+        dbStore = new DbStore(dbUrl, dbUser, dbPass);
+        dbStore.initSchema();
+        System.out.println("[DB] HikariCP pool initialized -> " + dbUrl);
 
-        // JedisPool 초기화: 환경변수 REDIS_HOST / REDIS_PORT 우선, 기본값 localhost:6379.
-        // Redis가 없어도 서버는 정상 기동한다.
+        // Redis pub/sub is optional. Failure to connect disables event publishing
+        // but does not affect order processing.
         String redisHost = System.getenv().getOrDefault("REDIS_HOST", "localhost");
         int    redisPort = Integer.parseInt(
             System.getenv().getOrDefault("REDIS_PORT", "6379"));
@@ -497,26 +425,21 @@ public class VirtualServer {
             poolCfg.setMaxIdle(4);
             poolCfg.setMinIdle(1);
             poolCfg.setTestOnBorrow(false);
-            jedisPool = new JedisPool(poolCfg, redisHost, redisPort, 2000);
+            jedisPool = new JedisPool(poolCfg, redisHost, redisPort, 2_000);
             System.out.println("[Redis] JedisPool connected -> " + redisHost + ":" + redisPort);
         } catch (Exception e) {
             System.err.println("[Redis] JedisPool init failed (pub/sub disabled): " + e.getMessage());
         }
 
-        // 이벤트 워커 16개를 Virtual Thread로 시작.
-        // 각 워커는 큐 대기 중 OS Thread를 차단하지 않는다.
-        startEventWorkers(16);
-
-        // JVM 종료 시 HikariCP 커넥션 풀을 정리한다.
         Runtime.getRuntime().addShutdownHook(Thread.ofVirtual().unstarted(() -> {
-            DbStore db = dbStore;
-            if (db != null) db.close();
+            if (dbStore != null) dbStore.close();
         }));
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 256);
 
-        // HTTP 서버 자체도 Virtual Thread로 요청을 처리한다.
-        // 요청마다 새 Virtual Thread를 할당하므로 수만 개의 동시 접속이 가능하다.
+        // Each HTTP request is dispatched to a new virtual thread.
+        // JDBC calls inside handlers block the virtual thread at the socket level;
+        // the underlying OS thread is released and reused for other virtual threads.
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
         server.createContext("/", ex -> {
@@ -533,49 +456,47 @@ public class VirtualServer {
 
                 // GET /api/java/status
                 if (path.equals("/api/java/status")) {
-                    boolean dbConn    = dbStore != null && dbStore.isRunning();
-                    String  dbUrlDisp = System.getenv().getOrDefault("DB_URL", "not configured");
-                    respond(ex, 200, toJson(Map.of(
-                        "lang",           "java",
-                        "version",        System.getProperty("java.version"),
-                        "port",           8010,
-                        "paradigm",       "virtual-threads",
-                        "feature",        "Project Loom — Executors.newVirtualThreadPerTaskExecutor()",
-                        "jvm",            System.getProperty("java.vm.name"),
-                        "cpu_cores",      Runtime.getRuntime().availableProcessors(),
-                        "orders",         orders.size(),
-                        "db_connected",   dbConn,
-                        "db_url",         dbUrlDisp
-                    )));
+                    int orderCount = dbStore.countOrders();
+                    Map<String, Object> status = new LinkedHashMap<>();
+                    status.put("lang",      "java");
+                    status.put("version",   System.getProperty("java.version"));
+                    status.put("port",      8010);
+                    status.put("paradigm",  "virtual-threads");
+                    status.put("feature",   "Project Loom — Executors.newVirtualThreadPerTaskExecutor()");
+                    status.put("jvm",       System.getProperty("java.vm.name"));
+                    status.put("cpu_cores", Runtime.getRuntime().availableProcessors());
+                    status.put("orders",    orderCount);
+                    status.put("db_url",    System.getenv().getOrDefault("DB_URL", "not configured"));
+                    respond(ex, 200, toJson(status));
                     return;
                 }
 
-                // POST /api/java/order?id=<orderId>  — 주문 생성
+                // POST /api/java/order?id=<orderId>&type=BUY|SELL
+                // Inserts a new order row with status ORDERED.
+                // Returns 409 if the id already exists.
                 if (path.equals("/api/java/order") && method.equals("POST")) {
-                    String id = params.get("id");
+                    String id   = params.get("id");
+                    String type = params.getOrDefault("type", "BUY").toUpperCase();
                     if (id == null || id.isEmpty()) {
                         respond(ex, 400, "{\"error\":\"id parameter required\"}");
                         return;
                     }
-                    Order newOrder = new Order(id);
-                    Order existing = orders.putIfAbsent(id, newOrder);
-                    if (existing != null) {
+                    if (!type.equals("BUY") && !type.equals("SELL")) {
+                        respond(ex, 400, "{\"error\":\"type must be BUY or SELL\"}");
+                        return;
+                    }
+                    Map<String, Object> row = dbStore.insertOrder(id, type, System.currentTimeMillis());
+                    if (row == null) {
                         respond(ex, 409, "{\"error\":\"order already exists\",\"id\":\"" + id + "\"}");
                         return;
                     }
-                    // DB INSERT in Virtual Thread — blocking JDBC is acceptable here.
-                    DbStore db = dbStore;
-                    if (db != null && db.isRunning()) {
-                        db.insertOrder(id, OrderStatus.ORDERED.name(), newOrder.createdAt);
-                    }
-                    respond(ex, 201, toJson(orders.get(id).toMap()));
+                    respond(ex, 201, toJson(row));
                     return;
                 }
 
-                // PUT /api/java/order?id=<orderId>&event=<evt>  — 상태 전이
-                // 이벤트를 큐에 넣고 Virtual Thread 워커가 비동기로 처리한다.
-                // CompletableFuture.get()으로 결과를 기다리는 동안 현재 Virtual Thread는
-                // OS Thread를 반환하므로 블로킹이 발생하지 않는다.
+                // PUT /api/java/order?id=<orderId>&event=<evt>
+                // Applies a state transition inside a DB transaction (SELECT FOR UPDATE).
+                // On success, publishes the event to Redis asynchronously.
                 if (path.equals("/api/java/order") && method.equals("PUT")) {
                     String id  = params.get("id");
                     String evt = params.get("event");
@@ -590,44 +511,52 @@ public class VirtualServer {
                         respond(ex, 400, "{\"error\":\"unknown event: " + evt + "\"}");
                         return;
                     }
-                    CompletableFuture<String> future = new CompletableFuture<>();
-                    eventQueue.put(new EventTask(id, event, future));
-                    // Virtual Thread가 여기서 대기하는 동안 OS Thread는 다른 작업을 처리한다.
-                    String r = future.get(10, TimeUnit.SECONDS);
-                    if (r.startsWith("INVALID") || r.equals("ORDER_NOT_FOUND")) {
-                        respond(ex, 400, "{\"error\":\"" + r + "\"}");
+                    String r = dbStore.applyTransition(id, event);
+                    if (r.startsWith("OK:")) {
+                        String[] parts      = r.split(":", 3);
+                        String   prevStatus = parts[1];
+                        String   newStatus  = parts[2];
+                        Map<String, Object> updated = dbStore.findOrder(id);
+                        respond(ex, 200, toJson(updated));
+                        // Publish to Redis after the HTTP response is committed.
+                        // Fire-and-forget in a new virtual thread to avoid blocking the caller.
+                        if (updated != null) {
+                            final String orderType = (String) updated.get("type");
+                            Thread.ofVirtual().start(() ->
+                                publishOrderEvent(id, orderType, prevStatus, newStatus, evt));
+                        }
+                    } else if (r.equals("ORDER_NOT_FOUND")) {
+                        respond(ex, 404, "{\"error\":\"ORDER_NOT_FOUND\",\"id\":\"" + id + "\"}");
                     } else {
-                        respond(ex, 200, toJson(orders.get(id).toMap()));
+                        respond(ex, 400, "{\"error\":\"" + r + "\"}");
                     }
                     return;
                 }
 
-                // GET /api/java/order?id=<orderId>  — 주문 조회
+                // GET /api/java/order?id=<orderId>
                 if (path.equals("/api/java/order") && method.equals("GET")) {
                     String id = params.get("id");
                     if (id == null) {
                         respond(ex, 400, "{\"error\":\"id parameter required\"}");
                         return;
                     }
-                    Order o = orders.get(id);
-                    if (o == null) {
+                    Map<String, Object> row = dbStore.findOrder(id);
+                    if (row == null) {
                         respond(ex, 404, "{\"error\":\"order not found\",\"id\":\"" + id + "\"}");
                         return;
                     }
-                    respond(ex, 200, toJson(o.toMap()));
+                    respond(ex, 200, toJson(row));
                     return;
                 }
 
-                // GET /api/java/orders  — 전체 주문 목록
+                // GET /api/java/orders
                 if (path.equals("/api/java/orders")) {
-                    List<Map<String, Object>> list = new ArrayList<>();
-                    orders.values().forEach(o -> list.add(o.toMap()));
+                    List<Map<String, Object>> list = dbStore.findAllOrders();
                     respond(ex, 200, toJson(Map.of("count", list.size(), "orders", list)));
                     return;
                 }
 
                 // GET /api/java/benchmark?n=<N>&mode=virtual|platform|both
-                // Virtual Thread와 Platform Thread의 처리 성능을 비교한다.
                 if (path.equals("/api/java/benchmark")) {
                     int n = Math.max(10, Math.min(
                         Integer.parseInt(params.getOrDefault("n", "1000")), 5000));
@@ -651,8 +580,9 @@ public class VirtualServer {
         });
 
         server.start();
-        System.out.println("[Java 21 Loom] Virtual Thread Order Server on :" + port);
-        System.out.println("  POST /api/java/order?id=order-1");
+        System.out.println("[Java 21 Loom] PostgreSQL-backed Virtual Thread Order Server on :" + port);
+        System.out.println("  POST /api/java/order?id=order-1&type=BUY");
+        System.out.println("  POST /api/java/order?id=order-2&type=SELL");
         System.out.println("  PUT  /api/java/order?id=order-1&event=PAY");
         System.out.println("  PUT  /api/java/order?id=order-1&event=PROCESS");
         System.out.println("  PUT  /api/java/order?id=order-1&event=SHIP");

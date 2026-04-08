@@ -34,7 +34,7 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 | 23 | **Erlang/OTP 24** | 4003 | `code:load_file/1` hot code swap · 0ms downtime |
 | 24 | **Swift 6.1** | 8008 | `actor` — compile-time data race prevention |
 | 25 | **Clojure 1.10** | 8009 | `ref`+`dosync` STM — lock-free atomic transfers |
-| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · Order/Payment state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · `ReentrantLock` prevents Virtual Thread pinning · Async event queue (16 virtual thread workers) · **HikariCP JDBC persistence** (PostgreSQL `INSERT ON CONFLICT DO NOTHING` + `UPDATE`, `autoCommit=true`, pool 20) · `DbStore` inner class — `initSchema` / `insertOrder` / `updateOrder` via pure JDBC · DB write inside Virtual Thread (blocking JDBC acceptable; OS thread yielded) · **Redis Pub/Sub** (`order-events` channel via Jedis 5 JedisPool) · Virtual vs Platform Thread benchmark |
+| 26 | **Java 21** Project Loom | 8010 | `Executors.newVirtualThreadPerTaskExecutor()` · BUY/SELL order state machine (`ORDERED→PAID→PROCESSING→SHIPPED→DELIVERED`, `CANCELED→REFUNDED`) · **PostgreSQL-only persistence** (no in-memory fallback; `DB_URL` required at startup) · `DbStore` inner class — pure JDBC `PreparedStatement`, no ORM · `insertOrder()`: `INSERT ... ON CONFLICT DO NOTHING RETURNING` · `applyTransition()`: explicit transaction `SELECT ... FOR UPDATE` → state-machine check → `UPDATE` → `COMMIT`; concurrent transitions serialized at DB level · `findOrder()` / `findAllOrders()` / `countOrders()` read-paths · `deleteBenchmarkOrders()` cleanup · HikariCP pool 20, `autoCommit=true` · Virtual Thread parks on JDBC socket I/O (OS thread released) · **Redis Pub/Sub** fire-and-forget (`order-events` via Jedis 5 JedisPool) · Benchmark: real JDBC INSERT + PAY round-trips (virtual vs platform) |
 | 27 | **SWI-Prolog 8.4** | 8011 | Declarative constraint rules → backtracking portfolio search |
 | — | **PostgreSQL** | 5432/5433 | System logs · risk data |
 | — | **Redis** | 6379 | Analytics result caching (Lua EVAL atomic ops) |
@@ -115,10 +115,10 @@ Reverse proxy routes registered on Go Hub (:8080):
 | ANY | `/api/analytics/*` | Role alias → `nim-analytics:8005` |
 | ANY | `/api/ledger/*` | Role alias → `clojure-stm:8009` |
 | ANY | `/api/scheduler/*` | Role alias → `kotlin-scheduler:9000` |
-| POST | `/api/java/order?id=<id>` | Create order (status: ORDERED) |
-| PUT | `/api/java/order?id=<id>&event=<evt>` | Order state transition — `PAY`, `PROCESS`, `SHIP`, `DELIVER`, `CANCEL`, `REFUND` (via async event queue) |
-| GET | `/api/java/order?id=<id>` | Get order by ID (includes state history) |
-| GET | `/api/java/orders` | Get all orders |
+| POST | `/api/java/order?id=<id>&type=BUY\|SELL` | Create BUY or SELL order (status: ORDERED) — 409 if id exists |
+| PUT | `/api/java/order?id=<id>&event=<evt>` | Order state transition — `PAY`, `PROCESS`, `SHIP`, `DELIVER`, `CANCEL`, `REFUND` (DB `SELECT FOR UPDATE` transaction) |
+| GET | `/api/java/order?id=<id>` | Get order by ID (live DB read) |
+| GET | `/api/java/orders` | Get all orders (ordered by `created_at DESC`) |
 | GET | `/api/java/benchmark?n=<N>&mode=virtual\|platform\|both` | Virtual Thread vs Platform Thread throughput benchmark |
 
 ---
@@ -144,9 +144,10 @@ CREATE TABLE risk_reports (
     avg_risk_score FLOAT, total_records INT, max_risk_score FLOAT, min_risk_score FLOAT
 );
 
--- orders (Java Loom · postgres :5432, auto-created on startup)
+-- orders (Java Loom · db-postgres :5432, auto-created on startup)
 CREATE TABLE IF NOT EXISTS orders (
     id         VARCHAR(255) PRIMARY KEY,
+    type       VARCHAR(8)   NOT NULL DEFAULT 'BUY',  -- BUY | SELL
     status     VARCHAR(32)  NOT NULL,
     created_at BIGINT       NOT NULL,
     updated_at BIGINT       NOT NULL
@@ -181,7 +182,23 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
-### 2026-04-09
+### 2026-04-09 (2)
+
+**Java Loom — PostgreSQL-only persistence: full JDBC rewrite** (`loom-java`)
+
+- `VirtualServer.java` — Complete removal of all in-memory state. `ConcurrentHashMap<String, Order> orders`, `Order` class (ReentrantLock, history List), `EventTask` record, `LinkedBlockingQueue`, `startEventWorkers()`, and `simulateAsyncIo()` all deleted
+- `DbStore` rewritten: `initSchema()` now adds `type VARCHAR(8) NOT NULL DEFAULT 'BUY'` column; `initSchema()` `throws SQLException` (no silent fallback)
+- `insertOrder(id, type, now)` — `INSERT ... ON CONFLICT DO NOTHING RETURNING ...`; returns `Map` of inserted row or `null` on duplicate (single round-trip via `RETURNING`)
+- `applyTransition(id, event)` — explicit transaction: `setAutoCommit(false)` → `SELECT status ... FOR UPDATE` → state-machine check → `UPDATE` → `commit()`; all three outcomes (`ORDER_NOT_FOUND`, `INVALID_TRANSITION`, `OK:prev:next`) handled without silent swallowing
+- `findOrder()` / `findAllOrders()` (ORDER BY `created_at DESC`) / `countOrders()` / `deleteBenchmarkOrders(prefix)` — all pure `PreparedStatement` JDBC
+- `main()` — `DB_URL` absence now calls `System.exit(1)` immediately; in-memory fallback path removed entirely
+- `POST /api/java/order` — accepts `type=BUY|SELL` parameter (default `BUY`); responds with DB-returned row; 409 on duplicate
+- `PUT /api/java/order` — calls `applyTransition()` directly; on `OK` fires Redis `publishOrderEvent()` fire-and-forget in separate virtual thread after HTTP response
+- Benchmark — `runBenchmarkWith()` now issues real `insertOrder()` + `applyTransition()` JDBC calls; `deleteBenchmarkOrders(prefix)` cleans up after each run
+- `docker-compose.yml` — already correct from prior commit (`db-postgres` dedicated service, `DB_URL/DB_USER/DB_PASSWORD` env vars, `depends_on: db-postgres/redis service_healthy`)
+- `build.sh` / `libs/` — unchanged (HikariCP 5.1.0, slf4j-nop 2.0.12, postgresql-42.7.3, jedis-5.2.0, commons-pool2-2.12.0 already present)
+
+### 2026-04-09 (1)
 
 **Java Loom — bugfix: variable shadowing in `main()`** (`loom-java`)
 

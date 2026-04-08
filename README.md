@@ -153,14 +153,12 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
-### 2026-04-08 (2)
+### 2026-04-08
 
 **Rust Pipeline Docker build fix** (`pipeline-rust`)
 - `pipeline-rust/Dockerfile` — Added `g++` to builder `apk` installs; switched all `COPY` paths to repo-root-relative (`pipeline-rust/...`, `core-cpp/src`) so `build.rs` can compile `matrix.cpp` into `libcppmatrix.a` during the image build
 - `docker-compose.yml` — Changed `rust-pipeline` build context from `./pipeline-rust` to `.` (repo root) with `dockerfile: pipeline-rust/Dockerfile`
 - `.github/workflows/ci.yml` — Same `context: .` + `file: pipeline-rust/Dockerfile` fix for the `Build Rust Pipeline` step
-
-### 2026-04-08
 
 **Elixir WebSocket Extension** (`hub-elixir`)
 - `lib/hub_elixir/websocket/registry.ex` — Tracks all Cowboy WS handler processes using Elixir's built-in `Registry` in `:duplicate` mode; auto-cleaned on process exit

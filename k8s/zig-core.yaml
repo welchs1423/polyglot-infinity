@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zig-core
+  labels:
+    app: zig-core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zig-core
+  template:
+    metadata:
+      labels:
+        app: zig-core
+    spec:
+      containers:
+      - name: zig-core
+        image: zig-core:latest
+        ports:
+        - containerPort: 8013
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zig-core
+  labels:
+    app: zig-core
+spec:
+  selector:
+    app: zig-core
+  ports:
+  - name: port-8013
+    port: 8013
+    targetPort: 8013
+    protocol: TCP
+  type: ClusterIP

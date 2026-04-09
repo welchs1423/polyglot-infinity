@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nim-analytics
+  labels:
+    app: nim-analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nim-analytics
+  template:
+    metadata:
+      labels:
+        app: nim-analytics
+    spec:
+      containers:
+      - name: nim-analytics
+        image: debian:bookworm-slim
+        ports:
+        - containerPort: 8005
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nim-analytics
+  labels:
+    app: nim-analytics
+spec:
+  selector:
+    app: nim-analytics
+  ports:
+  - name: port-8005
+    port: 8005
+    targetPort: 8005
+    protocol: TCP
+  type: ClusterIP

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fsharp-pricer
+  labels:
+    app: fsharp-pricer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fsharp-pricer
+  template:
+    metadata:
+      labels:
+        app: fsharp-pricer
+    spec:
+      containers:
+      - name: fsharp-pricer
+        image: mcr.microsoft.com/dotnet/sdk:8.0-alpine
+        ports:
+        - containerPort: 9001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fsharp-pricer
+  labels:
+    app: fsharp-pricer
+spec:
+  selector:
+    app: fsharp-pricer
+  ports:
+  - name: port-9001
+    port: 9001
+    targetPort: 9001
+    protocol: TCP
+  type: ClusterIP

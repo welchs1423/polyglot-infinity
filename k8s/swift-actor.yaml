@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swift-actor
+  labels:
+    app: swift-actor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: swift-actor
+  template:
+    metadata:
+      labels:
+        app: swift-actor
+    spec:
+      containers:
+      - name: swift-actor
+        image: swift:6.1-slim
+        ports:
+        - containerPort: 8008
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: swift-actor
+  labels:
+    app: swift-actor
+spec:
+  selector:
+    app: swift-actor
+  ports:
+  - name: port-8008
+    port: 8008
+    targetPort: 8008
+    protocol: TCP
+  type: ClusterIP

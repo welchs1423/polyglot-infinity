@@ -451,6 +451,26 @@ Data flow: `Java Loom POST/PUT → Redis Pub/Sub (order-events) → Go WS Hub �
 - Fix (`docker-compose.yml` — `svelte-portal` `command`): prepend `ls node_modules/qrcode 2>/dev/null || rm -rf node_modules;` before `npm install`. On each container start, if `node_modules/qrcode` is missing (stale volume), the entire `node_modules` directory is deleted so the subsequent `npm install` performs a full clean install (147 packages). If the key package is present, the directory is left intact for fast startup.
 - Stale volume removed and container recreated; confirmed `added 147 packages` on fresh install and `node_modules/qrcode` present in volume.
 
+**Istio service mesh + Kiali visualization** (`deploy-mesh.sh`)
+
+- `deploy-mesh.sh` — New automation script for deploying the 28-service mesh onto a Kubernetes cluster
+  - `kubectl create namespace polyglot --dry-run=client -o yaml | kubectl apply -f -` — idempotent namespace creation (safe to re-run)
+  - `kubectl label namespace polyglot istio-injection=enabled --overwrite` — enables automatic Envoy sidecar injection for every Pod in the namespace
+  - `kubectl apply -f k8s/ -n polyglot` — applies all manifests under `k8s/` to the `polyglot` namespace in a single command
+  - Progress reported via `echo` on each step; `set -euo pipefail` aborts on any error
+  - Kiali port-forward command documented in a comment block at the bottom: `kubectl port-forward svc/kiali 20001:20001 -n istio-system`; opens `http://localhost:20001/kiali` for real-time traffic topology visualization across all 28 services
+
+**K8s manifest generator** (`tools/k8s-generator.py`, `k8s/`)
+
+- `tools/k8s-generator.py` — New Python script that generates Kubernetes manifests from `docker-compose.yml`
+  - Uses `pyyaml` to parse all service definitions; iterates the full `services:` map in declaration order
+  - For each service, writes `k8s/<service-name>.yaml` containing a `Deployment` and (when ports are defined) a `ClusterIP` `Service` separated by `---`
+  - `Deployment` spec: `replicas: 1`; pod template carries `app: <service-name>` label on both `metadata.labels` and `spec.selector.matchLabels` — satisfies Istio sidecar injection selector requirements
+  - Services that use a `build:` directive (no `image:` key) receive `<service-name>:latest` as the image reference — a placeholder intended for replacement by a container registry URI in a real CI pipeline
+  - Environment variables from `environment:` (both dict and list `KEY=VALUE` forms) are mapped 1:1 to `env:` entries in the container spec
+  - Run: `pip install pyyaml && python3 tools/k8s-generator.py`
+- `k8s/` — 32 generated manifest files, one per `docker-compose.yml` service (28 application + 4 infrastructure: `postgres`, `db-postgres`, `redis`, `apm-server`)
+
 ---
 
 ### 2026-04-08

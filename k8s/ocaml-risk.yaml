@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocaml-risk
+  labels:
+    app: ocaml-risk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ocaml-risk
+  template:
+    metadata:
+      labels:
+        app: ocaml-risk
+    spec:
+      containers:
+      - name: ocaml-risk
+        image: debian:bookworm-slim
+        ports:
+        - containerPort: 8004
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ocaml-risk
+  labels:
+    app: ocaml-risk
+spec:
+  selector:
+    app: ocaml-risk
+  ports:
+  - name: port-8004
+    port: 8004
+    targetPort: 8004
+    protocol: TCP
+  type: ClusterIP

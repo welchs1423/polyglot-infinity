@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kotlin-scheduler
+  labels:
+    app: kotlin-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kotlin-scheduler
+  template:
+    metadata:
+      labels:
+        app: kotlin-scheduler
+    spec:
+      containers:
+      - name: kotlin-scheduler
+        image: eclipse-temurin:21-jdk-alpine
+        ports:
+        - containerPort: 9000
+        env:
+        - name: DB_URL
+          value: jdbc:postgresql://postgres:5432/polyglot_db
+        - name: DB_USER
+          value: dev
+        - name: DB_PASS
+          value: polyglot
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kotlin-scheduler
+  labels:
+    app: kotlin-scheduler
+spec:
+  selector:
+    app: kotlin-scheduler
+  ports:
+  - name: port-9000
+    port: 9000
+    targetPort: 9000
+    protocol: TCP
+  type: ClusterIP

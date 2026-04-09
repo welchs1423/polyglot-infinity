@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: v-quant
+  labels:
+    app: v-quant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: v-quant
+  template:
+    metadata:
+      labels:
+        app: v-quant
+    spec:
+      containers:
+      - name: v-quant
+        image: debian:bookworm-slim
+        ports:
+        - containerPort: 4002
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: v-quant
+  labels:
+    app: v-quant
+spec:
+  selector:
+    app: v-quant
+  ports:
+  - name: port-4002
+    port: 4002
+    targetPort: 4002
+    protocol: TCP
+  type: ClusterIP

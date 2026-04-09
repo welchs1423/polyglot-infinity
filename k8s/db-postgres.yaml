@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-postgres
+  labels:
+    app: db-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db-postgres
+  template:
+    metadata:
+      labels:
+        app: db-postgres
+    spec:
+      containers:
+      - name: db-postgres
+        image: postgres:16-alpine
+        env:
+        - name: POSTGRES_USER
+          value: dev
+        - name: POSTGRES_PASSWORD
+          value: polyglot
+        - name: POSTGRES_DB
+          value: loom_db

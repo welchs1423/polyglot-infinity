@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r-stats
+  labels:
+    app: r-stats
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: r-stats
+  template:
+    metadata:
+      labels:
+        app: r-stats
+    spec:
+      containers:
+      - name: r-stats
+        image: rstudio/plumber
+        ports:
+        - containerPort: 8003
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: r-stats
+  labels:
+    app: r-stats
+spec:
+  selector:
+    app: r-stats
+  ports:
+  - name: port-8003
+    port: 8003
+    targetPort: 8003
+    protocol: TCP
+  type: ClusterIP

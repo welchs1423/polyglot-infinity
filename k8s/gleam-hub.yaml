@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gleam-hub
+  labels:
+    app: gleam-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gleam-hub
+  template:
+    metadata:
+      labels:
+        app: gleam-hub
+    spec:
+      containers:
+      - name: gleam-hub
+        image: ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
+        ports:
+        - containerPort: 4001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gleam-hub
+  labels:
+    app: gleam-hub
+spec:
+  selector:
+    app: gleam-hub
+  ports:
+  - name: port-4001
+    port: 4001
+    targetPort: 4001
+    protocol: TCP
+  type: ClusterIP

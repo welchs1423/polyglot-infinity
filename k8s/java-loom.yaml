@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-loom
+  labels:
+    app: java-loom
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-loom
+  template:
+    metadata:
+      labels:
+        app: java-loom
+    spec:
+      containers:
+      - name: java-loom
+        image: eclipse-temurin:21-jdk-alpine
+        ports:
+        - containerPort: 8010
+        env:
+        - name: DB_URL
+          value: jdbc:postgresql://db-postgres:5432/loom_db
+        - name: DB_USER
+          value: dev
+        - name: DB_PASSWORD
+          value: polyglot
+        - name: REDIS_HOST
+          value: redis
+        - name: REDIS_PORT
+          value: '6379'
+        - name: APM_URL
+          value: http://apm-server:9009/ingest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-loom
+  labels:
+    app: java-loom
+spec:
+  selector:
+    app: java-loom
+  ports:
+  - name: port-8010
+    port: 8010
+    targetPort: 8010
+    protocol: TCP
+  type: ClusterIP

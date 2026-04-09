@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-hub
+  labels:
+    app: go-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-hub
+  template:
+    metadata:
+      labels:
+        app: go-hub
+    spec:
+      containers:
+      - name: go-hub
+        image: go-hub:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URL
+          value: postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
+        - name: REDIS_URL
+          value: redis:6379
+        - name: APM_URL
+          value: http://apm-server:9009/ingest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-hub
+  labels:
+    app: go-hub
+spec:
+  selector:
+    app: go-hub
+  ports:
+  - name: port-8080
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

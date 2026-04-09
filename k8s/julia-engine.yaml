@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: julia-engine
+  labels:
+    app: julia-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: julia-engine
+  template:
+    metadata:
+      labels:
+        app: julia-engine
+    spec:
+      containers:
+      - name: julia-engine
+        image: julia:1.10-bookworm
+        ports:
+        - containerPort: 8002
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: julia-engine
+  labels:
+    app: julia-engine
+spec:
+  selector:
+    app: julia-engine
+  ports:
+  - name: port-8002
+    port: 8002
+    targetPort: 8002
+    protocol: TCP
+  type: ClusterIP

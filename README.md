@@ -230,6 +230,16 @@ CREATE TABLE IF NOT EXISTS orders (
   - `build_deployment()` checks the `tty` boolean flag; when `true`, sets `tty: true` and `stdin: true` on the container spec.
 - All 32 manifests under `k8s/` regenerated with the updated script.
 
+**K8s 이미지 주입 및 파드 부활** (`k8s/`, `loom-java/`, `portal-svelte/`)
+
+- Root cause: 배포된 Deployment가 `java-loom:latest` / `svelte-portal:latest` 커스텀 이미지에 `imagePullPolicy: Never`를 요구했으나 Minikube Docker 데몬에는 해당 이름의 이미지가 존재하지 않았음. 추가로 배포된 Deployment에 CMD, 환경변수, 의존 K8s 서비스(`db-postgres`, `postgres`, `redis`)가 모두 누락되어 있었음.
+- Image build: `eval $(minikube docker-env)` 환경에서 직접 빌드 (`minikube image load`는 기존 캐시 교체 불가 문제 존재)
+  - `java-loom:latest` — `eclipse-temurin:21-jdk-alpine` + `loom-java/out/` + `loom-java/libs/` + CMD `java -cp '/app/out:/app/libs/*' VirtualServer`
+  - `svelte-portal:latest` — `node:22-alpine` + `portal-svelte/` 소스 + CMD `npm install && npm run dev -- --host 0.0.0.0`
+- Env injection: `kubectl set env` — `java-loom` (DB_URL/DB_USER/DB_PASSWORD/REDIS_HOST/REDIS_PORT/APM_URL), `go-hub` (DATABASE_URL/REDIS_URL/APM_URL), `rust-pipeline` (DATABASE_URL/REDIS_URL)
+- Service creation: `kubectl expose` — `db-postgres:5432`, `postgres:5432`, `redis:6379`
+- Result: 5개 핵심 파드 전원 `2/2 Running` (go-hub · java-loom · python-brain · rust-pipeline · svelte-portal)
+
 ### 2026-04-09
 
 **apm-server — fix unhealthy container (IPv6 localhost resolution)** (`docker-compose.yml`, `apm-server/server.js`)

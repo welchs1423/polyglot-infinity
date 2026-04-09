@@ -1,0 +1,83 @@
+### 2026-04-10  K8s 이미지 주입 및 파드 부활
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+문제 요약
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+배포된 Deployment가 java-loom:latest / svelte-portal:latest 커스텀 이미지에
+imagePullPolicy: Never 를 요구했으나 Minikube Docker 데몬에는
+해당 이름의 이미지가 존재하지 않았음 → ErrImageNeverPull
+
+추가로 배포된 Deployment에 CMD, 환경변수, 의존 K8s 서비스
+(db-postgres, postgres, redis) 가 모두 누락되어 있었음
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+수행된 작업
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 이미지 빌드 (eval $(minikube docker-env) 환경에서 직접 빌드)
+
+   java-loom:latest
+   - FROM eclipse-temurin:21-jdk-alpine
+   - COPY loom-java/out/*.class  →  /app/out/
+   - COPY loom-java/libs/        →  /app/libs/
+   - CMD: java -cp '/app/out:/app/libs/*' VirtualServer
+
+   svelte-portal:latest
+   - FROM node:22-alpine
+   - COPY portal-svelte/  →  /app/
+   - CMD: ls node_modules/qrcode || rm -rf node_modules; npm install && npm run dev -- --host 0.0.0.0
+
+   비고: minikube image load 는 기존 캐시를 교체하지 못함 →
+         eval $(minikube docker-env) 환경에서 직접 빌드하는 것이 올바른 방법
+
+2. 환경변수 주입 (kubectl set env)
+
+   java-loom:
+     DB_URL      = jdbc:postgresql://db-postgres:5432/loom_db
+     DB_USER     = dev
+     DB_PASSWORD = polyglot
+     REDIS_HOST  = redis
+     REDIS_PORT  = 6379
+     APM_URL     = http://apm-server:9009/ingest
+
+   go-hub:
+     DATABASE_URL = postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
+     REDIS_URL    = redis:6379
+     APM_URL      = http://apm-server:9009/ingest
+
+   rust-pipeline:
+     DATABASE_URL = postgres://dev:polyglot@postgres/polyglot_db?sslmode=disable
+     REDIS_URL    = redis://redis:6379
+
+3. 누락된 K8s 서비스 생성 (kubectl expose)
+
+   db-postgres  → port 5432  (java-loom 전용 PostgreSQL)
+   postgres     → port 5432  (shared PostgreSQL, go-hub / rust-pipeline)
+   redis        → port 6379
+
+4. 파드 재기동
+   kubectl rollout restart deployment java-loom svelte-portal go-hub -n polyglot
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+최종 결과 (kubectl get pods -n polyglot)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  go-hub           2/2  Running
+  java-loom        2/2  Running
+  python-brain     2/2  Running
+  rust-pipeline    2/2  Running
+  svelte-portal    2/2  Running
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+향후 개선 사항
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- k8s/*.yaml 파일의 imagePullPolicy: Never + 이미지명 불일치 해결 필요
+  (k8s YAML에 명시된 image: eclipse-temurin:21-jdk-alpine 이 배포 시
+   java-loom:latest 로 변경되는 경위 추적 및 deploy-mesh.sh 점검)
+- k8s/*.yaml 에 환경변수 및 서비스 정의 추가 필요
+  (현재 변경 사항은 kubectl set env / kubectl expose 로만 반영됨,
+   영구적으로 k8s YAML 에 기술해야 재배포 시에도 유지됨)
+- db-postgres / postgres / redis 서비스 정의를 k8s/*.yaml 에 포함시키거나
+  deploy-mesh.sh 에 kubectl expose 단계 추가 필요

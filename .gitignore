@@ -76,5 +76,8 @@ loom-java/out/
 loom-java/.classpath
 changes.txt
 
+# Istio release bundle (100MB+ binary, not project source)
+istio-*/
+
 # Java compiled output
 *.class

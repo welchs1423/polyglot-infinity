@@ -1,3 +1,7 @@
+# 루트에 잘못 생성된 npm 파일 방지
+/package.json
+/package-lock.json
+
 # Python
 venv/
 __pycache__/

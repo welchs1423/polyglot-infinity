@@ -589,6 +589,15 @@ Data flow: `Java Loom POST/PUT → Redis Pub/Sub (order-events) → Go WS Hub �
 **Misc**
 - `.gitignore` — added `tree.txt` · `server-go/server` (Go compiled binary)
 
+**K8s Chaos Monkey script** (`k8s-chaos.sh`)
+
+- `k8s-chaos.sh` — New shell script for testing ReplicaSet self-healing on a Kubernetes-migrated infrastructure
+  - `kubectl get pods -n polyglot --field-selector=status.phase=Running` fetches only `Running` pods in the `polyglot` namespace
+  - Runs an infinite `while true` loop: selects a random pod via `$RANDOM % ${#PODS[@]}`, deletes it with `kubectl delete pod --grace-period=0 --force`, then waits 10 seconds before the next iteration
+  - Skips the delete cycle with a log message when no running pods are found (prevents arithmetic on an empty array)
+  - All log lines include a UTC timestamp (`date -u '+%Y-%m-%d %H:%M:%S'`)
+  - File is executable (`chmod +x`)
+
 ---
 
 ### 2026-04-07

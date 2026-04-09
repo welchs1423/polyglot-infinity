@@ -216,6 +216,20 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ## Changelog
 
+### 2026-04-10
+
+**K8s manifest generator — ImagePullBackOff and Completed pod fixes** (`tools/k8s-generator.py`, `k8s/`)
+
+- Root cause 1 (`ImagePullBackOff`): Generated Deployments had no `imagePullPolicy` field, causing Kubernetes to default to `Always` for `:latest` tags. On nodes where the image was already present locally (or when a registry is unreachable), the kubelet still attempted a remote pull and failed.
+- Root cause 2 (`Completed`): Services that rely on a non-default `command` or `entrypoint` to start their process had those fields omitted from the generated manifest. Without the correct startup command, containers ran the base image default CMD (often something that exits immediately), causing pods to enter `Completed` instead of `Running`.
+- `tools/k8s-generator.py` changes:
+  - Added `import shlex` to support shell-style tokenization of string-form commands.
+  - `build_deployment()` now sets `imagePullPolicy: IfNotPresent` on every container spec, preventing unnecessary remote pull attempts for locally-built or pre-pulled images.
+  - `build_deployment()` parses `entrypoint` (string or list) from the docker-compose service definition and emits it as K8s `command` in the container spec.
+  - `build_deployment()` parses `command` (string or list) from the docker-compose service definition and emits it as K8s `args` in the container spec. String values are tokenized with `shlex.split()` to preserve quoted substrings (e.g., shell `-c` argument blocks).
+  - `build_deployment()` checks the `tty` boolean flag; when `true`, sets `tty: true` and `stdin: true` on the container spec.
+- All 32 manifests under `k8s/` regenerated with the updated script.
+
 ### 2026-04-09
 
 **apm-server — fix unhealthy container (IPv6 localhost resolution)** (`docker-compose.yml`, `apm-server/server.js`)

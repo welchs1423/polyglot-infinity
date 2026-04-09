@@ -17,6 +17,14 @@ spec:
       containers:
       - name: scala-streamer
         image: eclipse-temurin:21-jdk-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - apk add --no-cache curl && mkdir -p /tmp/sl && curl -fsSL https://repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar
+          -o /tmp/sl/s3.jar && curl -fsSL https://repo1.maven.org/maven2/org/scala-lang/scala-library/2.13.18/scala-library-2.13.18.jar
+          -o /tmp/sl/s2.jar && java -cp '/app/server.jar:/tmp/sl/s3.jar:/tmp/sl/s2.jar'
+          Main
         ports:
         - containerPort: 9003
 ---

@@ -17,6 +17,11 @@ spec:
       containers:
       - name: dart-engine
         image: dart:stable
+        imagePullPolicy: IfNotPresent
+        args:
+        - dart
+        - run
+        - bin/server.dart
         ports:
         - containerPort: 9005
 ---

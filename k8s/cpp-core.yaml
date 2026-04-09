@@ -17,6 +17,7 @@ spec:
       containers:
       - name: cpp-core
         image: cpp-core:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8012
 ---

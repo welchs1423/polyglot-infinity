@@ -17,6 +17,11 @@ spec:
       containers:
       - name: elixir-hub
         image: elixir:1.18-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - cp -rp /app /tmp/app && cd /tmp/app && mix compile && mix run --no-halt
         ports:
         - containerPort: 4000
         env:

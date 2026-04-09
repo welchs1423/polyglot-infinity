@@ -17,6 +17,10 @@ spec:
       containers:
       - name: prolog-solver
         image: swipl:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - swipl
+        - server.pl
         ports:
         - containerPort: 8011
 ---

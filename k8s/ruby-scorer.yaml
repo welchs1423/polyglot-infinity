@@ -17,6 +17,12 @@ spec:
       containers:
       - name: ruby-scorer
         image: ruby:3.3-slim
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - gem install webrick --no-document 2>/dev/null; cat /app/server.rb > /tmp/server.rb
+          && echo 'server.start' >> /tmp/server.rb && ruby /tmp/server.rb
         ports:
         - containerPort: 9004
 ---

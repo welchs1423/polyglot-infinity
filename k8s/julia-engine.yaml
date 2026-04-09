@@ -17,6 +17,11 @@ spec:
       containers:
       - name: julia-engine
         image: julia:1.10-bookworm
+        imagePullPolicy: IfNotPresent
+        args:
+        - julia
+        - -e
+        - import Pkg; Pkg.add(["HTTP","JSON3"]); include("/app/server.jl")
         ports:
         - containerPort: 8002
 ---

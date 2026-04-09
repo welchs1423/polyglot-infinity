@@ -17,6 +17,9 @@ spec:
       containers:
       - name: nim-analytics
         image: debian:bookworm-slim
+        imagePullPolicy: IfNotPresent
+        args:
+        - ./server
         ports:
         - containerPort: 8005
 ---

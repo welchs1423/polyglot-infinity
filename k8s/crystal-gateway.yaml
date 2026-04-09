@@ -17,6 +17,11 @@ spec:
       containers:
       - name: crystal-gateway
         image: debian:bookworm-slim
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - apt-get update -qq && apt-get install -y -qq libssl3 2>/dev/null; ./server
         ports:
         - containerPort: 9002
 ---

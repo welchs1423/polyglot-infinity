@@ -17,6 +17,7 @@ spec:
       containers:
       - name: wasm-zig
         image: nginx:1.27-alpine
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
 ---

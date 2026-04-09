@@ -17,6 +17,7 @@ spec:
       containers:
       - name: python-brain
         image: python-brain:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
 ---

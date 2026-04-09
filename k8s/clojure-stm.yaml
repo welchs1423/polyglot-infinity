@@ -17,6 +17,11 @@ spec:
       containers:
       - name: clojure-stm
         image: clojure:temurin-21-tools-deps-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - clojure
+        - -M
+        - server.clj
         ports:
         - containerPort: 8009
 ---

@@ -17,6 +17,12 @@ spec:
       containers:
       - name: fsharp-pricer
         image: mcr.microsoft.com/dotnet/sdk:8.0-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - dotnet
+        - run
+        - --configuration
+        - Release
         ports:
         - containerPort: 9001
 ---

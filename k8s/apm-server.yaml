@@ -17,6 +17,10 @@ spec:
       containers:
       - name: apm-server
         image: node:22-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - node
+        - server.js
         ports:
         - containerPort: 9009
 ---

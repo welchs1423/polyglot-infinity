@@ -17,6 +17,11 @@ spec:
       containers:
       - name: gleam-hub
         image: ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - cp -rp /app/. /tmp/gleam-app/ && rm -rf /tmp/gleam-app/test && gleam run
         ports:
         - containerPort: 4001
 ---

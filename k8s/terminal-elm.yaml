@@ -17,6 +17,7 @@ spec:
       containers:
       - name: terminal-elm
         image: terminal-elm:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
 ---

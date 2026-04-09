@@ -10,6 +10,7 @@
 #   python3 tools/k8s-generator.py
 
 import os
+import shlex
 import sys
 
 import yaml
@@ -64,14 +65,42 @@ def build_deployment(service_name: str, service: dict) -> dict:
 
     env_list = _build_env_list(service)
 
+    # entrypoint overrides ENTRYPOINT in the image; maps to K8s command.
+    entrypoint_raw = service.get("entrypoint")
+    # command overrides CMD in the image; maps to K8s args.
+    command_raw = service.get("command")
+    tty = service.get("tty", False)
+
+    k8s_command: list[str] | None = None
+    if entrypoint_raw is not None:
+        if isinstance(entrypoint_raw, str):
+            k8s_command = shlex.split(entrypoint_raw)
+        else:
+            k8s_command = list(entrypoint_raw)
+
+    k8s_args: list[str] | None = None
+    if command_raw is not None:
+        if isinstance(command_raw, str):
+            k8s_args = shlex.split(command_raw)
+        else:
+            k8s_args = list(command_raw)
+
     container_spec: dict = {
         "name": service_name,
         "image": image,
+        "imagePullPolicy": "IfNotPresent",
     }
+    if k8s_command is not None:
+        container_spec["command"] = k8s_command
+    if k8s_args is not None:
+        container_spec["args"] = k8s_args
     if container_ports:
         container_spec["ports"] = [{"containerPort": p} for p in container_ports]
     if env_list:
         container_spec["env"] = env_list
+    if tty:
+        container_spec["tty"] = True
+        container_spec["stdin"] = True
 
     return {
         "apiVersion": "apps/v1",

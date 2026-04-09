@@ -17,6 +17,10 @@ spec:
       containers:
       - name: kotlin-scheduler
         image: eclipse-temurin:21-jdk-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - run.sh
         ports:
         - containerPort: 9000
         env:

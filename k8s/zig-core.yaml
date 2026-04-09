@@ -17,6 +17,7 @@ spec:
       containers:
       - name: zig-core
         image: zig-core:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8013
 ---

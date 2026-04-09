@@ -17,6 +17,11 @@ spec:
       containers:
       - name: r-stats
         image: rstudio/plumber
+        imagePullPolicy: IfNotPresent
+        command:
+        - Rscript
+        args:
+        - run.R
         ports:
         - containerPort: 8003
 ---

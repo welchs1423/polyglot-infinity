@@ -17,6 +17,7 @@ spec:
       containers:
       - name: go-hub
         image: go-hub:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         env:

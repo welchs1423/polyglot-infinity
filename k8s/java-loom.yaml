@@ -17,6 +17,11 @@ spec:
       containers:
       - name: java-loom
         image: eclipse-temurin:21-jdk-alpine
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - java -cp '/app/out:/app/libs/*' VirtualServer
         ports:
         - containerPort: 8010
         env:

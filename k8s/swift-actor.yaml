@@ -17,6 +17,11 @@ spec:
       containers:
       - name: swift-actor
         image: swift:6.1-slim
+        imagePullPolicy: IfNotPresent
+        args:
+        - sh
+        - -c
+        - LD_LIBRARY_PATH=/usr/lib/swift/linux ./server
         ports:
         - containerPort: 8008
 ---

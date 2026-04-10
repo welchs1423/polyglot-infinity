@@ -44,6 +44,9 @@ A **real-time multi-currency micro-loan risk analysis platform** built with 28 l
 
 ## Architecture
 
+### Enterprise MSA Architecture
+![Kiali Service Mesh Graph](./images/kiali-architecture.png)
+
 ```
 [Svelte 5 :5173]
       │ fetch / SSE / WebSocket (/ws)
